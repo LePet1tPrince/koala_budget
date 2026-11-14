@@ -18,6 +18,7 @@ import type {
   BankFeedRow,
   JournalEntry,
   PatchedBankFeedRow,
+  RuleProposal,
 } from '../models/index';
 import {
     BankFeedRowFromJSON,
@@ -26,6 +27,8 @@ import {
     JournalEntryToJSON,
     PatchedBankFeedRowFromJSON,
     PatchedBankFeedRowToJSON,
+    RuleProposalFromJSON,
+    RuleProposalToJSON,
 } from '../models/index';
 
 export interface ABankfeedApiFeedPartialUpdateRequest {
@@ -47,6 +50,11 @@ export interface AJournalApiJournalEntriesVoidEntryCreateRequest {
     id: number;
     teamSlug: string;
     journalEntry: Omit<JournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
+}
+
+export interface ARulesApiProposalsListRequest {
+    bookSlug: string;
+    teamSlug: string;
 }
 
 /**
@@ -236,6 +244,53 @@ export class AApi extends runtime.BaseAPI {
      */
     async aJournalApiJournalEntriesVoidEntryCreate(requestParameters: AJournalApiJournalEntriesVoidEntryCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<JournalEntry> {
         const response = await this.aJournalApiJournalEntriesVoidEntryCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Rules the book\'s history proposes (`services.learning`).
+     */
+    async aRulesApiProposalsListRaw(requestParameters: ARulesApiProposalsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<RuleProposal>>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling aRulesApiProposalsList().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling aRulesApiProposalsList().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/rules/api/proposals/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(RuleProposalFromJSON));
+    }
+
+    /**
+     * Rules the book\'s history proposes (`services.learning`).
+     */
+    async aRulesApiProposalsList(requestParameters: ARulesApiProposalsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<RuleProposal>> {
+        const response = await this.aRulesApiProposalsListRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

@@ -24,6 +24,7 @@ from apps.onboarding.models import OnboardingState
 from apps.plaid.models import PlaidAccount, PlaidItem, PlaidTransaction
 from apps.portability.models import DataImport
 from apps.reconciliation.models import Reconciliation
+from apps.rules.models import Rule, RuleMatch, RuleProposal
 from apps.ynab_import.models import YnabImport
 
 MONTH = date(2026, 3, 1)
@@ -59,6 +60,9 @@ class BookData:
     ynab_import: YnabImport
     data_import: DataImport
     recurring: RecurringTransaction
+    rule: Rule
+    rule_match: RuleMatch
+    rule_proposal: RuleProposal
 
     def object_for(self, kind: str) -> Model:
         return {
@@ -79,6 +83,10 @@ class BookData:
             "plaid_transaction": self.plaid_transaction,
             "event": self.event,
             "recurring": self.recurring,
+            "rule": self.rule,
+            # The match API is addressed by its feed row's id, so the row stands for it.
+            "rule_match": self.uncategorized_tx,
+            "rule_proposal": self.rule_proposal,
         }[kind]
 
 
@@ -188,6 +196,33 @@ def build_book_data(book, marker: str, user=None) -> BookData:
     ynab_import = YnabImport.objects.create(book=book, register_csv=f"reg {marker}", plan_csv=f"plan {marker}")
     data_import = DataImport.objects.create(book=book, created_by=user, archive=b"not a real archive")
 
+    rule = Rule.objects.create(
+        book=book,
+        name=f"Mystery rule {marker}",
+        direction=Rule.DIRECTION_OUT,
+        conditions=[{"field": "description", "op": "contains", "value": "mystery"}],
+        category=groceries,
+        mode=Rule.MODE_AUTO_POST,
+    )
+    rule.accounts.set([chequing])
+    rule_match = RuleMatch.objects.create(
+        book=book,
+        transaction=uncategorized_tx,
+        rule=rule,
+        rule_name=rule.name,
+        category=groceries,
+        before={"merchant_name": uncategorized_tx.merchant_name, "description": uncategorized_tx.description},
+    )
+    rule_proposal = RuleProposal.objects.create(
+        book=book,
+        signature=f"payee:corner store {marker.lower()}",
+        field=RuleProposal.FIELD_PAYEE,
+        value=f"corner store {marker.lower()}",
+        category=groceries,
+        evidence_count=5,
+        consistency="1.000",
+    )
+
     return BookData(
         book=book,
         marker=marker,
@@ -216,6 +251,9 @@ def build_book_data(book, marker: str, user=None) -> BookData:
         ynab_import=ynab_import,
         data_import=data_import,
         recurring=recurring,
+        rule=rule,
+        rule_match=rule_match,
+        rule_proposal=rule_proposal,
     )
 
 

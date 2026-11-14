@@ -44,7 +44,6 @@ from apps.books.permissions import BookModelAccessPermissions
 from apps.budget.services import picker_accounts_data
 from apps.journal.models import JournalEntry
 from apps.journal.services import period_lock, voiding
-from apps.journal.services.lines import repoint_line
 from apps.reconciliation.models import Reconciliation
 from apps.reconciliation.services.guards import (
     ReconciledLineError,
@@ -53,6 +52,7 @@ from apps.reconciliation.services.guards import (
     assert_line_mutable,
 )
 from apps.reconciliation.services.integrity import intact_map
+from apps.rules.services import feedback as rules_feedback
 
 from .models import BankTransaction, RecurringTransaction, TransferMatchDismissal
 from .serializers import (
@@ -75,9 +75,10 @@ from .serializers import (
     UploadValidateDatesResponseSerializer,
     bank_transaction_to_feed_row,
 )
-from .services import feed_query, recurring
-from .services.categorize import MIRROR_EDIT_ERROR, create_entry, repoint_category
+from .services import edit, feed_query, recurring
+from .services.categorize import create_entry, repoint_category
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
+from .services.edit import SPLIT_MIRROR_ERROR, VOID_EDIT_ERROR
 from .services.manual import create_manual_transaction
 from .services.sample_csv import build_sample_csv
 from .services.similar_transactions import suggest_categories
@@ -92,11 +93,6 @@ RECURRING_MAX_DAYS_BACK = 366
 # Upper bound on how many transactions one similar-category request may ask about.
 # The categorize view only ever needs the handful of cards it is about to show.
 MAX_SIMILAR_CATEGORY_IDS = 50
-
-# A split's transfer leg is mirrored into the other account's feed; that row is
-# part of the split and is edited from the split's own row.
-VOID_EDIT_ERROR = "This transaction is void. Restore it before editing it."
-SPLIT_MIRROR_ERROR = "This is one part of a split transaction in another account. Open the split there to change it."
 
 
 def _annotate_feed_account_activity(accounts, book):
@@ -301,6 +297,13 @@ FEED_QUERY_PARAMETERS = [
     OpenApiParameter(name="sort", type=str, enum=list(feed_query.SORT_KEYS), required=False),
     OpenApiParameter(name="dir", type=str, enum=["asc", "desc"], required=False),
     OpenApiParameter(name="ids", type=str, required=False, description="Comma-separated row ids (at most 1000)"),
+    OpenApiParameter(
+        name="rule",
+        type=str,
+        enum=list(feed_query.RULE_FILTERS),
+        required=False,
+        description="Only rows a rule suggested a category for, or categorized automatically",
+    ),
     OpenApiParameter(name="page_size", type=int, enum=list(feed_query.PAGE_SIZES), required=False),
     OpenApiParameter(name="counts", type=bool, required=False, description="Add the quick-filter badge counts"),
 ]
@@ -384,6 +387,7 @@ class BankFeedViewSet(
         return queryset.select_related(
             "account__account_group",
             "account__institution",
+            "rule_match__category",
             "journal_entry",
             "plaid_transaction",
             "plaid_transaction__plaid_account",
@@ -492,6 +496,7 @@ class BankFeedViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        rules_feedback.record(transactions)
         log_event(AuditEvent.BULK_CATEGORIZE, request=request, metadata={"count": len(transactions)})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -936,6 +941,8 @@ class BankFeedViewSet(
         except ValueError as e:
             # A reconciled leg `apply_splits` refused to drop or re-amount.
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        rules_feedback.record([bank_tx])
 
         # Reload to get updated data
         bank_tx.refresh_from_db()
@@ -1470,6 +1477,8 @@ class BankFeedViewSet(
         except ValueError as e:
             # Raised inside the atomic block, so nothing in the batch was written.
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        if category_account is not None:
+            rules_feedback.record(transactions)
 
         log_event(
             AuditEvent.BULK_EDIT,
@@ -1486,34 +1495,7 @@ class BankFeedViewSet(
     @staticmethod
     def _batch_edit_refusal(tx, category_account, target_account, new_date):
         """Why `batch_edit` cannot apply to `tx`, or None."""
-        if tx.is_void:
-            return VOID_EDIT_ERROR
-        # A split's transfer-leg mirror is part of a split in another account; no
-        # batch field (date, payee, account, category) can be edited on it alone.
-        if is_split_mirror(tx):
-            return SPLIT_MIRROR_ERROR
-        home = target_account or tx.account
-        if category_account is not None:
-            # Re-pointing a mirror leg to a non-feed category would orphan the real
-            # primary; a split has no single category line to re-point.
-            if would_orphan_primary(tx, category_account):
-                return MIRROR_EDIT_ERROR
-            if is_split(tx.journal_entry):
-                return _("This transaction is split across categories. Open it to edit its categories.")
-            if category_account.id == home.id:
-                return _("A transaction cannot be categorized to the account it is in.")
-        elif target_account is not None and tx.journal_entry_id:
-            # Moving a row into the account its category already is would put both
-            # sides of the entry on one account: a transfer to itself.
-            others = [line for line in tx.journal_entry.lines.all() if line.account_id != tx.account_id]
-            if len(others) == 1 and others[0].account_id == target_account.id:
-                return _("A transaction cannot be moved to the account it is categorized to.")
-        if new_date is not None:
-            try:
-                assert_date_change_allowed(tx.journal_entry, new_date)
-            except ReconciledLineError as e:
-                return str(e)
-        return None
+        return edit.refusal(tx, category=category_account, target_account=target_account, new_date=new_date)
 
     @transaction.atomic
     def _apply_batch_edit(
@@ -1521,86 +1503,24 @@ class BankFeedViewSet(
     ):
         """The writes behind `batch_edit`, in one transaction so a refusal rolls back the whole batch."""
         for tx in transactions:
-            # --- Category ---
-            if category_account is not None:
-                if tx.journal_entry:
-                    self._update_journal_category(tx, category_account)
-                else:
-                    self._create_journal_from_bank_transaction(
-                        transaction_id=tx.id,
-                        category_account=category_account,
-                        book=request.book,
-                    )
-                    tx.refresh_from_db()
-
-            # --- Move account ---
-            if target_account is not None:
-                # Reconciled transactions cannot be moved to another account
-                is_reconciled = (
-                    tx.journal_entry and tx.journal_entry.lines.filter(account=tx.account, is_reconciled=True).exists()
-                )
-                if not is_reconciled:
-                    old_account = tx.account
-                    tx.account = target_account
-                    if tx.journal_entry:
-                        lines = tx.journal_entry.lines.all()
-                        home = next((line for line in lines if line.account == old_account), None)
-                        if home is not None:
-                            repoint_line(home, target_account)
-
-            # --- Payee ---
-            if payee_name is not None:
-                tx.merchant_name = payee_name
-                if tx.journal_entry:
-                    tx.journal_entry.payee = payee_obj
-                    tx.journal_entry.save()
-
-            # --- Description ---
-            if description is not None:
-                tx.description = description
-                if tx.journal_entry:
-                    tx.journal_entry.description = description
-                    tx.journal_entry.save()
-
-            # --- Date ---
-            if new_date is not None:
-                tx.posted_date = new_date
-                if tx.journal_entry:
-                    tx.journal_entry.entry_date = new_date
-                    tx.journal_entry.save()
-
-            tx.save()
-
-            # Keep a transfer's counterpart leg aligned with any date/payee/desc edit.
-            sync_transfer(tx)
+            edit.apply_fields(
+                tx,
+                category=category_account,
+                target_account=target_account,
+                payee_name=payee_name,
+                payee=payee_obj,
+                description=description,
+                new_date=new_date,
+            )
 
     @transaction.atomic
     def _update_journal_category(self, bank_tx, new_category_account):
         """Update the category line of an existing journal entry."""
         repoint_category(bank_tx, new_category_account)
 
-    @transaction.atomic
     def _decategorize(self, bank_tx):
-        """
-        Remove a transaction's categorization: unlink and delete its journal entry
-        (and any auto-created transfer mirror leg sharing it). The BankTransaction
-        stays in the feed as an uncategorized row.
-        """
-        entry = bank_tx.journal_entry
-        if entry is None:
-            return
-        assert_entry_removable(entry, own_account_id=bank_tx.account_id, verb=gettext("removing its category"))
-        period_lock.assert_entry_mutable(entry, book=bank_tx.book)
-
-        # A transfer's counterpart mirror leg only exists to surface the shared
-        # entry in the other feed; drop it so it doesn't linger as an orphan.
-        for leg in BankTransaction.objects.filter(journal_entry=entry).exclude(id=bank_tx.id):
-            if leg.is_transfer_mirror:
-                leg.delete()
-
-        bank_tx.journal_entry = None
-        bank_tx.save(update_fields=["journal_entry", "updated_at"])
-        entry.delete()
+        """Remove a transaction's categorization (`services.edit.decategorize`)."""
+        edit.decategorize(bank_tx)
 
     @extend_schema(
         operation_id="bank_feed_batch_void",

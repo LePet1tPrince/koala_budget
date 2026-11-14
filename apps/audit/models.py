@@ -72,6 +72,11 @@ class AuditEvent(models.Model):
     BOOK_ARCHIVED = "book_archived"
     BOOK_RESTORED = "book_restored"
     BOOK_DELETED = "book_deleted"
+    RULE_CREATED = "rule_created"
+    RULE_UPDATED = "rule_updated"
+    RULE_DELETED = "rule_deleted"
+    RULE_AUTO_POSTED = "rule_auto_posted"
+    RULE_DEMOTED = "rule_demoted"
 
     EVENT_TYPE_CHOICES = [
         (USER_LOGIN, "User Login"),
@@ -133,6 +138,11 @@ class AuditEvent(models.Model):
         (BOOK_ARCHIVED, "Set of Books Archived"),
         (BOOK_RESTORED, "Set of Books Restored"),
         (BOOK_DELETED, "Set of Books Deleted"),
+        (RULE_CREATED, "Rule Created"),
+        (RULE_UPDATED, "Rule Updated"),
+        (RULE_DELETED, "Rule Deleted"),
+        (RULE_AUTO_POSTED, "Rules Auto-Posted Transactions"),
+        (RULE_DEMOTED, "Rule Demoted To Suggest"),
     ]
 
     team = models.ForeignKey("teams.Team", on_delete=models.SET_NULL, null=True, blank=True)

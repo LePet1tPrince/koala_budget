@@ -127,7 +127,7 @@
     structure, and it is used while working rather than while configuring.
   {% endcomment %}
   {% if not user.is_anonymous %}
-    {# Manage: expands to the chart-of-accounts pages, reconciliations and recurring transactions. #}
+    {# Manage: expands to the chart-of-accounts pages, reconciliations, recurring transactions and rules. #}
     <div x-data="sideGroup({% if active_tab == 'accounts' %}true{% else %}false{% endif %})" x-bind="group" class="side-group flex flex-col">
       <div class="side-row" x-ref="row">
         <a x-ref="link" href="{% url 'accounts:accounts_home' nav_team.slug nav_book.slug %}"
@@ -172,6 +172,11 @@
            class="side-link side-link-sub {% if accounts_section == 'recurring' %}side-link-active{% endif %}" data-testid="nav-accounts-recurring">
           {% icon "repeat" class="inline-block shrink-0 w-4 h-4" %}
           {% translate "Recurring transactions" %}
+        </a>
+        <a href="{% url 'rules:rules_home' nav_team.slug nav_book.slug %}"
+           class="side-link side-link-sub {% if accounts_section == 'rules' %}side-link-active{% endif %}" data-testid="nav-accounts-rules">
+          {% icon "wand-magic-sparkles" class="inline-block shrink-0 w-4 h-4" %}
+          {% translate "Rules" %}
         </a>
       </div>
     </div>

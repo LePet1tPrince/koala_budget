@@ -208,6 +208,21 @@ class SplitLegSerializer(serializers.Serializer):
     )
 
 
+class RuleMatchSummarySerializer(serializers.Serializer):
+    """The rule behind a row's suggestion or automatic categorization (`apps.rules`)."""
+
+    rule_id = serializers.IntegerField(allow_null=True, help_text="The rule (null once the rule is deleted)")
+    rule_name = serializers.CharField(help_text="The rule's name when it matched")
+    status = serializers.ChoiceField(choices=["suggested", "auto_posted"])
+    held_reason = serializers.CharField(allow_blank=True, help_text="Why an auto-post rule only suggested")
+    held_label = serializers.CharField(allow_blank=True, help_text="held_reason in words")
+    category_id = serializers.IntegerField(allow_null=True, help_text="The category offered (null for a split)")
+    category_name = serializers.CharField(allow_null=True)
+    is_split = serializers.BooleanField()
+    split_count = serializers.IntegerField()
+    payee_name = serializers.CharField(allow_blank=True, help_text="The payee the rule renamed the row to")
+
+
 class BankFeedRowSerializer(serializers.Serializer):
     """
     Unified bank feed row serializer.
@@ -298,6 +313,21 @@ class BankFeedRowSerializer(serializers.Serializer):
         allow_null=True,
         required=False,
         help_text="The recurring schedule this transaction belongs to (null when it is a one-off)",
+    )
+    original_description = serializers.CharField(
+        allow_null=True,
+        required=False,
+        help_text="The bank's own description, when a rule renamed it (null when unchanged)",
+    )
+    original_payee = serializers.CharField(
+        allow_null=True,
+        required=False,
+        help_text="The bank's own payee, when a rule renamed it (null when unchanged)",
+    )
+    rule_match = RuleMatchSummarySerializer(
+        allow_null=True,
+        required=False,
+        help_text="The rule that suggested or posted this row's category (null when none did)",
     )
 
 
@@ -480,6 +510,12 @@ class UploadConfirmResponseSerializer(serializers.Serializer):
     created_count = serializers.IntegerField(help_text="Number of transactions created")
     skipped_count = serializers.IntegerField(help_text="Number of transactions skipped")
     error_count = serializers.IntegerField(help_text="Number of transactions with errors")
+    rules_suggested = serializers.IntegerField(
+        required=False, default=0, help_text="Imported transactions a rule suggested a category for"
+    )
+    rules_auto_posted = serializers.IntegerField(
+        required=False, default=0, help_text="Imported transactions a rule categorized automatically"
+    )
 
 
 def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
@@ -565,4 +601,54 @@ def bank_transaction_to_feed_row(tx: BankTransaction) -> dict:
         "split_count": len(split_legs),
         "splits": split_legs,
         "recurring_id": tx.recurring_id,
+        "rule_match": rule_match_summary(tx, category, split_legs),
+        **rule_originals(tx),
+    }
+
+
+def rule_originals(tx):
+    """
+    What the bank called the row before a rule renamed it, so the feed can show
+    both: a rule matched on the original, and the new name alone would hide why.
+    """
+    match = getattr(tx, "rule_match", None)
+    before = (match.before or {}) if match is not None and match.status != "dismissed" else {}
+    description = before.get("description")
+    payee = before.get("merchant_name")
+    return {
+        "original_description": description if "description" in before and description != tx.description else None,
+        "original_payee": (payee or None) if "merchant_name" in before and payee != tx.merchant_name else None,
+    }
+
+
+def rule_match_summary(tx, category=None, split_legs=()):
+    """
+    The row's open rule match, for the chip or badge: a suggestion on an
+    uncategorized row, or an auto-post the row still carries. An auto-post
+    re-categorized somewhere the feed's feedback does not see (the Transactions
+    page) no longer shows as the rule's work.
+    """
+    match = getattr(tx, "rule_match", None)
+    if match is None:
+        return None
+    suggestion = match.status == "suggested" and tx.journal_entry_id is None and not tx.is_void
+    posted = (
+        match.status == "auto_posted"
+        and tx.journal_entry_id is not None
+        and (bool(match.splits) == bool(split_legs))
+        and (match.splits or (category is not None and category.pk == match.category_id))
+    )
+    if not (suggestion or posted):
+        return None
+    return {
+        "rule_id": match.rule_id,
+        "rule_name": match.rule_name,
+        "status": match.status,
+        "held_reason": match.held_reason,
+        "held_label": str(match.get_held_reason_display()) if match.held_reason else "",
+        "category_id": match.category_id,
+        "category_name": match.category.name if match.category_id else None,
+        "is_split": bool(match.splits),
+        "split_count": len(match.splits or []),
+        "payee_name": match.payee_name,
     }

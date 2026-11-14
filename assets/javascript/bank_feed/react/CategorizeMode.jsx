@@ -1,3 +1,4 @@
+/* globals gettext, interpolate */
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { getApiHeaders } from '../../api';
 import { createConfetti } from '../../common/confetti';
@@ -8,8 +9,11 @@ import Combobox from '../../common/Combobox';
 import DateRangePicker from '../../common/DateRangePicker';
 import Icon from '../../common/Icon';
 import Modal from '../../common/Modal';
+import { Toast } from '../../common/Toast';
 import { accountKind, ACCOUNT_KIND_LABELS, goalLeftLabel, pickableAccounts } from '../../common/accountKind';
 import { queryFromUrl, scopeSearch } from '../feedQuery';
+import { rulesApiForBook } from '../../rules/api';
+import RuleBuilderDialog, { draftFromRow } from '../../rules/RuleBuilderDialog';
 
 // How many cards ahead of the current one to look up similar-transaction
 // suggestions for.
@@ -436,7 +440,10 @@ function findAccountNamedInText(text, accounts, excludeAccountId) {
 // The note under a suggestion, explaining why it's suggested. A "named" match
 // (an account named verbatim in the memo/payee) needs no history to justify
 // itself, but still says so when history backs it up too.
-function suggestionNote({ count, match_type }) {
+function suggestionNote({ count, match_type, rule_name }) {
+  if (match_type === 'rule') {
+    return interpolate(gettext('Suggested by your rule “%s”'), [rule_name]);
+  }
   if (match_type === 'named') {
     return count != null
       ? `Named in the memo — also used ${count}× for this payee`
@@ -1054,6 +1061,18 @@ export default function CategorizeMode({
   const uploadApi = useMemo(() => getUploadApiHelpers(book.base), [book]);
   const batchApi = useMemo(() => getBatchOperationsApi(book.base), [book]);
   const transactionApi = useMemo(() => getTransactionApi(book.base), [book]);
+
+  // The rule builder over the stack (admins only): null, or `{ draft }`.
+  const [ruleDialog, setRuleDialog] = useState(null);
+  const [canEditRules, setCanEditRules] = useState(false);
+  const [ruleNotice, setRuleNotice] = useState('');
+  const clearRuleNotice = useCallback(() => setRuleNotice(''), []);
+  useEffect(() => {
+    rulesApiForBook(book.base)
+      .prompts()
+      .then(p => setCanEditRules(!!p.can_edit))
+      .catch(() => setCanEditRules(false));
+  }, [book]);
   const payeeOptions = useMemo(() => allPayees.map(p => p.name).filter(Boolean), [allPayees]);
   const feedAccounts = useMemo(
     () => allAccounts.filter(a => a.has_feed && !a.is_archived).sort((a, b) => a.name.localeCompare(b.name)),
@@ -1119,9 +1138,32 @@ export default function CategorizeMode({
 
   // Only the cards about to be seen are looked up, so a queue of a thousand
   // transactions still costs one small request at a time.
+  // A row a rule already suggests for takes the rule's category as its one
+  // suggestion: it supersedes the history lookup, which is not made for it.
+  useEffect(() => {
+    const fromRules = {};
+    transactions.slice(0, SUGGESTION_PREFETCH).forEach(tx => {
+      const id = transactionId(tx);
+      const match = tx.rule_match;
+      if (id == null || id in suggestionsByTransaction || match?.status !== 'suggested' || match.category_id == null) return;
+      fromRules[id] = [
+        {
+          transaction_id: id,
+          category_id: match.category_id,
+          category_name: match.category_name,
+          count: null,
+          match_type: 'rule',
+          rule_name: match.rule_name,
+        },
+      ];
+    });
+    if (Object.keys(fromRules).length) setSuggestionsByTransaction(prev => ({ ...fromRules, ...prev }));
+  }, [transactions, suggestionsByTransaction]);
+
   useEffect(() => {
     const wanted = transactions
       .slice(0, SUGGESTION_PREFETCH)
+      .filter(tx => !(tx.rule_match?.status === 'suggested' && tx.rule_match.category_id != null))
       .map(transactionId)
       .filter(id => id != null && !(id in suggestionsByTransaction) && !suggestionsInFlight.current.has(id));
     if (wanted.length === 0) return;
@@ -1385,7 +1427,7 @@ export default function CategorizeMode({
       // A modal over the stack handles its own Escape (via the dialog's
       // `cancel` event) — don't also navigate away or skip under it, which
       // would throw the user out of the queue while they were editing.
-      if (pendingBatch || splitModalOpen || showCreateAccountModal) return;
+      if (pendingBatch || splitModalOpen || showCreateAccountModal || ruleDialog) return;
       if (e.key === 'Escape') window.location.href = backHref;
       if (e.key === 's' && !e.ctrlKey && !e.metaKey && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) skipTransaction();
       if (e.key === 'z' && (e.ctrlKey || e.metaKey) && undoStack.length > 0) {
@@ -1395,7 +1437,7 @@ export default function CategorizeMode({
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [backHref, undoStack, pendingBatch, splitModalOpen, showCreateAccountModal]);
+  }, [backHref, undoStack, pendingBatch, splitModalOpen, showCreateAccountModal, ruleDialog]);
 
   const currentId = transactionId(transactions[0]);
   const currentSuggestions = (currentId != null && suggestionsByTransaction[currentId]) || [];
@@ -1464,6 +1506,18 @@ export default function CategorizeMode({
           <h1 className="text-xl font-black tracking-tight">⚡ Categorize Mode</h1>
           <ScopeBar scope={scope} feedAccounts={feedAccounts} onChange={changeScope} />
         </div>
+        {canEditRules && (
+          <button
+            type="button"
+            className="btn btn-outline btn-sm gap-1"
+            title={gettext('New rule, starting from this transaction')}
+            onClick={() => setRuleDialog({ draft: draftFromRow(transactions[0]) })}
+            data-testid="categorize-new-rule"
+          >
+            <Icon name="wand-magic-sparkles" className="h-4 w-4" />
+            {gettext('New rule')}
+          </button>
+        )}
         <div className="flex items-center gap-4">
           <StreakCounter streak={streak} />
           <div className="hidden sm:block w-48">
@@ -1472,6 +1526,32 @@ export default function CategorizeMode({
           <kbd className="kbd kbd-sm hidden lg:inline-flex">Esc to exit</kbd>
         </div>
       </div>
+
+      <RuleBuilderDialog
+        request={ruleDialog}
+        bookBase={book.base}
+        categories={allAccounts}
+        canEdit={canEditRules}
+        onClose={() => setRuleDialog(null)}
+        onSaved={(saved, info = {}) => {
+          setRuleDialog(null);
+          setRuleNotice(
+            info.deleted
+              ? gettext('Rule deleted')
+              : gettext('Rule saved. Transactions it matches now show its suggestion first.')
+          );
+          // Re-read the queue: the rule's suggestions (or postings) change what is left.
+          setSuggestionsByTransaction({});
+          fetchUncategorized(scope);
+        }}
+      />
+      <Toast
+        open={!!ruleNotice}
+        message={ruleNotice}
+        severity="success"
+        onClose={clearRuleNotice}
+        testId="categorize-rule-toast"
+      />
 
       {/* Mobile progress */}
       <div className="sm:hidden px-4 pt-3">

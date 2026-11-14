@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { ActionEnum } from './ActionEnum';
+import type { AuditLogActionEnum } from './AuditLogActionEnum';
 import {
-    ActionEnumFromJSON,
-    ActionEnumFromJSONTyped,
-    ActionEnumToJSON,
-    ActionEnumToJSONTyped,
-} from './ActionEnum';
+    AuditLogActionEnumFromJSON,
+    AuditLogActionEnumFromJSONTyped,
+    AuditLogActionEnumToJSON,
+    AuditLogActionEnumToJSONTyped,
+} from './AuditLogActionEnum';
 
 /**
  * 
@@ -35,10 +35,10 @@ export interface AuditLog {
     readonly id: number;
     /**
      * 
-     * @type {ActionEnum}
+     * @type {AuditLogActionEnum}
      * @memberof AuditLog
      */
-    action: ActionEnum;
+    action: AuditLogActionEnum;
     /**
      * 
      * @type {string}
@@ -96,7 +96,7 @@ export function AuditLogFromJSONTyped(json: any, ignoreDiscriminator: boolean): 
     return {
         
         'id': json['id'],
-        'action': ActionEnumFromJSON(json['action']),
+        'action': AuditLogActionEnumFromJSON(json['action']),
         'sourceModel': json['source_model'] == null ? undefined : json['source_model'],
         'timestamp': (new Date(json['timestamp'])),
         'userDisplay': json['user_display'],
@@ -116,7 +116,7 @@ export function AuditLogFromJSONTyped(json: any, ignoreDiscriminator: boolean): 
 
     return {
         
-        'action': ActionEnumToJSON(value['action']),
+        'action': AuditLogActionEnumToJSON(value['action']),
         'source_model': value['sourceModel'],
         'changes': value['changes'],
     };

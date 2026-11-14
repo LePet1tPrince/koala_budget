@@ -6,4 +6,5 @@ export * from './BankFeedApi';
 export * from './JournalApi';
 export * from './PlaidApi';
 export * from './ReconciliationApi';
+export * from './RulesApi';
 export * from './TeamsApi';
