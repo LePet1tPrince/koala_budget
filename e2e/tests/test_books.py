@@ -79,7 +79,8 @@ def test_future_income_toggle_hides_and_restores_the_income_section(authenticate
     settings = BookSettingsPage(authenticated_page, live_server.url)
     settings.goto(book)
     # The consequence is stated before saving.
-    assert "Turned off, your Unassigned would be" in settings.consequence()
+    assert "Turned off, the" in settings.consequence()
+    assert "Unassigned stays" in settings.consequence()
     settings.toggle()
     settings.save()
 

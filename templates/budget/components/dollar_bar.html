@@ -31,7 +31,7 @@
         {% if bar.with_due_pct is not None %}
           <div class="dollar-bar-marker is-due" style="left: {{ bar.with_due_pct|stringformat:'.3f' }}%"></div>
           <div class="dollar-bar-marker-label is-end is-due" style="left: {{ bar.with_due_pct|stringformat:'.3f' }}%">
-            {% translate "with income due" %}
+            {% translate "with expected income" %}
           </div>
         {% endif %}
       </div>

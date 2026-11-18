@@ -486,6 +486,7 @@ def ledger_unassigned(book, month, future_income: bool | None = None):
         goals=_positive(goal_left),
         overspent=-sum((a for a in expense_available if a < 0), ZERO),
         goals_overspent=-sum((v for v in goal_left if v < 0), ZERO),
+        expects_income=future_income,
     )
 
 

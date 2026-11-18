@@ -841,10 +841,10 @@ class NetWorthService:
         Returns:
             dict with keys:
             - net_worth: Total assets minus liabilities
-            - income_due: Income budgeted this month and not yet received
+            - income_due: Expected income: budgeted and not yet received (not part of available)
             - spend: Money in expense envelopes (unspent budget, rollover included)
             - save: Total allocated to goals
-            - available: net_worth + income_due - spend - save (Unassigned)
+            - available: net_worth - spend - save (Unassigned)
             - state / label: the Unassigned state and the words for it
         """
         from .unassigned import compute_unassigned

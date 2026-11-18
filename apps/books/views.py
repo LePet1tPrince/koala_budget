@@ -215,8 +215,9 @@ def book_settings(request, team_slug, book_slug):
     """
     Everything about this book on one page: its name, its web address and the
     future-income setting. The page states that setting's consequence before
-    saving -- what Unassigned would be this month with it flipped -- computed by
-    the same function the pill uses, so the two cannot disagree.
+    saving -- what Expected income would be this month with it flipped (Unassigned
+    doesn't move) -- computed by the same function the pill uses, so the two cannot
+    disagree.
     """
     book = request.book
     old_slug = book.slug
