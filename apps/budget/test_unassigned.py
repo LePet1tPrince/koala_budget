@@ -21,6 +21,7 @@ from .unassigned import (
     STATE_POSITIVE,
     allocation_bar,
     compute_unassigned,
+    pill_context,
     waterfall,
 )
 
@@ -32,8 +33,8 @@ OCT = date(2026, 10, 1)
 class UnassignedFixture(TestCase):
     """The worked example from docs/unassigned-plan.md §1:
 
-    net worth 20,000 + income due 5,000 − envelopes 7,500 (3,500 rolled over + 4,000)
-    − goals 16,000 = 1,500.
+    net worth 25,000 − envelopes 7,500 (3,500 rolled over + 4,000) − goals 16,000 = 1,500,
+    with 5,000 of Expected income (September's salary, budgeted, not yet received) beside it.
     """
 
     @classmethod
@@ -53,7 +54,7 @@ class UnassignedFixture(TestCase):
         cls.groceries = Account.objects.create(book=cls.book, name="Groceries", account_group=expense)
         cls.fun = Account.objects.create(book=cls.book, name="Fun", account_group=expense)
 
-        cls.post(date(2026, 8, 2), cls.checking, cls.opening, "20000")
+        cls.post(date(2026, 8, 2), cls.checking, cls.opening, "25000")
         set_budget(cls.book, cls.salary, SEPT, Decimal("5000"))
         set_budget(cls.book, cls.groceries, AUG, Decimal("3500"))
         set_budget(cls.book, cls.groceries, SEPT, Decimal("4000"))
@@ -78,8 +79,9 @@ class UnassignedFixture(TestCase):
 class ComputeUnassignedTest(UnassignedFixture):
     def test_worked_example(self):
         u = compute_unassigned(self.book, SEPT)
-        self.assertEqual(u.net_worth, Decimal("20000"))
+        self.assertEqual(u.net_worth, Decimal("25000"))
         self.assertEqual(u.income_due, Decimal("5000"))
+        self.assertTrue(u.expects_income)
         self.assertEqual(u.envelopes, Decimal("7500"))
         self.assertEqual(u.goals, Decimal("16000"))
         self.assertEqual(u.overspent, Decimal("0"))
@@ -91,7 +93,23 @@ class ComputeUnassignedTest(UnassignedFixture):
         # The budget/goals card is built from the same calculation.
         card = NetWorthService.card_data(compute_unassigned(self.book, SEPT))
         self.assertEqual(card["available"], Decimal("1500"))
-        self.assertEqual(card["net_worth"] + card["income_due"] - card["spend"] - card["save"], card["available"])
+        self.assertEqual(card["net_worth"] - card["spend"] - card["save"], card["available"])
+        self.assertEqual(card["income_due"], Decimal("5000"))
+
+    def test_expected_income_is_not_part_of_it(self):
+        u = compute_unassigned(self.book, SEPT)
+        self.assertEqual(u.amount, u.net_worth - u.envelopes - u.goals)
+
+    def test_pill_context_carries_expected_income(self):
+        data = pill_context(compute_unassigned(self.book, SEPT))
+        self.assertEqual(data["raw"], "1500.00")
+        self.assertEqual(data["expected"]["raw"], "5000.00")
+        self.assertEqual(data["expected"]["label"], "Expected income")
+
+    def test_pill_context_has_no_expected_income_without_the_setting(self):
+        self.book.budget_future_income = False
+        self.book.save()
+        self.assertIsNone(pill_context(compute_unassigned(self.book, SEPT))["expected"])
 
     def test_voided_entries_do_not_count(self):
         entry = self.post(date(2026, 9, 6), self.groceries, self.checking, "100")
@@ -113,62 +131,58 @@ class ComputeUnassignedTest(UnassignedFixture):
 
 
 class IncomeTest(UnassignedFixture):
-    """Budgeted income counts as coming; the difference rolls month to month."""
+    """Budgeted income is Expected income, beside Unassigned; it rolls month to month.
+    Income moves Unassigned only by landing in net worth."""
 
-    def test_raising_last_months_income_budget_raises_it(self):
+    def figures(self, month=SEPT):
+        u = compute_unassigned(self.book, month)
+        return u.income_due, u.amount
+
+    def test_raising_last_months_income_budget_raises_expected_only(self):
         self.budget(self.salary, AUG, "1000")
-        self.assertEqual(self.unassigned(), Decimal("2500"))
+        self.assertEqual(self.figures(), (Decimal("6000"), Decimal("1500")))
 
-    def test_raising_this_months_income_budget_raises_it(self):
+    def test_raising_this_months_income_budget_raises_expected_only(self):
         self.budget(self.salary, SEPT, "5600")
-        self.assertEqual(self.unassigned(), Decimal("2100"))
+        self.assertEqual(self.figures(), (Decimal("5600"), Decimal("1500")))
 
-    def test_next_months_income_budget_does_not_count_yet(self):
+    def test_next_months_income_budget_is_not_expected_yet(self):
         self.budget(self.salary, OCT, "5000")
-        self.assertEqual(self.unassigned(), Decimal("1500"))
+        self.assertEqual(self.figures(), (Decimal("5000"), Decimal("1500")))
 
-    def test_income_arriving_within_budget_changes_nothing(self):
+    def test_income_arriving_within_budget_moves_from_expected_to_unassigned(self):
         self.post(date(2026, 9, 5), self.checking, self.salary, "2000")
-        u = compute_unassigned(self.book, SEPT)
-        self.assertEqual(u.income_due, Decimal("3000"))
-        self.assertEqual(u.amount, Decimal("1500"))
+        self.assertEqual(self.figures(), (Decimal("3000"), Decimal("3500")))
 
-    def test_last_months_income_arriving_within_budget_changes_nothing(self):
+    def test_last_months_income_arriving_within_budget(self):
         self.budget(self.salary, AUG, "1000")
-        before = self.unassigned()
         self.post(date(2026, 8, 20), self.checking, self.salary, "400")
-        self.assertEqual(self.unassigned(), before)
+        self.assertEqual(self.figures(), (Decimal("5600"), Decimal("1900")))
 
-    def test_a_shortfall_rolls_forward_as_still_due(self):
+    def test_a_shortfall_rolls_forward_as_still_expected(self):
         # Budgeted 5,000 in August and 4,800 arrived: the 200 is still expected.
         self.budget(self.salary, AUG, "5000")
         self.post(date(2026, 8, 20), self.checking, self.salary, "4800")
-        u = compute_unassigned(self.book, SEPT)
-        self.assertEqual(u.income_due, Decimal("5200"))
-        self.assertEqual(u.amount, Decimal("6500"))
+        self.assertEqual(self.figures(), (Decimal("5200"), Decimal("6300")))
         # Lowering the budget is how you say it isn't coming.
         self.budget(self.salary, SEPT, "4800")
-        self.assertEqual(compute_unassigned(self.book, SEPT).income_due, Decimal("5000"))
+        self.assertEqual(self.figures(), (Decimal("5000"), Decimal("6300")))
 
     def test_income_over_budget_arrives_unassigned(self):
         self.post(date(2026, 9, 5), self.checking, self.salary, "5300")
-        u = compute_unassigned(self.book, SEPT)
-        self.assertEqual(u.income_due, Decimal("0"))
-        self.assertEqual(u.amount, Decimal("1800"))
+        self.assertEqual(self.figures(), (Decimal("0"), Decimal("6800")))
 
     def test_last_months_income_over_budget_arrives_unassigned(self):
         # September's salary is in, so August's extra has nothing left to fill.
         self.post(date(2026, 9, 5), self.checking, self.salary, "5000")
         self.post(date(2026, 8, 25), self.checking, self.salary, "300")
-        self.assertEqual(self.unassigned(), Decimal("1800"))
+        self.assertEqual(self.figures(), (Decimal("0"), Decimal("6800")))
 
     def test_a_surplus_rolls_forward_against_income_still_expected(self):
         # 300 arrived in August with nothing budgeted; September's 5,000 hasn't come.
         # The surplus counts once: it fills part of September's expected income.
         self.post(date(2026, 8, 25), self.checking, self.salary, "300")
-        u = compute_unassigned(self.book, SEPT)
-        self.assertEqual(u.income_due, Decimal("4700"))
-        self.assertEqual(u.amount, Decimal("1500"))
+        self.assertEqual(self.figures(), (Decimal("4700"), Decimal("1800")))
 
     def test_a_late_paycheque_counts_once(self):
         # 5,000 budgeted in September and October; nothing in September, 10,000 in October.
@@ -181,14 +195,23 @@ class IncomeTest(UnassignedFixture):
         self.assertEqual(self.unassigned(OCT), expected)
         self.assertEqual(compute_unassigned(self.book, OCT).income_due, Decimal("0"))
 
-    def test_with_future_income_off_only_received_income_counts(self):
+    def test_with_future_income_off_nothing_is_expected_and_unassigned_is_the_same(self):
         self.book.budget_future_income = False
         self.book.save()
         u = compute_unassigned(self.book, SEPT)
         self.assertEqual(u.income_due, Decimal("0"))
-        self.assertEqual(u.amount, Decimal("-3500"))
+        self.assertFalse(u.expects_income)
+        self.assertEqual(u.amount, Decimal("1500"))
+
+    def test_budgeting_against_expected_income_over_assigns(self):
+        # Envelopes filled from a paycheque that hasn't landed: over-assigned until it does.
+        self.budget(self.groceries, SEPT, "6000")
+        u = compute_unassigned(self.book, SEPT)
+        self.assertEqual(u.amount, Decimal("-500"))
         self.assertEqual(u.state, STATE_NEGATIVE)
         self.assertEqual(str(u.label), "Over-assigned")
+        self.post(date(2026, 9, 25), self.checking, self.salary, "5000")
+        self.assertEqual(self.figures(), (Decimal("0"), Decimal("4500")))
 
 
 class ExpenseTest(UnassignedFixture):
@@ -313,7 +336,7 @@ class GoalTest(UnassignedFixture):
 class DollarMapGeometryTest(UnassignedFixture):
     def test_waterfall_steps_chain_down_to_unassigned(self):
         bars = waterfall(compute_unassigned(self.book, SEPT))
-        self.assertEqual([b["key"] for b in bars], ["net_worth", "income_due", "envelopes", "goals", "unassigned"])
+        self.assertEqual([b["key"] for b in bars], ["net_worth", "envelopes", "goals", "unassigned"])
         self.assertEqual(bars[-1]["end"], 1500.0)
         steps = [b for b in bars if not b["total"]]
         for previous, step in zip([bars[0]] + steps, steps, strict=False):
@@ -330,8 +353,9 @@ class DollarMapGeometryTest(UnassignedFixture):
                 "unassigned": Decimal("1500"),
             },
         )
-        self.assertAlmostEqual(sum(s["pct"] for s in bar["segments"]), 100.0, places=2)
-        self.assertEqual(bar["net_worth_pct"], 80.0)
+        # The claims fill net worth exactly; Expected income reaches past it.
+        self.assertAlmostEqual(sum(s["pct"] for s in bar["segments"]), 83.333, places=2)
+        self.assertAlmostEqual(bar["net_worth_pct"], 83.333, places=2)
         self.assertEqual(bar["with_due_pct"], 100.0)
         self.assertIsNone(bar["overshoot"])
 
@@ -345,7 +369,7 @@ class DollarMapGeometryTest(UnassignedFixture):
         self.assertEqual(u.amount, Decimal("-4000"))
         self.assertEqual(bar["overshoot"]["over_assigned"], Decimal("4000"))
         claims = sum(s["amount"] for s in bar["segments"])
-        self.assertEqual(claims - (u.net_worth + u.income_due), Decimal("4000"))
+        self.assertEqual(claims - u.net_worth, Decimal("4000"))
 
     def test_detail_lists_overspent_envelopes_and_goals(self):
         self.post(date(2026, 9, 7), self.fun, self.checking, "500")
@@ -376,7 +400,7 @@ class UnassignedViewsTest(UnassignedFixture):
         response = self.client.get(reverse("budget:api_unassigned", args=[self.team.slug, self.book.slug]))
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(set(data), {"amount", "raw", "display", "state", "label", "month"})
+        self.assertEqual(set(data), {"amount", "raw", "display", "state", "label", "month", "expected"})
         self.assertEqual(data["raw"], f"{compute_unassigned(self.book, date.today()).amount:.2f}")
 
     def test_api_refuses_non_members_and_anonymous(self):
@@ -412,6 +436,8 @@ class UnassignedViewsTest(UnassignedFixture):
         self.assertContains(response, 'data-testid="plan-waterfall"')
         self.assertContains(response, "House")
         self.assertEqual(response.context["waterfall"][-1]["key"], "unassigned")
+        self.assertContains(response, 'data-testid="plan-expected-income"')
+        self.assertContains(response, 'data-testid="plan-free-expected"')
 
     def test_budget_goals_reads_a_full_date_month(self):
         response = self.client.get(
