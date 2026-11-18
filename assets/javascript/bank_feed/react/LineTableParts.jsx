@@ -125,11 +125,14 @@ export const AccountFilter = ({
   buttonSize = 'btn-sm',
   className = 'max-w-[14rem]',
   asSelect = false,
+  triggerClassName = null,
+  formatLabel = null,
 }) => {
   const [open, setOpen] = useState(false);
   const chosen = new Set(selected);
-  const label =
-    selected.length === 0
+  const label = formatLabel
+    ? formatLabel(selected, accounts)
+    : selected.length === 0
       ? gettext('All accounts')
       : selected.length === 1
         ? (accounts.find((a) => a.id === selected[0])?.name ?? gettext('1 account'))
@@ -159,9 +162,10 @@ export const AccountFilter = ({
         <button
           type="button"
           className={
-            asSelect
+            triggerClassName ??
+            (asSelect
               ? `select select-sm w-full text-left ${className}`
-              : `btn ${buttonSize} ${selected.length ? 'btn-primary' : 'btn-outline'} ${className}`
+              : `btn ${buttonSize} ${selected.length ? 'btn-primary' : 'btn-outline'} ${className}`)
           }
           aria-haspopup="menu"
           aria-expanded={isOpen}
@@ -170,7 +174,7 @@ export const AccountFilter = ({
         >
           <span className="truncate">{label}</span>
           {/* A select draws its own arrow. */}
-          {!asSelect && <span aria-hidden="true">▾</span>}
+          {!asSelect && !triggerClassName && <span aria-hidden="true">▾</span>}
         </button>
       )}
     >
