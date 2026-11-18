@@ -1,7 +1,7 @@
 {% load i18n %}
 {% comment %}
 Section switcher for the chart-of-accounts pages. The active tab comes from the
-view's `accounts_section` ("accounts", "groups", "payees", "institutions", "reconciliations" or "recurring") --
+view's `accounts_section` ("accounts", "groups", "payees", "institutions", "reconciliations", "recurring" or "rules") --
 the same value that highlights the matching sidebar item.
 {% endcomment %}
 <div role="tablist" class="tabs tabs-border -mx-1 mb-5 flex-nowrap overflow-x-auto border-b border-base-300 [&>.tab]:whitespace-nowrap" data-testid="manage-tabs">
@@ -11,4 +11,5 @@ the same value that highlights the matching sidebar item.
   <a role="tab" class="tab{% if accounts_section == 'institutions' %} tab-active{% endif %}" href="{% url 'accounts:institution_list' request.team.slug request.book.slug %}"{% if accounts_section == 'institutions' %} aria-selected="true"{% endif %}>{% translate "Institutions" %}</a>
   <a role="tab" class="tab{% if accounts_section == 'reconciliations' %} tab-active{% endif %}" href="{% url 'reconciliation:hub' request.team.slug request.book.slug %}"{% if accounts_section == 'reconciliations' %} aria-selected="true"{% endif %} data-testid="manage-tab-reconciliations">{% translate "Reconciliations" %}</a>
   <a role="tab" class="tab{% if accounts_section == 'recurring' %} tab-active{% endif %}" href="{% url 'bank_feed:recurring_list' request.team.slug request.book.slug %}"{% if accounts_section == 'recurring' %} aria-selected="true"{% endif %} data-testid="manage-tab-recurring">{% translate "Recurring transactions" %}</a>
+  <a role="tab" class="tab{% if accounts_section == 'rules' %} tab-active{% endif %}" href="{% url 'rules:rules_home' request.team.slug request.book.slug %}"{% if accounts_section == 'rules' %} aria-selected="true"{% endif %} data-testid="manage-tab-rules">{% translate "Rules" %}</a>
 </div>

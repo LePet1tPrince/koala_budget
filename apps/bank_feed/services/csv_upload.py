@@ -850,6 +850,7 @@ def create_transactions(
     created_count = 0
     skipped_count = 0
     error_count = 0
+    created_ids = []
 
     try:
         for tx_data in transactions:
@@ -890,6 +891,7 @@ def create_transactions(
             )
 
             created_count += 1
+            created_ids.append(bank_tx.pk)
 
             # Auto-categorize if category_id is provided
             if tx_data.get("category_id"):
@@ -904,10 +906,18 @@ def create_transactions(
         metadata={"account_id": account_id, "transactions_created": created_count},
     )
 
+    # The book's rules get the rows the file left uncategorized (a categorized
+    # row is not eligible). Never fails the import: `run_safely` logs instead.
+    from apps.rules.services.apply import run_safely
+
+    rules = run_safely(book, created_ids) or {}
+
     return {
         "created_count": created_count,
         "skipped_count": skipped_count,
         "error_count": error_count,
+        "rules_suggested": rules.get("suggested", 0),
+        "rules_auto_posted": rules.get("auto_posted", 0),
     }
 
 

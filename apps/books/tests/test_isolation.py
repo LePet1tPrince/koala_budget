@@ -93,6 +93,11 @@ READS = {
     "reconciliation:reconciliation-list": lambda a, b: {"account": b.savings.id},
     "reconciliation:reconciliation-accounts": {},
     "reconciliation:api-root": {},
+    "rules:rules_home": {},
+    "rules:api-root": {},
+    "rules:rule-list": {},
+    "rules:rule-prompts": {},
+    "rules:rule-proposal-list": {},
     "accounts:accountgroup_create": {},
     "accounts:account_create": {},
     "accounts:payee_create": {},
@@ -162,6 +167,13 @@ OBJECTS = {
     "reconciliation:reconciliation-tick-through": ("reconciliation", "pk", "post"),
     "reconciliation:reconciliation-undo": ("reconciliation", "pk", "post"),
     "reconciliation:reconciliation-untick-all": ("reconciliation", "pk", "post"),
+    "rules:rule-detail": ("rule", "pk", "get"),
+    "rules:rule-graduate": ("rule", "pk", "post"),
+    "rules:rule-apply": ("rule", "pk", "post"),
+    "rules:rule-match-dismiss": ("rule_match", "transaction_id", "post"),
+    "rules:rule-match-undo": ("rule_match", "transaction_id", "post"),
+    "rules:rule-proposal-dismiss": ("rule_proposal", "pk", "post"),
+    "rules:rule-proposal-accept": ("rule_proposal", "pk", "post"),
 }
 
 # name -> JSON body naming book B's rows (a callable taking (a, b) BookData).
@@ -223,6 +235,20 @@ WRITES = {
     "onboarding:api_task": lambda a, b: {"slug": "net_worth"},
     "onboarding:api_skip": lambda a, b: {},
     "reconciliation:reconciliation-list": None,  # placeholder, see WRITE_OVERRIDES
+    "rules:rule-reorder": lambda a, b: {"ids": [b.rule.id, a.rule.id]},
+    # Book B's account, category and row are unknown to book A: refused or read as nothing.
+    "rules:rule-test": lambda a, b: {
+        "accounts": [b.chequing.id],
+        "conditions": [{"field": "description", "op": "contains", "value": "mystery"}],
+        "category": b.groceries.id,
+    },
+    "rules:rule-explain": lambda a, b: {
+        "rule": {"conditions": [{"field": "description", "op": "contains", "value": "mystery"}]},
+        "transaction_id": b.uncategorized_tx.id,
+    },
+    "rules:rule-draft-from-transaction": lambda a, b: {"transaction_id": b.categorized_tx.id},
+    "rules:rule-decline-draft": lambda a, b: {"signature": b.rule_proposal.signature, "category": b.groceries.id},
+    "rules:rule-match-accept": lambda a, b: {"transaction_ids": [b.uncategorized_tx.id]},
 }
 
 # Endpoints whose body names B's accounts in nested structures; also their

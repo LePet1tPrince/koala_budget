@@ -34,6 +34,13 @@ import {
     BankFeedRowSourceEnumToJSON,
     BankFeedRowSourceEnumToJSONTyped,
 } from './BankFeedRowSourceEnum';
+import type { RuleMatchSummary } from './RuleMatchSummary';
+import {
+    RuleMatchSummaryFromJSON,
+    RuleMatchSummaryFromJSONTyped,
+    RuleMatchSummaryToJSON,
+    RuleMatchSummaryToJSONTyped,
+} from './RuleMatchSummary';
 
 /**
  * Unified bank feed row serializer.
@@ -204,6 +211,24 @@ export interface BankFeedRow {
      * @memberof BankFeedRow
      */
     recurringId?: number | null;
+    /**
+     * The bank's own description, when a rule renamed it (null when unchanged)
+     * @type {string}
+     * @memberof BankFeedRow
+     */
+    originalDescription?: string | null;
+    /**
+     * The bank's own payee, when a rule renamed it (null when unchanged)
+     * @type {string}
+     * @memberof BankFeedRow
+     */
+    originalPayee?: string | null;
+    /**
+     * The rule that suggested or posted this row's category (null when none did)
+     * @type {RuleMatchSummary}
+     * @memberof BankFeedRow
+     */
+    ruleMatch?: RuleMatchSummary | null;
 }
 
 
@@ -274,6 +299,9 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'splitCount': json['split_count'],
         'splits': ((json['splits'] as Array<any>).map(SplitLegFromJSON)),
         'recurringId': json['recurring_id'] == null ? undefined : json['recurring_id'],
+        'originalDescription': json['original_description'] == null ? undefined : json['original_description'],
+        'originalPayee': json['original_payee'] == null ? undefined : json['original_payee'],
+        'ruleMatch': json['rule_match'] == null ? undefined : RuleMatchSummaryFromJSON(json['rule_match']),
     };
 }
 
@@ -314,6 +342,9 @@ export function BankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'split_count': value['splitCount'],
         'splits': ((value['splits'] as Array<any>).map(SplitLegToJSON)),
         'recurring_id': value['recurringId'],
+        'original_description': value['originalDescription'],
+        'original_payee': value['originalPayee'],
+        'rule_match': RuleMatchSummaryToJSON(value['ruleMatch']),
     };
 }
 

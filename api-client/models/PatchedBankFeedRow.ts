@@ -34,6 +34,13 @@ import {
     BankFeedRowSourceEnumToJSON,
     BankFeedRowSourceEnumToJSONTyped,
 } from './BankFeedRowSourceEnum';
+import type { RuleMatchSummary } from './RuleMatchSummary';
+import {
+    RuleMatchSummaryFromJSON,
+    RuleMatchSummaryFromJSONTyped,
+    RuleMatchSummaryToJSON,
+    RuleMatchSummaryToJSONTyped,
+} from './RuleMatchSummary';
 
 /**
  * Unified bank feed row serializer.
@@ -204,6 +211,24 @@ export interface PatchedBankFeedRow {
      * @memberof PatchedBankFeedRow
      */
     recurringId?: number | null;
+    /**
+     * The bank's own description, when a rule renamed it (null when unchanged)
+     * @type {string}
+     * @memberof PatchedBankFeedRow
+     */
+    originalDescription?: string | null;
+    /**
+     * The bank's own payee, when a rule renamed it (null when unchanged)
+     * @type {string}
+     * @memberof PatchedBankFeedRow
+     */
+    originalPayee?: string | null;
+    /**
+     * The rule that suggested or posted this row's category (null when none did)
+     * @type {RuleMatchSummary}
+     * @memberof PatchedBankFeedRow
+     */
+    ruleMatch?: RuleMatchSummary | null;
 }
 
 
@@ -251,6 +276,9 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'splitCount': json['split_count'] == null ? undefined : json['split_count'],
         'splits': json['splits'] == null ? undefined : ((json['splits'] as Array<any>).map(SplitLegFromJSON)),
         'recurringId': json['recurring_id'] == null ? undefined : json['recurring_id'],
+        'originalDescription': json['original_description'] == null ? undefined : json['original_description'],
+        'originalPayee': json['original_payee'] == null ? undefined : json['original_payee'],
+        'ruleMatch': json['rule_match'] == null ? undefined : RuleMatchSummaryFromJSON(json['rule_match']),
     };
 }
 
@@ -291,6 +319,9 @@ export function PatchedBankFeedRowFromJSONTyped(json: any, ignoreDiscriminator: 
         'split_count': value['splitCount'],
         'splits': value['splits'] == null ? undefined : ((value['splits'] as Array<any>).map(SplitLegToJSON)),
         'recurring_id': value['recurringId'],
+        'original_description': value['originalDescription'],
+        'original_payee': value['originalPayee'],
+        'rule_match': RuleMatchSummaryToJSON(value['ruleMatch']),
     };
 }
 

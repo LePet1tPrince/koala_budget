@@ -391,6 +391,38 @@ Extended transaction data from Plaid.
 
 ---
 
+## Rules (`apps/rules/models.py`)
+
+### Rule
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | CharField | Unique per book |
+| `is_active` | BooleanField | |
+| `priority` | PositiveIntegerField | Dense, 0 = tried first (`services/ordering.py`) |
+| `mode` | CharField | `suggest` / `auto_post` |
+| `direction` | CharField | `any` / `in` / `out` (`out` = amount > 0) |
+| `accounts` | M2M(Account) | Feed accounts; none = all |
+| `match` | CharField | `all` / `any` conditions |
+| `conditions` | JSONField | `[{field: payee/description/amount, op, value}]` |
+| `action` | CharField | `category` / `split` / `rename` |
+| `category` | FK(Account) | SET_NULL; a category rule without one "needs attention" |
+| `splits` | JSONField | `[{category, percent}]`, sums to 100 |
+| `payee_name`, `description` | CharField | Renames; blank = keep |
+| `origin` | CharField | `manual` / `from_action` / `learned` |
+| `times_applied`, `times_confirmed`, `times_overridden`, `confirm_streak` | PositiveIntegerField | Feedback counters |
+| `last_matched_at`, `graduation_declined_at`, `demoted_at` | DateTimeField | |
+
+### RuleMatch
+
+One per feed row (`OneToOne(BankTransaction)`, `related_name="rule_match"`): `rule` (SET_NULL) + `rule_name` snapshot, `status` (`suggested`/`auto_posted`/`confirmed`/`overridden`/`dismissed`), `held_reason`, the offered `category`/`splits` (amount legs)/`payee_name`, `was_auto_posted`, `before` (original `merchant_name`/`description`), `resolved_at`.
+
+### RuleProposal
+
+`signature` (unique per book), `field`, `value`, `direction`, `category`, `evidence_count`, `consistency`, `status` (`open`/`accepted`/`dismissed`). Also records a declined create-from-action offer.
+
+---
+
 ## Chat / AI
 
 ### Chat (`apps/chat/models.py`)

@@ -260,6 +260,15 @@ make test-e2e-accounts  # Run specific test file
 - `ScheduledListApiTest`: the feed strip's endpoint — soonest first, finished schedules excluded, `?account=` filter, bad ids 400, members read, outsiders refused
 - Page tests: a member sees the list and stops a schedule (rows kept, `recurring` nulled); a user outside the team gets 404; GET on stop is 405
 
+### Transaction rules (`apps/rules/tests/`)
+
+- `test_engine.py` (`SimpleTestCase`): table-driven matcher — text ops on normalized text, null payee, amount ops on the absolute amount, `between` bounds in either order, direction, accounts, all/any, priority then id, `explain`, refused conditions
+- `test_apply.py`: suggest vs auto-post, split percentages summing to the cent, renames on row and entry, priority and re-ordering, every hold (`closed_period`, `transfer_candidate` via a patched `feed_query.transfer_candidate_ids`, `unusual_amount` and its sample floor, `refused`), ineligible rows, re-evaluation restoring names, settled rows, CSV and Plaid ingestion (`_sync_item` with a patched `fetch_updates`), and a source scan that `apps/rules` writes no journal rows directly
+- `test_feedback.py`: accept, confirm via `batch_edit`, override via `categorize`, dismiss, graduation offer/decline/accept, undo and its reconciled/closed-period refusals, demotion
+- `test_api.py`: CRUD, specificity insertion, reorder, validation table, member/admin/outsider permissions, Test panel (pending, backtest, `dead`, `takes_from`), explain, create-from-action offer/decline, feed `rule_match` + `rule` filter + counts, accept-all with a refused row, proposals
+- `test_learning.py`: 4-of-4 proposes, 3-of-4 and too-few don't, dismissed stays dismissed, covered merchants and stale proposals dropped
+- Isolation: `rules:*` URLs are in `apps/books/tests/test_isolation.py`; the factory gives each book a rule, a match and a proposal (`rule_match` objects are addressed by their feed row's id)
+
 ## Known Coverage Gaps
 
 - `reports/` app has minimal test coverage — complex aggregation logic is untested

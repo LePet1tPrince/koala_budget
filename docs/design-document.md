@@ -90,6 +90,13 @@ Koala Budget uses **DaisyUI 5** semantic color tokens on top of Tailwind CSS 4. 
 3. Categorized transaction disappears from inbox
 4. AI auto-suggest is available; user confirms or overrides
 
+### Transaction Rules
+1. A rule's suggestion shows in the Category cell as an italic category with a ✓ and a wand badge; it supersedes the history-based suggestion
+2. An auto-posted row shows the wand badge marked AUTO; the badge opens a panel naming the rule with Undo (auto-post) or Not this time (suggestion) and Edit rule
+3. After a manual categorization that a rule could repeat, a toast offers "Always categorize X as Y?" — Create rule / Customize (opens the builder pre-filled) / No (never asked again for that merchant)
+4. Changing what a rule did offers "Update the rule" / "Just this once"
+5. Rules live under Manage → Rules: an ordered list (drag, or the up/down buttons) with Auto and On toggles, plain-language summaries and stats; the builder tests the draft live against the feed and the book's history
+
 ### Budget Entry
 1. User navigates to Budget for current month
 2. Each expense account row shows allocated vs. spent
@@ -161,3 +168,6 @@ Koala Budget uses **DaisyUI 5** semantic color tokens on top of Tailwind CSS 4. 
 | 2026-11-05 | Recurring transactions: a "Make recurring" checkbox on Add Transaction; the entered transaction is the first occurrence and each later one is written to the feed **on its date**, not ahead of it | A future-dated row would count toward balances before the money moved; writing on the date keeps the feed a record of what happened |
 | 2026-11-05 | Recurring schedules are managed on a plain server-rendered list (`bankfeed/recurring/`) with Stop only — no editing | Stopping keeps history intact and covers the common case; editing a schedule raises "what about the ones already written?", deferred until asked for |
 | 2026-11-05 | Sidebar "Accounts" group renamed "Manage", its section header dropped; Recurring transactions joins Accounts/Groups/Payees/Institutions/Reconciliations as a tab | The group already held more than accounts; one label instead of a header plus a same-purpose link |
+| 2026-11-12 | Rules suggest by default; auto-post is opt-in per rule, offered after 5 unchanged confirmations and withdrawn after 2 overrides in the last 10 | Trust is earned per rule; a wrong automatic categorization costs more than a confirm click |
+| 2026-11-12 | Editing a rule re-suggests on existing rows but never auto-posts them unless the user picks "Save and apply to N" | A rule change must not silently rewrite many transactions |
+| 2026-11-12 | Rules are a Manage tab, not a top-level nav item | Configured occasionally; used through the Inbox |

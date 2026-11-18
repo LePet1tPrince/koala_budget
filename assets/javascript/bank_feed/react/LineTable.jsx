@@ -6,14 +6,34 @@ import TransferMatchPanel from './TransferMatchPanel';
 import ScheduledTransactions from './ScheduledTransactions';
 import { Toast } from '../../common/Toast';
 import { SortArrow, TablePager } from '../../common/TablePager';
-import { Dropdown, MenuRow, ReconciledLock } from './LineTableParts';
+import { AccountFilter, Dropdown, MenuRow, ReconciledLock } from './LineTableParts';
 import { usePlaidLinkFlow } from './PlaidLinkButton';
 import { formatCurrency } from '../../utilities/currency';
 import { formatDate as formatDateUtc } from '../utils';
-import { PAGE_SIZE_OPTIONS } from '../feedQuery';
+import { NO_QUICK_FILTERS, PAGE_SIZE_OPTIONS } from '../feedQuery';
 import Icon from '../../common/Icon';
+import RuleBadge from './RuleBadge';
 
 /* globals gettext, interpolate */
+
+/**
+ * A payee or description a rule renamed: the new text, and under it what the bank
+ * sent -- the text the rule actually matched on, which the new name would hide.
+ */
+const RenamedText = ({ value, original, testId }) =>
+  original ? (
+    <span className="flex min-w-0 flex-col leading-tight">
+      <span className="truncate">{value || ''}</span>
+      <span className="truncate text-xs text-base-content/70" data-testid={testId}>
+        {interpolate(gettext('Bank: %s'), [original])}
+      </span>
+    </span>
+  ) : (
+    <span className="truncate">{value || ''}</span>
+  );
+
+const withOriginal = (value, original) =>
+  original ? interpolate(gettext('%s (bank: %s)'), [value || '', original]) : value || '';
 
 const NO_MATCHES = new Map();
 // Stable default, so the rows don't re-render for a fresh `new Set()` each time
@@ -72,84 +92,6 @@ const categoryTitle = (row) => {
 };
 
 /**
- * The account filter: every account on a feed, or any set of them. Grouped as
- * the account cards are (by account group), in the same order.
- */
-const AccountFilter = ({ accounts, selected, onChange }) => {
-  const [open, setOpen] = useState(false);
-  const chosen = new Set(selected);
-  const label =
-    selected.length === 0
-      ? gettext('All accounts')
-      : selected.length === 1
-        ? accounts.find((a) => a.id === selected[0])?.name ?? gettext('1 account')
-        : interpolate(gettext('%s accounts'), [selected.length]);
-
-  const groups = [];
-  accounts.forEach((account) => {
-    const name = account.account_group_name ?? account.accountGroupName ?? '';
-    const last = groups[groups.length - 1];
-    if (last && last.name === name) last.accounts.push(account);
-    else groups.push({ name, accounts: [account] });
-  });
-
-  const toggle = (id) => {
-    const next = chosen.has(id) ? selected.filter((a) => a !== id) : [...selected, id];
-    // Every account ticked is the same as none: say "All accounts" rather than a list.
-    onChange(next.length === accounts.length ? [] : next);
-  };
-
-  return (
-    <Dropdown
-      open={open}
-      onOpenChange={setOpen}
-      panelClassName="max-h-80 overflow-y-auto"
-      trigger={({ toggle: toggleOpen, open: isOpen }) => (
-        <button
-          type="button"
-          className={`btn btn-sm ${selected.length ? 'btn-primary' : 'btn-outline'} max-w-[14rem]`}
-          aria-haspopup="menu"
-          aria-expanded={isOpen}
-          onClick={toggleOpen}
-          data-testid="account-filter-btn"
-        >
-          <span className="truncate">{label}</span>
-          <span aria-hidden="true">▾</span>
-        </button>
-      )}
-    >
-      {({ close }) => (
-        <>
-          <MenuRow
-            testId="account-filter-all"
-            checked={selected.length === 0}
-            label={gettext('All accounts')}
-            onClick={() => {
-              onChange([]);
-              close();
-            }}
-          />
-          {groups.map((group) => (
-            <Fragment key={group.name}>
-              <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase text-base-content/70">{group.name}</div>
-              {group.accounts.map((account) => (
-                <MenuRow
-                  key={account.id}
-                  testId={`account-filter-${account.id}`}
-                  checked={chosen.has(account.id)}
-                  label={account.name}
-                  onClick={() => toggle(account.id)}
-                />
-              ))}
-            </Fragment>
-          ))}
-        </>
-      )}
-    </Dropdown>
-  );
-};
-
-/**
  * The bank feed table: one page of the Inbox, as the server filtered, sorted and
  * paged it (`apps/bank_feed/services/feed_query.py`).
  *
@@ -195,12 +137,19 @@ const LineTable = ({
   onDismissMatch,
   onOpenMatchCounterpart,
   pendingIds = NO_PENDING,
+  onDismissRuleMatch,
+  onUndoRuleMatch,
+  onEditRule,
 }) => {
   const [quickFiltersOpen, setQuickFiltersOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
 
   // Plaid "Link Bank Account" flow, triggered from the dropdown menu below
-  const { handleClick: handleLinkBankClick, loading: linkBankLoading, modal: linkBankModal } = usePlaidLinkFlow({
+  const {
+    handleClick: handleLinkBankClick,
+    loading: linkBankLoading,
+    modal: linkBankModal,
+  } = usePlaidLinkFlow({
     book,
     allAccounts,
     onSuccess: onLinkSuccess,
@@ -255,7 +204,7 @@ const LineTable = ({
 
   const columns = useMemo(
     () => COLUMNS.filter((col) => col.key !== 'account' || showAccountColumn),
-    [showAccountColumn]
+    [showAccountColumn],
   );
   const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
 
@@ -264,6 +213,8 @@ const LineTable = ({
     const next = { ...quickFilters, [key]: !quickFilters[key] };
     if (key === 'toReview' && next.toReview) next.reconciled = false;
     if (key === 'reconciled' && next.reconciled) next.toReview = false;
+    if (key === 'ruleSuggested' && next.ruleSuggested) next.ruleAutoPosted = false;
+    if (key === 'ruleAutoPosted' && next.ruleAutoPosted) next.ruleSuggested = false;
     setQuickFilters(next);
   };
   const activeQuickFilterCount = Object.values(quickFilters).filter(Boolean).length;
@@ -299,7 +250,7 @@ const LineTable = ({
         if (data.recurrence) setScheduledVersion((n) => n + 1);
         showSnackbar(
           data.recurrence ? gettext('Recurring transaction added') : gettext('Transaction added successfully'),
-          'success'
+          'success',
         );
       }
     } else if (onEditTransaction) {
@@ -403,13 +354,29 @@ const LineTable = ({
                   countClass="badge-warning badge-outline"
                   onClick={() => toggleQuickFilter('transfers')}
                 />
+                <MenuRow
+                  testId="filter-rule-suggested"
+                  checked={quickFilters.ruleSuggested}
+                  label={gettext('Suggested by rules')}
+                  count={counts?.rule_suggested ?? 0}
+                  countClass="badge-outline"
+                  onClick={() => toggleQuickFilter('ruleSuggested')}
+                />
+                <MenuRow
+                  testId="filter-rule-auto-posted"
+                  checked={quickFilters.ruleAutoPosted}
+                  label={gettext('Auto-posted by rules')}
+                  count={counts?.rule_auto_posted ?? 0}
+                  countClass="badge-primary badge-outline"
+                  onClick={() => toggleQuickFilter('ruleAutoPosted')}
+                />
                 {activeQuickFilterCount > 0 && (
                   <>
                     <div className="my-1 border-t border-base-300" />
                     <MenuRow
                       label={gettext('Clear filters')}
                       onClick={() => {
-                        setQuickFilters({ toReview: false, reconciled: false, uncategorized: false, transfers: false });
+                        setQuickFilters(NO_QUICK_FILTERS);
                         close();
                       }}
                     />
@@ -611,6 +578,18 @@ const LineTable = ({
                   const account = accountsById.get(row.account?.id) ?? row.account;
                   // An uncategorized row shows its suggested category, one click from accepted
                   const suggestion = !voided && !isCategorized(row) ? rowSuggestions[row.id] : null;
+                  // The rule behind a suggestion or an automatic categorization, if any
+                  const ruleMatch = voided ? null : (row.ruleMatch ?? null);
+                  const ruleBadge = ruleMatch ? (
+                    <RuleBadge
+                      row={row}
+                      ruleMatch={ruleMatch}
+                      onEditRule={onEditRule}
+                      onUndo={onUndoRuleMatch}
+                      onDismiss={onDismissRuleMatch}
+                      disabled={saving}
+                    />
+                  ) : null;
                   return (
                     <Fragment key={row.id}>
                       <tr
@@ -642,22 +621,37 @@ const LineTable = ({
                             {account?.name ?? ''}
                           </td>
                         )}
-                        <td className="truncate" title={row.payee || ''}>
-                          {row.payee || ''}
+                        <td className="truncate" title={withOriginal(row.payee, row.originalPayee)}>
+                          <RenamedText
+                            value={row.payee}
+                            original={row.originalPayee}
+                            testId={`original-payee-${row.id}`}
+                          />
                         </td>
                         <td
                           className="truncate"
                           title={
                             suggestion
-                              ? interpolate(gettext('Suggested: %s'), [suggestion.name])
+                              ? suggestion.ruleName
+                                ? interpolate(gettext('Suggested by the rule “%s”: %s'), [
+                                    suggestion.ruleName,
+                                    suggestion.name,
+                                  ])
+                                : interpolate(gettext('Suggested: %s'), [suggestion.name])
                               : categoryTitle(row)
                           }
                         >
                           <span className="inline-flex w-full items-center gap-1">
                             {row.isSplit ? (
-                              <span className="badge badge-ghost badge-sm shrink-0" data-testid={`split-badge-${row.id}`}>
-                                {interpolate(gettext('Split (%s)'), [row.splitCount])}
-                              </span>
+                              <>
+                                <span
+                                  className="badge badge-ghost badge-sm shrink-0"
+                                  data-testid={`split-badge-${row.id}`}
+                                >
+                                  {interpolate(gettext('Split (%s)'), [row.splitCount])}
+                                </span>
+                                {ruleBadge}
+                              </>
                             ) : suggestion ? (
                               <>
                                 <span
@@ -680,11 +674,15 @@ const LineTable = ({
                                 >
                                   <Icon name="check" className="h-3.5 w-3.5" />
                                 </button>
+                                {ruleBadge}
                               </>
                             ) : (
-                              <span className="truncate">
-                                {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
-                              </span>
+                              <>
+                                <span className="truncate">
+                                  {row.category ? gettext(row.category.name) : gettext('Uncategorized')}
+                                </span>
+                                {ruleBadge}
+                              </>
                             )}
                             {isTransfer && (
                               <button
@@ -711,7 +709,7 @@ const LineTable = ({
                           {row.outflow && parseFloat(row.outflow) > 0 ? formatCurrency(row.outflow) : ''}
                           {row.isForeignCurrency && parseFloat(row.outflow) > 0 && <CurrencyTag code={row.currency} />}
                         </td>
-                        <td title={row.description || ''}>
+                        <td title={withOriginal(row.description, row.originalDescription)}>
                           <span className="flex min-w-0 items-center gap-1">
                             {match && (
                               <button
@@ -753,7 +751,11 @@ const LineTable = ({
                                 {gettext('Pending')}
                               </span>
                             )}
-                            <span className="truncate">{row.description || ''}</span>
+                            <RenamedText
+                              value={row.description}
+                              original={row.originalDescription}
+                              testId={`original-description-${row.id}`}
+                            />
                           </span>
                         </td>
                         <td className="text-center">

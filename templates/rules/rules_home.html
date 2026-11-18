@@ -1,0 +1,28 @@
+{% extends "accounts/manage_base.html" %}
+{% load i18n %}
+{% load django_vite %}
+
+{% block manage_title %}{% translate "Rules" %}{% endblock %}
+{% block manage_subtitle %}{% blocktranslate trimmed %}
+  A rule categorizes bank transactions that match it: as a suggestion you confirm, or automatically.
+  Rules are tried from the top; the first one that matches wins.
+{% endblocktranslate %}{% endblock %}
+
+{% block manage_content %}
+  {{ rules_props|json_script:'rules-props' }}
+  <div id="rules-app" data-testid="rules-app">
+    <div class="animate-pulse h-40 rounded-box bg-base-200" aria-hidden="true"></div>
+  </div>
+  <noscript>
+    <p>{% translate "Editing rules needs JavaScript." %}</p>
+  </noscript>
+{% endblock %}
+
+{% block page_js %}
+  {% comment %}
+    vite_react_refresh must come first: without the plugin's preamble the React
+    entry throws "can't detect preamble" in dev and the page renders nothing.
+  {% endcomment %}
+  {% vite_react_refresh %}
+  {% vite_asset 'assets/javascript/rules/rules-app.jsx' %}
+{% endblock %}

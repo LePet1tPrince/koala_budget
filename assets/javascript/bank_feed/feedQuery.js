@@ -9,7 +9,15 @@
 
 export const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200];
 export const DEFAULT_PAGE_SIZE = 25;
-export const NO_QUICK_FILTERS = { toReview: false, reconciled: false, uncategorized: false, transfers: false };
+export const NO_QUICK_FILTERS = {
+  toReview: false,
+  reconciled: false,
+  uncategorized: false,
+  transfers: false,
+  // Rows a rule suggested a category for, or categorized automatically (one at a time).
+  ruleSuggested: false,
+  ruleAutoPosted: false,
+};
 export const DEFAULT_SORT = { key: 'postedDate', dir: 'desc' };
 
 /** The table's column keys -> the server's `sort` values. */
@@ -53,6 +61,8 @@ export function filterParams(query) {
     if (query.quickFilters.reconciled) params.reconciled = true;
     if (query.quickFilters.uncategorized) params.uncategorized = true;
     if (query.quickFilters.transfers) params.transfers = true;
+    if (query.quickFilters.ruleSuggested) params.rule = 'suggested';
+    else if (query.quickFilters.ruleAutoPosted) params.rule = 'auto_posted';
   }
   if (query.startDate) params.startDate = asDate(query.startDate);
   if (query.endDate) params.endDate = asDate(query.endDate);
@@ -85,6 +95,7 @@ export function queryFromUrl(search = window.location.search) {
     query.quickFilters[key] = params.get(key) === '1';
   });
   if (query.quickFilters.toReview && query.quickFilters.reconciled) query.quickFilters.reconciled = false;
+  if (query.quickFilters.ruleSuggested && query.quickFilters.ruleAutoPosted) query.quickFilters.ruleAutoPosted = false;
   const dateOk = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
   if (dateOk(params.get('start'))) query.startDate = params.get('start');
   if (dateOk(params.get('end'))) query.endDate = params.get('end');

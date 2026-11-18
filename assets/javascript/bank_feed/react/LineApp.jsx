@@ -25,6 +25,8 @@ import {
 import { formatCurrency } from '../../utilities/currency';
 import Icon from '../../common/Icon';
 import { BankFeedRowFromJSON } from 'api-client';
+import { rulesApiForBook } from '../../rules/api';
+import RuleBuilderDialog, { draftFromRow } from '../../rules/RuleBuilderDialog';
 
 /** How long the feed waits after its last write settles before re-reading it. */
 const QUIET_REFRESH_DELAY_MS = 500;
@@ -54,9 +56,7 @@ const optimisticEditedRow = (row, data, accountsById) => {
   if (!legs && data.category) {
     const id = data.category.id ?? data.category;
     category =
-      row.category?.id === id
-        ? row.category
-        : { id, name: data.category.name ?? accountsById.get(id)?.name ?? '' };
+      row.category?.id === id ? row.category : { id, name: data.category.name ?? accountsById.get(id)?.name ?? '' };
   }
   return {
     ...row,
@@ -125,7 +125,7 @@ const LineApp = ({
   const [allAccounts, setAllAccounts] = useState(initialAllAccounts);
   const handleAccountCreated = useCallback(
     (account) => setAllAccounts((prev) => (prev.some((a) => a.id === account.id) ? prev : [...prev, account])),
-    []
+    [],
   );
   const [query, setQuery] = useState(() => queryFromUrl());
   const queryRef = useRef(query);
@@ -194,7 +194,7 @@ const LineApp = ({
 
   // The one account the Inbox is filtered to, if it is filtered to exactly one:
   // its header, balances, Reconcile link and Plaid refresh apply then.
-  const selectedAccount = query.accounts.length === 1 ? feedAccountsById.get(query.accounts[0]) ?? null : null;
+  const selectedAccount = query.accounts.length === 1 ? (feedAccountsById.get(query.accounts[0]) ?? null) : null;
 
   // Categorize Mode opens on the Inbox's account and date filters, in the
   // Inbox's own URL parameter names.
@@ -209,6 +209,19 @@ const LineApp = ({
 
   const batchApi = useMemo(() => getBatchOperationsApi(book.base), [book]);
   const transactionApi = useMemo(() => getTransactionApi(book.base), [book]);
+  const rulesApi = useMemo(() => rulesApiForBook(book.base), [book]);
+  // The rule builder, opened over the feed: null, `{ ruleId }` or `{ draft }`.
+  const [ruleDialog, setRuleDialog] = useState(null);
+  const openRule = useCallback((ruleId) => setRuleDialog({ ruleId }), []);
+
+  // Whether this user may create rules (admins), for the "make this a rule?" offer.
+  const [canEditRules, setCanEditRules] = useState(false);
+  useEffect(() => {
+    rulesApi
+      .prompts()
+      .then((p) => setCanEditRules(!!p.can_edit))
+      .catch(() => setCanEditRules(false));
+  }, [rulesApi]);
 
   const showSnackbar = useCallback((message, severity = 'info', action = null) => {
     setSnackbar({ open: true, message, severity, action });
@@ -258,7 +271,7 @@ const LineApp = ({
     const scope = query.accounts.length ? new Set(query.accounts) : null;
     return matches.reduce(
       (n, pair) => n + [pair.outflow, pair.inflow].filter((leg) => !scope || scope.has(leg.account?.id)).length,
-      0
+      0,
     );
   }, [matches, query.accounts]);
 
@@ -318,7 +331,10 @@ const LineApp = ({
   // in chunks the endpoint accepts. The row's own account is never a suggestion.
   useEffect(() => {
     const asked = suggestionsAskedRef.current;
-    const wanted = lines.filter((r) => !r.category && !r.isSplit && !isVoidRow(r) && !asked.has(r.id));
+    // A rule's suggestion supersedes the history-based one: those rows are not asked about.
+    const wanted = lines.filter(
+      (r) => !r.category && !r.isSplit && !isVoidRow(r) && !asked.has(r.id) && r.ruleMatch?.status !== 'suggested',
+    );
     if (wanted.length === 0) return;
     wanted.forEach((r) => asked.add(r.id));
     for (let i = 0; i < wanted.length; i += SIMILAR_CATEGORY_CHUNK) {
@@ -343,6 +359,28 @@ const LineApp = ({
         });
     }
   }, [lines, bankFeedClient, book]);
+
+  // One suggestion per row: a rule's wins, the history-based one is the fallback.
+  const mergedSuggestions = useMemo(() => {
+    const merged = { ...rowSuggestions };
+    lines.forEach((r) => {
+      const match = r.ruleMatch;
+      if (match?.status !== 'suggested') return;
+      if (match.categoryId != null) {
+        merged[r.id] = { id: match.categoryId, name: match.categoryName, ruleName: match.ruleName };
+      } else if (match.isSplit) {
+        merged[r.id] = {
+          id: null,
+          name: interpolate(gettext('Split (%s)'), [match.splitCount]),
+          ruleName: match.ruleName,
+        };
+      } else {
+        // A rename-only rule offers no category: its badge is enough.
+        delete merged[r.id];
+      }
+    });
+    return merged;
+  }, [rowSuggestions, lines]);
 
   // --- the page ------------------------------------------------------------
 
@@ -387,7 +425,7 @@ const LineApp = ({
         }
       }
     },
-    [bankFeedClient, book]
+    [bankFeedClient, book],
   );
 
   useEffect(() => {
@@ -490,7 +528,7 @@ const LineApp = ({
           }
           const next = written.get(row.id);
           return next ? [next] : [];
-        })
+        }),
       );
     }
     markPending([...ids], 1);
@@ -514,7 +552,7 @@ const LineApp = ({
               // answer will bring the server's row.
               if (!server || (written.has(row.id) && written.get(row.id) !== row)) return row;
               return server;
-            })
+            }),
           );
         }
         if (clearsSelection) deselect([...ids]);
@@ -525,7 +563,7 @@ const LineApp = ({
         setLines((prev) => {
           const present = new Set(prev.map((row) => row.id));
           const restored = prev.map((row) =>
-            written.has(row.id) && written.get(row.id) === row ? before.get(row.id) : row
+            written.has(row.id) && written.get(row.id) === row ? before.get(row.id) : row,
           );
           // Rows this write removed from the view come back
           before.forEach((row, id) => {
@@ -549,7 +587,7 @@ const LineApp = ({
               data-testid="deselect-refused"
             >
               {gettext('Deselect them')}
-            </button>
+            </button>,
           );
         } else {
           showSnackbar(err.message || errorMessage, 'error');
@@ -605,7 +643,7 @@ const LineApp = ({
         console.error('Failed to find the row:', err);
       }
     },
-    [bankFeedClient, book]
+    [bankFeedClient, book],
   );
 
   /** The other leg of a transfer: the same entry's row in the category account. */
@@ -615,13 +653,13 @@ const LineApp = ({
       if (!feedAccountIds.has(target) || !row.journalEntryId) return;
       showRow({ journalEntry: row.journalEntryId, inAccount: target }, { accountId: target });
     },
-    [feedAccountIds, showRow]
+    [feedAccountIds, showRow],
   );
 
   /** Open the other leg of a possible transfer. */
   const handleOpenMatchCounterpart = useCallback(
     ({ other }) => showRow({ row: other.imported_transaction_id }, { accountId: other.account?.id }),
-    [showRow]
+    [showRow],
   );
 
   /**
@@ -651,7 +689,7 @@ const LineApp = ({
           return await batchApi.transferMatch(
             self.imported_transaction_id,
             other.imported_transaction_id,
-            proposal.archive_id
+            proposal.archive_id,
           );
         } catch (err) {
           if (err.status === 409 && err.data?.proposal) {
@@ -671,7 +709,7 @@ const LineApp = ({
             kept.account?.name ?? '',
             voided.account?.name ?? '',
           ]),
-          'success'
+          'success',
         );
         return null;
       },
@@ -687,8 +725,8 @@ const LineApp = ({
         prev.filter(
           (p) =>
             p.outflow.imported_transaction_id !== self.imported_transaction_id &&
-            p.inflow.imported_transaction_id !== self.imported_transaction_id
-        )
+            p.inflow.imported_transaction_id !== self.imported_transaction_id,
+        ),
       );
       showSnackbar(gettext('Marked as not a match.'), 'info');
     } catch (err) {
@@ -806,7 +844,12 @@ const LineApp = ({
           description: description || '',
           account: accountId,
         }),
-      onSuccess: (json) => (json ? [BankFeedRowFromJSON(json)] : null),
+      onSuccess: (json) => {
+        const original = row ?? lines.find((l) => String(l.id) === String(id));
+        const categoryId = category?.id ?? category ?? null;
+        if (!splits?.length) afterManualCategorize(original, categoryId == null ? null : Number(categoryId));
+        return json ? [BankFeedRowFromJSON(json)] : null;
+      },
       errorMessage: gettext('Failed to update transaction'),
     });
   };
@@ -818,7 +861,7 @@ const LineApp = ({
   const linesById = useMemo(() => new Map(lines.map((l) => [l.id, l])), [lines]);
   const selectedRows = useMemo(
     () => [...selection.values()].map((row) => linesById.get(row.id) ?? row),
-    [selection, linesById]
+    [selection, linesById],
   );
 
   const handleToggleRows = (rows, checked) => {
@@ -880,6 +923,12 @@ const LineApp = ({
           ? null
           : optimisticBulkEditedRow(row, updates, accountsById),
       request: () => batchApi.batchEdit(ids, updates),
+      onSuccess: () => {
+        if (ids.length === 1 && updates.category_id != null) {
+          afterManualCategorize(linesById.get(ids[0]) ?? selection.get(ids[0]), Number(updates.category_id));
+        }
+        return null;
+      },
       successMessage: interpolate(ngettext('Transaction updated', '%s transactions updated', ids.length), [ids.length]),
       errorMessage: ngettext('Failed to update the transaction', 'Failed to update the transactions', ids.length),
       clearsSelection: true,
@@ -922,7 +971,7 @@ const LineApp = ({
       request: () => batchApi.batchDelete(ids),
       successMessage: interpolate(
         ngettext('Transaction permanently deleted', '%s transactions permanently deleted', ids.length),
-        [ids.length]
+        [ids.length],
       ),
       errorMessage: ngettext('Failed to delete the transaction', 'Failed to delete the transactions', ids.length),
       clearsSelection: true,
@@ -944,9 +993,9 @@ const LineApp = ({
             ngettext(
               'This transaction could not be duplicated.',
               'None of these transactions could be duplicated.',
-              ids.length
+              ids.length,
             ),
-            'warning'
+            'warning',
           );
           return null;
         }
@@ -954,7 +1003,7 @@ const LineApp = ({
           made === ids.length
             ? interpolate(ngettext('Transaction duplicated', '%s transactions duplicated', made), [made])
             : interpolate(gettext('Duplicated %s of %s transactions'), [made, ids.length]),
-          'success'
+          'success',
         );
         // Show the copy: under some sorts it lands on another page than its original
         showRow({ row: created[0].id }, { keepFilters: true });
@@ -965,19 +1014,214 @@ const LineApp = ({
     });
   };
 
-  /** Accept an uncategorized row's suggested category, as Bulk Edit would set it. */
-  const handleConfirmSuggestion = (row, suggestion) =>
-    runWrite({
+  /**
+   * Accept an uncategorized row's suggested category. A rule's suggestion is
+   * accepted through the rule (it may be a split, and the rule learns from it);
+   * a history-based one is set as Bulk Edit would, then offered as a rule.
+   */
+  const handleConfirmSuggestion = (row, suggestion) => {
+    if (suggestion.ruleName) {
+      return runWrite({
+        rowIds: [row.id],
+        apply: (r) => ({
+          ...(suggestion.id ? optimisticBulkEditedRow(r, { category_id: suggestion.id }, accountsById) : r),
+          ruleMatch: null,
+        }),
+        request: () =>
+          rulesApi.acceptMatches([Number(row.id)]).then((result) => {
+            if (result.refused?.length) throw new Error(result.refused[0].error);
+            return result;
+          }),
+        errorMessage: gettext('Failed to categorize the transaction'),
+      });
+    }
+    return runWrite({
       rowIds: [row.id],
       apply: (r) => optimisticBulkEditedRow(r, { category_id: suggestion.id }, accountsById),
       request: () => batchApi.batchEdit([row.id], { category_id: suggestion.id }),
+      onSuccess: () => {
+        offerRule(row);
+        return null;
+      },
       errorMessage: gettext('Failed to categorize the transaction'),
     });
+  };
 
-  const showVoidButton = useMemo(
-    () => selectedRows.some((r) => !isVoidRow(r) && !isReconciledRow(r)),
-    [selectedRows]
+  /** Every rule suggestion on this page that offers a category, accepted at once. */
+  const ruleSuggestedRows = useMemo(
+    () =>
+      lines.filter(
+        (r) =>
+          !isVoidRow(r) &&
+          !r.journalEntryId &&
+          r.ruleMatch?.status === 'suggested' &&
+          (r.ruleMatch.categoryId != null || r.ruleMatch.isSplit),
+      ),
+    [lines],
   );
+
+  const handleAcceptAllRuleSuggestions = () => {
+    const ids = ruleSuggestedRows.map((r) => r.id);
+    const byId = new Map(ruleSuggestedRows.map((r) => [r.id, r.ruleMatch]));
+    runWrite({
+      rowIds: ids,
+      apply: (r) => {
+        const match = byId.get(r.id);
+        const next = match?.categoryId
+          ? optimisticBulkEditedRow(r, { category_id: match.categoryId }, accountsById)
+          : r;
+        return { ...next, ruleMatch: null };
+      },
+      request: () => rulesApi.acceptMatches(ids.map(Number)),
+      onSuccess: (result) => {
+        const accepted = result?.accepted?.length ?? 0;
+        const refused = result?.refused ?? [];
+        showSnackbar(
+          refused.length
+            ? interpolate(gettext('Accepted %s; %s could not be: %s'), [accepted, refused.length, refused[0].error])
+            : interpolate(ngettext('%s suggestion accepted', '%s suggestions accepted', accepted), [accepted]),
+          refused.length ? 'warning' : 'success',
+        );
+        return null;
+      },
+      errorMessage: gettext('Failed to accept the suggestions'),
+    });
+  };
+
+  /** "Not this time": the rule leaves this row alone from now on. */
+  const handleDismissRuleMatch = (row) =>
+    runWrite({
+      rowIds: [row.id],
+      apply: (r) => ({ ...r, ruleMatch: null }),
+      request: () => rulesApi.dismissMatch(Number(row.id)),
+      successMessage: gettext('Suggestion dismissed'),
+      errorMessage: gettext('Could not dismiss the suggestion'),
+    });
+
+  /** Take back what an auto-post rule did: the row is uncategorized again. */
+  const handleUndoRuleMatch = (row) =>
+    runWrite({
+      rowIds: [row.id],
+      apply: (r) => ({
+        ...r,
+        category: null,
+        journalEntryId: null,
+        isSplit: false,
+        splitCount: 0,
+        splits: [],
+        ruleMatch: null,
+      }),
+      request: () => rulesApi.undoMatch(Number(row.id)),
+      successMessage: gettext('Automatic categorization undone'),
+      errorMessage: gettext('Could not undo the automatic categorization'),
+    });
+
+  /**
+   * After the user categorized one row by hand: if a rule would have done it
+   * (and would catch others), offer to make one. Admins only; silently nothing
+   * when the server says it isn't worth asking.
+   */
+  const offerRule = (row) => {
+    if (!canEditRules || row.ruleMatch) return;
+    rulesApi
+      .draftFromTransaction(Number(row.id))
+      .then((result) => {
+        if (!result?.offer) return;
+        const draft = result.rule;
+        const value = draft.conditions[0]?.value ?? '';
+        showSnackbar(
+          interpolate(gettext('Always categorize “%s” as %s?'), [value, draft.category_name]),
+          'info',
+          <span className="flex flex-wrap gap-1" data-testid="rule-offer">
+            <button
+              type="button"
+              className="btn btn-primary btn-xs"
+              data-testid="rule-offer-create"
+              onClick={() => {
+                handleCloseSnackbar();
+                rulesApi
+                  .create(draft)
+                  .then(() => {
+                    showSnackbar(gettext('Rule created. Matching transactions now show its suggestion.'), 'success');
+                    writeEpochRef.current += 1;
+                    scheduleQuietRefresh();
+                  })
+                  .catch((err) => showSnackbar(err.message, 'error'));
+              }}
+            >
+              {gettext('Create rule')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs"
+              data-testid="rule-offer-customize"
+              onClick={() => {
+                handleCloseSnackbar();
+                setRuleDialog({ draft });
+              }}
+            >
+              {gettext('Customize')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs"
+              data-testid="rule-offer-decline"
+              onClick={() => {
+                handleCloseSnackbar();
+                rulesApi.declineDraft(draft.signature, draft.category).catch(() => {});
+              }}
+            >
+              {gettext('No')}
+            </button>
+          </span>,
+        );
+      })
+      .catch(() => {});
+  };
+
+  /** After the user changed what a rule did: offer to change the rule instead of the row only. */
+  const offerRuleUpdate = (ruleMatch) => {
+    if (!ruleMatch?.ruleId) return;
+    // After this write's own success message, which would otherwise replace it.
+    setTimeout(
+      () =>
+        showSnackbar(
+          interpolate(gettext('You changed what the rule “%s” did.'), [ruleMatch.ruleName]),
+          'info',
+          <span className="flex gap-1" data-testid="rule-override-offer">
+            {canEditRules && (
+              <button
+                type="button"
+                className="btn btn-primary btn-xs"
+                onClick={() => {
+                  handleCloseSnackbar();
+                  openRule(ruleMatch.ruleId);
+                }}
+              >
+                {gettext('Update the rule')}
+              </button>
+            )}
+            <button type="button" className="btn btn-ghost btn-xs" onClick={handleCloseSnackbar}>
+              {gettext('Just this once')}
+            </button>
+          </span>,
+        ),
+      0,
+    );
+  };
+
+  /** What a manual categorization of `row` to `categoryId` should prompt, if anything. */
+  const afterManualCategorize = (row, categoryId) => {
+    if (!row || categoryId == null) return;
+    const match = row.ruleMatch;
+    if (match) {
+      if (match.categoryId !== categoryId) offerRuleUpdate(match);
+      return;
+    }
+    if (!row.journalEntryId) offerRule(row);
+  };
+
+  const showVoidButton = useMemo(() => selectedRows.some((r) => !isVoidRow(r) && !isReconciledRow(r)), [selectedRows]);
   const showRestoreButton = useMemo(() => selectedRows.some((r) => isVoidRow(r)), [selectedRows]);
 
   // --- CSV upload ----------------------------------------------------------
@@ -1047,6 +1291,22 @@ const LineApp = ({
             )}
           </button>
           <div className="flex gap-2 items-center">
+            {canEditRules && (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm gap-1"
+                title={
+                  selectedRows.length === 1
+                    ? gettext('New rule, starting from the selected transaction')
+                    : gettext('New rule')
+                }
+                onClick={() => setRuleDialog({ draft: selectedRows.length === 1 ? draftFromRow(selectedRows[0]) : {} })}
+                data-testid="new-rule-btn"
+              >
+                <Icon name="wand-magic-sparkles" className="h-4 w-4" />
+                {gettext('New rule')}
+              </button>
+            )}
             <a
               href={`${book.base}bankfeed/categorize/${categorizeSearch}`}
               className="btn btn-primary btn-sm gap-1"
@@ -1157,6 +1417,27 @@ const LineApp = ({
               <span>{error}</span>
             </div>
           )}
+          {!initialLoading && ruleSuggestedRows.length > 1 && (
+            <div
+              className="mb-3 flex flex-wrap items-center gap-2 rounded-box border border-base-300 bg-base-200/50 px-3 py-2 text-sm"
+              data-testid="rule-accept-all-bar"
+            >
+              <Icon name="wand-magic-sparkles" className="h-4 w-4 text-primary" />
+              <span className="flex-1">
+                {interpolate(gettext('%s transactions on this page have a category suggested by your rules.'), [
+                  ruleSuggestedRows.length,
+                ])}
+              </span>
+              <button
+                type="button"
+                className="btn btn-primary btn-xs"
+                onClick={handleAcceptAllRuleSuggestions}
+                data-testid="rule-accept-all"
+              >
+                {interpolate(gettext('Accept all %s'), [ruleSuggestedRows.length])}
+              </button>
+            </div>
+          )}
           {initialLoading ? (
             <div className="flex justify-center items-center py-4">
               <span className="loading loading-spinner loading-lg"></span>
@@ -1174,8 +1455,11 @@ const LineApp = ({
               allAccounts={allAccounts}
               allPayees={allPayees}
               categorySuggestions={categorySuggestions}
-              rowSuggestions={rowSuggestions}
+              rowSuggestions={mergedSuggestions}
               onConfirmSuggestion={handleConfirmSuggestion}
+              onDismissRuleMatch={handleDismissRuleMatch}
+              onUndoRuleMatch={handleUndoRuleMatch}
+              onEditRule={openRule}
               book={book}
               onAccountCreated={handleAccountCreated}
               defaultAccountId={selectedAccount?.id ?? null}
@@ -1283,6 +1567,38 @@ const LineApp = ({
         showRestore={showRestoreButton}
         viewMode={query.view}
         getExportRows={getExportRows}
+      />
+
+      <RuleBuilderDialog
+        request={ruleDialog}
+        bookBase={book.base}
+        categories={allAccounts}
+        canEdit={canEditRules}
+        onClose={() => setRuleDialog(null)}
+        onSaved={(saved, info = {}) => {
+          setRuleDialog(null);
+          const posted = info.applied?.auto_posted ?? 0;
+          showSnackbar(
+            info.deleted
+              ? gettext('Rule deleted')
+              : posted
+                ? interpolate(
+                    ngettext(
+                      'Rule saved. %s transaction categorized.',
+                      'Rule saved. %s transactions categorized.',
+                      posted,
+                    ),
+                    [posted],
+                  )
+                : info.created
+                  ? gettext('Rule created. Matching transactions now show its suggestion.')
+                  : gettext('Rule saved'),
+            'success',
+          );
+          // The rule's suggestions (or postings) land on rows already on screen.
+          writeEpochRef.current += 1;
+          scheduleQuietRefresh();
+        }}
       />
 
       {/* Batch operation result. Held 6s -- long enough to read a failure message. */}

@@ -65,6 +65,7 @@ book_urlpatterns = [
     path("ynab-import/", include("apps.ynab_import.urls")),
     path("data/", include("apps.portability.urls")),
     path("reconcile/", include("apps.reconciliation.urls")),
+    path("rules/", include("apps.rules.urls")),
 ]
 
 urlpatterns = [

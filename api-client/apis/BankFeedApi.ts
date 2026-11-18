@@ -156,6 +156,7 @@ export interface BankFeedFeedListRequest {
     page?: number;
     pageSize?: BankFeedFeedListPageSizeEnum;
     reconciled?: boolean;
+    rule?: BankFeedFeedListRuleEnum;
     sort?: BankFeedFeedListSortEnum;
     startDate?: Date;
     toReview?: boolean;
@@ -184,6 +185,7 @@ export interface BankFeedLocateRequest {
     pageSize?: BankFeedLocatePageSizeEnum;
     reconciled?: boolean;
     row?: number;
+    rule?: BankFeedLocateRuleEnum;
     sort?: BankFeedLocateSortEnum;
     startDate?: Date;
     toReview?: boolean;
@@ -213,6 +215,7 @@ export interface BankFeedSelectionRequest {
     ids?: string;
     pageSize?: BankFeedSelectionPageSizeEnum;
     reconciled?: boolean;
+    rule?: BankFeedSelectionRuleEnum;
     sort?: BankFeedSelectionSortEnum;
     startDate?: Date;
     toReview?: boolean;
@@ -891,6 +894,10 @@ export class BankFeedApi extends runtime.BaseAPI {
             queryParameters['reconciled'] = requestParameters['reconciled'];
         }
 
+        if (requestParameters['rule'] != null) {
+            queryParameters['rule'] = requestParameters['rule'];
+        }
+
         if (requestParameters['sort'] != null) {
             queryParameters['sort'] = requestParameters['sort'];
         }
@@ -1064,6 +1071,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         if (requestParameters['row'] != null) {
             queryParameters['row'] = requestParameters['row'];
+        }
+
+        if (requestParameters['rule'] != null) {
+            queryParameters['rule'] = requestParameters['rule'];
         }
 
         if (requestParameters['sort'] != null) {
@@ -1265,6 +1276,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         if (requestParameters['reconciled'] != null) {
             queryParameters['reconciled'] = requestParameters['reconciled'];
+        }
+
+        if (requestParameters['rule'] != null) {
+            queryParameters['rule'] = requestParameters['rule'];
         }
 
         if (requestParameters['sort'] != null) {
@@ -1905,6 +1920,14 @@ export type BankFeedFeedListPageSizeEnum = typeof BankFeedFeedListPageSizeEnum[k
 /**
  * @export
  */
+export const BankFeedFeedListRuleEnum = {
+    AutoPosted: 'auto_posted',
+    Suggested: 'suggested'
+} as const;
+export type BankFeedFeedListRuleEnum = typeof BankFeedFeedListRuleEnum[keyof typeof BankFeedFeedListRuleEnum];
+/**
+ * @export
+ */
 export const BankFeedFeedListSortEnum = {
     Account: 'account',
     Category: 'category',
@@ -1945,6 +1968,14 @@ export type BankFeedLocatePageSizeEnum = typeof BankFeedLocatePageSizeEnum[keyof
 /**
  * @export
  */
+export const BankFeedLocateRuleEnum = {
+    AutoPosted: 'auto_posted',
+    Suggested: 'suggested'
+} as const;
+export type BankFeedLocateRuleEnum = typeof BankFeedLocateRuleEnum[keyof typeof BankFeedLocateRuleEnum];
+/**
+ * @export
+ */
 export const BankFeedLocateSortEnum = {
     Account: 'account',
     Category: 'category',
@@ -1982,6 +2013,14 @@ export const BankFeedSelectionPageSizeEnum = {
     NUMBER_50: 50
 } as const;
 export type BankFeedSelectionPageSizeEnum = typeof BankFeedSelectionPageSizeEnum[keyof typeof BankFeedSelectionPageSizeEnum];
+/**
+ * @export
+ */
+export const BankFeedSelectionRuleEnum = {
+    AutoPosted: 'auto_posted',
+    Suggested: 'suggested'
+} as const;
+export type BankFeedSelectionRuleEnum = typeof BankFeedSelectionRuleEnum[keyof typeof BankFeedSelectionRuleEnum];
 /**
  * @export
  */

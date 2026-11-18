@@ -73,6 +73,11 @@
  * * `book_archived` - Set of Books Archived
  * * `book_restored` - Set of Books Restored
  * * `book_deleted` - Set of Books Deleted
+ * * `rule_created` - Rule Created
+ * * `rule_updated` - Rule Updated
+ * * `rule_deleted` - Rule Deleted
+ * * `rule_auto_posted` - Rules Auto-Posted Transactions
+ * * `rule_demoted` - Rule Demoted To Suggest
  * @export
  */
 export const EventTypeEnum = {
@@ -134,7 +139,12 @@ export const EventTypeEnum = {
     BookSettingsChanged: 'book_settings_changed',
     BookArchived: 'book_archived',
     BookRestored: 'book_restored',
-    BookDeleted: 'book_deleted'
+    BookDeleted: 'book_deleted',
+    RuleCreated: 'rule_created',
+    RuleUpdated: 'rule_updated',
+    RuleDeleted: 'rule_deleted',
+    RuleAutoPosted: 'rule_auto_posted',
+    RuleDemoted: 'rule_demoted'
 } as const;
 export type EventTypeEnum = typeof EventTypeEnum[keyof typeof EventTypeEnum];
 

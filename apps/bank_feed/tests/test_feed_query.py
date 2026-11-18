@@ -202,7 +202,14 @@ class FilterTest(FeedFixture):
 
 class CountsTest(FeedFixture):
     def test_counts_ignore_quick_filters_dates_and_view(self):
-        expected = {"to_review": 8, "reconciled": 1, "uncategorized": 3, "voided": 1}
+        expected = {
+            "to_review": 8,
+            "reconciled": 1,
+            "uncategorized": 3,
+            "voided": 1,
+            "rule_suggested": 0,
+            "rule_auto_posted": 0,
+        }
         for params in ({}, {"view": "voided"}, {"view": "active", "reconciled": 1, "start_date": "2026-03-20"}):
             with self.subTest(params):
                 resp = self.get(counts=1, **params)
@@ -210,7 +217,17 @@ class CountsTest(FeedFixture):
 
     def test_counts_follow_the_account_filter(self):
         resp = self.get(counts=1, account=self.card.id)
-        self.assertEqual(resp.data["counts"], {"to_review": 1, "reconciled": 0, "uncategorized": 0, "voided": 1})
+        self.assertEqual(
+            resp.data["counts"],
+            {
+                "to_review": 1,
+                "reconciled": 0,
+                "uncategorized": 0,
+                "voided": 1,
+                "rule_suggested": 0,
+                "rule_auto_posted": 0,
+            },
+        )
 
 
 class SortTest(FeedFixture):

@@ -39,6 +39,7 @@ from apps.budget import ledger as budget_ledger
 from apps.budget.models import GoalAccountLink
 from apps.journal.models import JournalEntry, JournalLine
 from apps.plaid.models import PlaidAccount, PlaidItem
+from apps.rules.models import Rule, RuleProposal
 
 
 @dataclass
@@ -59,6 +60,7 @@ class WipeCounts:
     payees: int = 0
     institutions: int = 0
     reconciliations: int = 0
+    rules: int = 0
 
     def as_dict(self) -> dict:
         return {
@@ -78,6 +80,7 @@ class WipeCounts:
             "payees": self.payees,
             "institutions": self.institutions,
             "reconciliations": self.reconciliations,
+            "rules": self.rules,
         }
 
 
@@ -107,6 +110,14 @@ def wipe_book(book) -> WipeCounts:
     plaid_items = PlaidItem.objects.filter(book=book)
     counts.plaid_items = plaid_items.count()
     plaid_items.delete()
+
+    # Rules point at accounts (SET_NULL), so they would outlive the wipe as broken
+    # rules; they are not exported, so the book that comes back has none. Their
+    # matches go with the feed rows below, their proposals with the accounts.
+    rules = Rule.objects.filter(book=book)
+    counts.rules = rules.count()
+    rules.delete()
+    RuleProposal.objects.filter(book=book).delete()
 
     # A goal's link to an account protects the account; drop the links first.
     goal_links = GoalAccountLink.objects.filter(book=book)

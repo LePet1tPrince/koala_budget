@@ -23,6 +23,7 @@ from apps.bank_feed.models import BankTransaction
 from apps.bank_feed.services.bank_revision import Revision, difference_rows, revise
 from apps.books.context import set_current_book, unset_current_book
 from apps.journal.services import voiding
+from apps.rules.services.apply import run_safely as run_rules_safely
 
 from . import item_status, sync_lock
 from .item_status import TRANSIENT_CODES
@@ -212,6 +213,7 @@ def _sync_item(plaid_item_id: int):
         # posted transaction and the removal of its pending one are always seen
         # side by side, whichever page Plaid put them on.
         outcomes = Counter()
+        sync_started = timezone.now()
         with transaction.atomic():
             # Added first: a posted transaction must claim its pending row before
             # the pending one's removal is processed.
@@ -231,6 +233,19 @@ def _sync_item(plaid_item_id: int):
             )
             plaid_item.refresh_from_db()
             item_status.record_sync_success(plaid_item)
+
+        # After the commit, once every new row (both legs of a transfer included)
+        # exists: the book's rules get this sync's new rows. A failure here is
+        # logged, never raised -- the sync itself has already succeeded.
+        new_ids = list(
+            BankTransaction.objects.filter(
+                book=plaid_item.book, plaid_transaction__plaid_account__item=plaid_item, created_at__gte=sync_started
+            ).values_list("pk", flat=True)
+        )
+        if new_ids:
+            rules_applied = run_rules_safely(plaid_item.book, new_ids)
+            if rules_applied:
+                outcomes.update({f"rules_{k}": v for k, v in rules_applied.items() if v})
 
         total_added = len(updates.added)
         total_modified = len(updates.modified)
