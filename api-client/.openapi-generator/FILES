@@ -1,5 +1,6 @@
 .openapi-generator-ignore
 apis/AApi.ts
+apis/ApiApi.ts
 apis/AuditApi.ts
 apis/BankFeedApi.ts
 apis/JournalApi.ts
@@ -42,8 +43,19 @@ models/JournalLine.ts
 models/LinkTokenResponse.ts
 models/ManualTransaction.ts
 models/MatchTypeEnum.ts
+models/Me.ts
+models/MeBook.ts
+models/MeDefault.ts
+models/MeTeam.ts
+models/MeUser.ts
 models/Membership.ts
 models/ModeEnum.ts
+models/NavExpectedIncome.ts
+models/NavFeedAccount.ts
+models/NavFeedInstitution.ts
+models/NavOnboardingRail.ts
+models/NavState.ts
+models/NavUnassigned.ts
 models/OpEnum.ts
 models/OpenInvitation.ts
 models/OriginEnum.ts
@@ -108,6 +120,7 @@ models/SimpleLinesRecategorize200Response.ts
 models/SimpleLinesRecategorizeRequest.ts
 models/SplitLeg.ts
 models/SplitShare.ts
+models/StateEnum.ts
 models/Subscription.ts
 models/SubscriptionItem.ts
 models/SubscriptionStatusEnum.ts
