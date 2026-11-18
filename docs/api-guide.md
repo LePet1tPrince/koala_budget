@@ -40,6 +40,42 @@ curl -H "Authorization: Api-Key YOUR_KEY" \
 2. Generate new key
 3. Key is associated with user permissions
 
+### Session Token Authentication (Mobile / Token Clients)
+
+A native client (the phone app) signs in through allauth headless's `app` client
+(`HEADLESS_CLIENTS = ("browser", "app")`) and gets a session token back:
+
+```bash
+curl -X POST https://app.example.com/_allauth/app/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "me@example.com", "password": "..."}'
+# → {"status": 200, "data": {"user": {...}}, "meta": {"is_authenticated": true, "session_token": "<token>"}}
+```
+
+Signup, email verification, password reset, MFA and logout (`DELETE /_allauth/app/v1/auth/session`)
+are the same allauth endpoints under `/_allauth/app/v1/` (spec: `/_allauth/openapi.html`).
+Every other request sends the token as a header, with no cookies and no CSRF token:
+
+```bash
+curl -H "X-Session-Token: <token>" https://app.example.com/api/me/
+```
+
+How it works:
+
+- `apps.api.middleware.SessionTokenMiddleware` (right after `AuthenticationMiddleware`, before
+  `AuditUserMiddleware` and the teams/books middleware) resolves the token with allauth's token
+  strategy and sets `request.user`, so audit rows are attributed to the token's user and plain
+  Django views (`login_and_book_required`) work too. For that request `request.session` is the
+  token's own session (the last-opened team/book is remembered per token); no cookie is set.
+- CSRF is waived **only** for a request authenticated by the header token. A cookie session
+  always wins over a token and keeps CSRF enforcement.
+- DRF: `apps.api.authentication.SessionTokenAuthentication` (allauth's `XSessionTokenAuthentication`
+  plus the rules above) is first in `DEFAULT_AUTHENTICATION_CLASSES`. A token that resolves to
+  nobody (unknown, expired, logged out) is a **401** with `WWW-Authenticate: X-Session-Token`;
+  a request without a token is unchanged (anonymous → 403).
+- With the generated client, pass `apiKey: (name) => (name === 'X-Session-Token' ? token : '')`
+  in the `Configuration` (OpenAPI scheme `XSessionTokenAuth`).
+
 ### Permission Classes
 
 ```python
@@ -65,6 +101,17 @@ class TeamModelAccessPermissions(BasePermission):
             return is_member(request.user, request.team)
         return is_admin(request.user, request.team)
 ```
+
+## Platform endpoints
+
+| Method | Path | URL name | What |
+|---|---|---|---|
+| GET | `/api/me/` | `api:me` | User (id, email, display name, avatar URL, language, timezone), teams with the user's role, every book per team (slug, name, `is_archived`, `is_default`, `base_url`), and `default: {team, book}` — where the web app would land (`apps.books.helpers.landing_team_and_book`). Any authenticated user (session, token, API key). |
+| GET | `/a/{team}/{book}/api/nav-state/` | `book_api:nav_state` | The app chrome for one book: `inbox_count`, `feed_institutions` (Inbox submenu), `unassigned` (this month: `month` `YYYY-MM`, `amount`, `state`, `label`, `expected_income`), `onboarding_rail.visible`. Same functions as the sidebar context processors. Book members. |
+
+Helpers for book-scoped API views live in `apps/api/base.py` (`BookAPIView`, `month_query_param`,
+`parse_month_param`, `MonthField`, `month_parameter`); its module docstring explains how to use them.
+Months in the API are `YYYY-MM`; a bad month is a 400 `{"<param>": ["Enter a month as YYYY-MM."]}`.
 
 ## API Documentation
 
@@ -352,18 +399,17 @@ await journalApi.journalEntriesCreate({
 
 ### Regenerating the Client
 
-When API changes are made:
+When API changes are made, regenerate and commit `api-client/` (never hand-edit it):
 
 ```bash
-# Generate OpenAPI schema
-python manage.py spectacular --file schema.yaml
-
-# Generate TypeScript client
-npx openapi-generator-cli generate \
-  -i schema.yaml \
-  -g typescript-fetch \
-  -o api-client
+OPENAPI_GENERATOR_JAR=/path/to/openapi-generator-cli-7.9.0.jar scripts/build_api_client.sh
+# or: make build-api-client-local   (same script)
+# or: make build-api-client         (Docker, against a running dev server)
 ```
+
+The script writes the schema with `manage.py spectacular` (no server needed), clean-regenerates
+`api-client/` with openapi-generator 7.9.0 `typescript-fetch`, and keeps `api-client/package.json`.
+`apps/api/tests/test_schema.py` fails if schema generation reports any error.
 
 ## Error Handling
 

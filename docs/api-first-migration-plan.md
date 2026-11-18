@@ -88,6 +88,6 @@ policy). Tracked separately.
 
 | WP | Status |
 |---|---|
-| WP1 | pending |
+| WP1 | done (platform: token auth, `/api/me/`, nav-state, `apps/api/base.py`, `scripts/build_api_client.sh`) |
 | WP2–WP8 | pending |
 | WP9–WP10 | pending |
