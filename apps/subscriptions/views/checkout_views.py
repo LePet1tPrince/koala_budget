@@ -1,10 +1,12 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ObjectDoesNotExist
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.views.decorators.http import require_POST
 
+from apps.subscriptions.decorators import redirect_subscription_errors
+from apps.subscriptions.exceptions import PriceNotAllowedError
 from apps.subscriptions.helpers import (
     create_stripe_checkout_session,
     get_subscription_urls,
@@ -16,11 +18,15 @@ from apps.utils.billing import get_stripe_module
 
 
 @require_POST
+@redirect_subscription_errors
 @login_and_team_required
 def create_checkout_session(request, team_slug):
     subscription_holder = request.team
-    price_id = request.POST["priceId"]
-    checkout_session = create_stripe_checkout_session(subscription_holder, price_id, request.user)
+    price_id = request.POST.get("priceId", "")
+    try:
+        checkout_session = create_stripe_checkout_session(subscription_holder, price_id, request.user)
+    except PriceNotAllowedError:
+        return HttpResponseBadRequest("That price isn't available to this team.")
     return HttpResponseRedirect(checkout_session.url)
 
 
@@ -36,7 +42,8 @@ def subscription_confirm(request):
 
     session = get_stripe_module().checkout.Session.retrieve(session_id)
     payment_status = session["payment_status"]
-    if payment_status != "paid":
+    # "no_payment_required": subscribed mid-trial, so the first charge is when the trial ends.
+    if payment_status not in ("paid", "no_payment_required"):
         messages.error(
             request,
             "Sorry, it looks like your payment didn't go through. If you think this is an error, please get in touch.",

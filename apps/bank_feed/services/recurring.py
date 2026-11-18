@@ -30,6 +30,7 @@ from django.utils.translation import ngettext
 from apps.accounts.guards import SystemCategoryError, assert_category_allowed
 from apps.books.context import current_book
 from apps.journal.services import period_lock
+from apps.subscriptions.entitlement import entitled_teams_q
 
 from ..models import RecurringTransaction
 from .manual import create_manual_transaction
@@ -232,9 +233,14 @@ def materialize(rule, today: date | None = None, limit: int = MAX_PER_PASS) -> i
 
 
 def materialize_due(today: date | None = None, book=None) -> int:
-    """Write what is due for every schedule (in `book`, when given). One failing schedule never stops the rest."""
+    """
+    Write what is due for every schedule (in `book`, when given). One failing schedule never stops the rest.
+
+    Read-only books (`apps.subscriptions.entitlement`) are skipped; their schedules
+    catch up, occurrence by occurrence, once the team subscribes.
+    """
     today = today or timezone.localdate()
-    due = RecurringTransaction.objects.filter(next_date__lte=today)
+    due = RecurringTransaction.objects.filter(entitled_teams_q("book__team__"), next_date__lte=today)
     if book is not None:
         due = due.filter(book=book)
     total = 0

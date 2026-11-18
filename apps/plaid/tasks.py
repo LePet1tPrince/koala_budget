@@ -24,6 +24,7 @@ from apps.bank_feed.services.bank_revision import Revision, difference_rows, rev
 from apps.books.context import set_current_book, unset_current_book
 from apps.journal.services import voiding
 from apps.rules.services.apply import run_safely as run_rules_safely
+from apps.subscriptions.entitlement import entitled_teams_q
 
 from . import item_status, sync_lock
 from .item_status import TRANSIENT_CODES
@@ -145,6 +146,10 @@ def sync_plaid_transactions(plaid_item_id: int, scheduled: bool = False):
     """
     if not PlaidItem.objects.filter(pk=plaid_item_id).exists():
         return {"success": False, "error": "PlaidItem not found"}
+    # Read-only books take no new rows. The cursor stays put, so the first sync
+    # after the team subscribes brings in everything since.
+    if not PlaidItem.objects.filter(entitled_teams_q("book__team__"), pk=plaid_item_id).exists():
+        return {"success": False, "status": "read_only"}
 
     if not sync_lock.claim(plaid_item_id):
         if not scheduled and sync_lock.request_rerun(plaid_item_id):
@@ -451,7 +456,7 @@ def sync_all_plaid_items():
     """
     cutoff = timezone.now() - timedelta(hours=settings.PLAID_SCHEDULED_SYNC_MIN_AGE_HOURS)
     items = list(
-        PlaidItem.objects.filter(is_archived=False)
+        PlaidItem.objects.filter(entitled_teams_q("book__team__"), is_archived=False)
         # Nothing to fetch until the user reconnects; Plaid would only refuse again.
         .exclude(status__in=PlaidItem.BLOCKED_STATUSES)
         .filter(Q(last_synced_at__isnull=True) | Q(last_synced_at__lt=cutoff))

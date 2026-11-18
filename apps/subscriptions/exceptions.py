@@ -12,3 +12,7 @@ class NoSubscriptionFoundError(FeatureGateError):
 
 class PlanNotSupportedError(FeatureGateError):
     pass
+
+
+class PriceNotAllowedError(Exception):
+    """A checkout asked for a price this team may not buy (another product, or the founding price)."""

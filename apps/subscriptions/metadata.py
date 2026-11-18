@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Generator
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 
+from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
@@ -173,9 +174,9 @@ def get_active_plan_interval_metadata() -> list[PlanIntervalMetadata]:
 # Active plan intervals. Only allowed values are "PlanInterval.month" and "PlanInterval.year"
 # Remove one of them to only allow monthly/annual pricing.
 # The first element is considered the default
+# Annual only: the pricing pages sell $79 CAD/year ($59 for founding members).
 ACTIVE_PLAN_INTERVALS = [
     PlanInterval.year,
-    PlanInterval.month,
 ]
 
 
@@ -189,7 +190,7 @@ ACTIVE_PRODUCTS = [
         description=_(""),
         is_default=True,
         features=[
-            _("Categorizing Transactionjs"),
+            _("Categorizing transactions"),
             _("Budgeting"),
         ],
     ),
@@ -207,6 +208,50 @@ ACTIVE_PRODUCTS = [
 ]
 
 ACTIVE_PRODUCTS_BY_ID = {p.stripe_id: p for p in ACTIVE_PRODUCTS}
+
+FOUNDING_SLUG = "founding"
+
+
+def founding_product_metadata() -> ProductMetadata | None:
+    """The founding-member product (`settings.STRIPE_FOUNDING_PRODUCT_ID`), or None while it isn't configured."""
+    if not settings.STRIPE_FOUNDING_PRODUCT_ID:
+        return None
+    standard = next(p for p in ACTIVE_PRODUCTS if p.is_default)
+    return replace(
+        standard,
+        stripe_id=settings.STRIPE_FOUNDING_PRODUCT_ID,
+        slug=FOUNDING_SLUG,
+        name=_("Koala Budget — Founding member"),
+        description=_("The founding-member price, locked in for life."),
+    )
+
+
+def products_for_team(team) -> list[ProductWithMetadata]:
+    """
+    The one product a team may buy: the founding product for a founding member
+    (`Team.is_founding_member`), the default product for everyone else. Checkout
+    accepts only these products' prices (`allowed_price_ids`).
+    """
+    if team.is_founding_member:
+        metadata = founding_product_metadata()
+        if metadata is None:
+            raise SubscriptionConfigError(
+                _("This team holds a founding-member spot, but STRIPE_FOUNDING_PRODUCT_ID is not set.")
+            )
+    else:
+        metadata = next(p for p in ACTIVE_PRODUCTS if p.is_default)
+    try:
+        product = Product.objects.get(id=metadata.stripe_id)
+    except Product.DoesNotExist:
+        raise SubscriptionConfigError(
+            _(f'No Product with ID "{metadata.stripe_id}" found. Run ./manage.py bootstrap_subscriptions.')
+        ) from None
+    return [ProductWithMetadata(product=product, metadata=metadata)]
+
+
+def allowed_price_ids(team) -> set[str]:
+    product_ids = [p.product.id for p in products_for_team(team)]
+    return set(Price.objects.filter(product_id__in=product_ids, active=True).values_list("id", flat=True))
 
 
 def get_active_products_with_metadata() -> Generator[ProductWithMetadata]:
@@ -248,6 +293,9 @@ def get_active_products_with_metadata() -> Generator[ProductWithMetadata]:
 
 
 def get_product_with_metadata(djstripe_product: Product) -> ProductWithMetadata:
+    founding = founding_product_metadata()
+    if founding and djstripe_product.id == founding.stripe_id:
+        return ProductWithMetadata(product=djstripe_product, metadata=founding)
     if djstripe_product.id in ACTIVE_PRODUCTS_BY_ID:
         return ProductWithMetadata(product=djstripe_product, metadata=ACTIVE_PRODUCTS_BY_ID[djstripe_product.id])
     else:

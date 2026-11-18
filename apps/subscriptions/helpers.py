@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 
 import stripe
 from django.db import transaction
@@ -15,7 +16,7 @@ from apps.users.models import CustomUser
 from apps.utils.billing import get_stripe_module
 from apps.web.meta import absolute_url
 
-from .exceptions import SubscriptionConfigError
+from .exceptions import PriceNotAllowedError, SubscriptionConfigError
 
 log = logging.getLogger("koala_budget.subscription")
 
@@ -50,6 +51,13 @@ def get_subscription_urls(subscription_holder):
 def create_stripe_checkout_session(
     subscription_holder: Team, stripe_price_id: str, user: CustomUser
 ) -> stripe.checkout.Session:
+    from .metadata import allowed_price_ids
+
+    # The price id comes from the browser: a non-founding team must not be able
+    # to post the founding price.
+    if stripe_price_id not in allowed_price_ids(subscription_holder):
+        raise PriceNotAllowedError(stripe_price_id)
+
     stripe = get_stripe_module()
     success_url = absolute_url(reverse("subscriptions:subscription_confirm"))
 
@@ -75,6 +83,7 @@ def create_stripe_checkout_session(
         subscription_data={
             "description": str(subscription_holder),
             "metadata": get_checkout_metadata(subscription_holder, user),
+            **_trial_kwargs(subscription_holder),
         },
         metadata={
             "source": "subscriptions",
@@ -82,6 +91,18 @@ def create_stripe_checkout_session(
         **customer_kwargs,
     )
     return checkout_session
+
+
+# Stripe refuses a `trial_end` less than 48 hours away.
+STRIPE_MIN_TRIAL_REMAINING = timedelta(hours=48)
+
+
+def _trial_kwargs(subscription_holder: Team) -> dict:
+    """Subscribing mid-trial keeps the rest of the free trial: Stripe bills first when it ends."""
+    trial_ends_at = subscription_holder.trial_ends_at
+    if trial_ends_at and trial_ends_at > timezone.now() + STRIPE_MIN_TRIAL_REMAINING:
+        return {"trial_end": int(trial_ends_at.timestamp())}
+    return {}
 
 
 def get_checkout_metadata(subscription_holder: Team, user: CustomUser) -> dict:

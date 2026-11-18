@@ -26,8 +26,8 @@ class MembershipInlineAdmin(admin.TabularInline):
 
 @admin.register(Team)
 class TeamAdmin(admin.ModelAdmin):
-    list_display = ["name", "slug", "active_members", "subscription"]
-    list_filter = ["created_at"]
+    list_display = ["name", "slug", "active_members", "subscription", "trial_ends_at", "is_founding_member"]
+    list_filter = ["created_at", "is_founding_member", "is_complimentary"]
     ordering = ("-created_at",)
     search_fields = ["name", "slug"]
     inlines = (MembershipInlineAdmin,)

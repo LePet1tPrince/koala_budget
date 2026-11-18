@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from apps.api.permissions import IsAuthenticatedOrHasUserAPIKey
 from apps.teams.decorators import team_admin_required
 
-from ..exceptions import SubscriptionConfigError
+from ..exceptions import PriceNotAllowedError, SubscriptionConfigError
 from ..helpers import create_stripe_checkout_session, create_stripe_portal_session
 from ..metadata import ProductWithMetadata, get_active_products_with_metadata
 
@@ -35,12 +35,11 @@ class CreateCheckoutSession(APIView):
     @method_decorator(team_admin_required)
     def post(self, request, team_slug):
         subscription_holder = request.team
-        price_id = request.POST["priceId"]
-        checkout_session = create_stripe_checkout_session(
-            subscription_holder,
-            price_id,
-            request.user,
-        )
+        price_id = request.POST.get("priceId", "")
+        try:
+            checkout_session = create_stripe_checkout_session(subscription_holder, price_id, request.user)
+        except PriceNotAllowedError:
+            return Response({"error": "That price isn't available to this team."}, status=400)
         return Response(checkout_session.url)
 
 

@@ -1,13 +1,35 @@
 {% load static %}
+{% load i18n %}
 <div class="flex flex-col space-y-4 lg:flex-row lg:space-x-4 lg:space-y-0 lg:flex-row-reverse my-2">
   <div class="basis-1/4 grow-0 shrink-0">
-    <img class="img-fluid" src="{% static 'images/undraw/undraw_savings.svg' %}" alt="Upgrade to Save">
+    <img class="img-fluid" src="{% static 'images/undraw/undraw_savings.svg' %}" alt="">
   </div>
-  <div class="flex-1">
-    <p class="text-xl mb-1">You're not currently subscribed to a plan.</p>
-    <p class="my-2">
-      Choose the plan that best fits your needs below to gain access
-      to additional functionality on our site!
-    </p>
+  <div class="flex-1" data-testid="subscription-status">
+    {% if access.status == "trial" %}
+      <p class="text-xl mb-1">
+        {% blocktranslate trimmed count days=access.trial_days_left with date=access.trial_ends_at|date:"F j, Y" %}
+          Your free trial ends on {{ date }} ({{ days }} day left).
+        {% plural %}
+          Your free trial ends on {{ date }} ({{ days }} days left).
+        {% endblocktranslate %}
+      </p>
+      <p class="my-2">{% translate "Subscribe now and keep the rest of your trial: the first charge is when it ends." %}</p>
+    {% elif access.status == "read_only" %}
+      <p class="text-xl mb-1">
+        {% blocktranslate trimmed with date=access.trial_ends_at|date:"F j, Y" %}
+          Your free trial ended on {{ date }}. Your books are read-only until you subscribe.
+        {% endblocktranslate %}
+      </p>
+      <p class="my-2">{% translate "Every page and the data export stay open. Bank syncing and recurring transactions resume when you subscribe." %}</p>
+    {% elif access.status == "complimentary" %}
+      <p class="text-xl mb-1">{% translate "This team has complimentary access: nothing is read-only." %}</p>
+    {% else %}
+      <p class="text-xl mb-1">{% translate "You're not currently subscribed to a plan." %}</p>
+    {% endif %}
+    {% if is_founding_member %}
+      <p class="my-2 font-semibold text-primary" data-testid="founding-member-note">
+        {% translate "You hold a founding-member spot: the founding price, locked in for life." %}
+      </p>
+    {% endif %}
   </div>
 </div>

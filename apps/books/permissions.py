@@ -1,7 +1,24 @@
-from rest_framework import permissions
-from rest_framework.exceptions import NotFound
+from rest_framework import permissions, status
+from rest_framework.exceptions import APIException, NotFound
 
 from apps.teams.permissions import _request_allowed_for_team, _view_for_members_edit_for_admins
+
+
+class BooksReadOnly(APIException):
+    status_code = status.HTTP_402_PAYMENT_REQUIRED
+    default_code = "subscription_required"
+
+
+def assert_book_writable(request) -> None:
+    """
+    The DRF half of the subscription gate (`apps.subscriptions.middleware`), for a
+    request that authenticated inside DRF: the middleware only sees session users.
+    """
+    from apps.subscriptions.entitlement import is_entitled
+    from apps.subscriptions.middleware import read_only_message
+
+    if request.method not in permissions.SAFE_METHODS and not is_entitled(request.team):
+        raise BooksReadOnly(read_only_message(request))
 
 
 def _request_allowed_for_book(request) -> bool:
@@ -11,6 +28,7 @@ def _request_allowed_for_book(request) -> bool:
         # A member asking for a book their team doesn't have: a 404, as a missing
         # book is everywhere else, not a 403 that says the URL means something.
         raise NotFound
+    assert_book_writable(request)
     return True
 
 

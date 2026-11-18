@@ -125,6 +125,7 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
     "apps.teams.middleware.TeamsMiddleware",
     "apps.books.middleware.BooksMiddleware",
+    "apps.subscriptions.middleware.SubscriptionGateMiddleware",
     "apps.web.middleware.locale.UserLocaleMiddleware",
     "apps.web.middleware.locale.UserTimezoneMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -189,6 +190,7 @@ TEMPLATES = [
                 "apps.bank_feed.context_processors.nav_feed_accounts",
                 "apps.budget.context_processors.unassigned_pill",
                 "apps.onboarding.context_processors.onboarding_rail",
+                "apps.subscriptions.context_processors.team_access",
                 # this line can be removed if not using google analytics
                 "apps.web.context_processors.google_analytics_id",
             ],
@@ -573,6 +575,13 @@ STRIPE_LIVE_MODE = env.bool("STRIPE_LIVE_MODE", False)
 
 DJSTRIPE_FOREIGN_KEY_TO_FIELD = "id"  # change to "djstripe_id" if not a new installation
 DJSTRIPE_SUBSCRIBER_MODEL = "teams.Team"
+# Billing (`apps/subscriptions/entitlement.py`). The trial needs no card; after it
+# a team without a subscription is read-only. The founding product's yearly price
+# is the founding-member price; leave it blank and founding teams can't check out.
+TRIAL_DAYS = env.int("TRIAL_DAYS", default=60)
+FOUNDING_MEMBER_LIMIT = env.int("FOUNDING_MEMBER_LIMIT", default=500)
+STRIPE_FOUNDING_PRODUCT_ID = env("STRIPE_FOUNDING_PRODUCT_ID", default="")
+
 DJSTRIPE_SUBSCRIBER_MODEL_REQUEST_CALLBACK = lambda request: request.team  # noqa E731
 
 SILENCED_SYSTEM_CHECKS = [

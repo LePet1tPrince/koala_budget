@@ -1,0 +1,28 @@
+{% load i18n %}
+{% comment %}
+  Trial / read-only banner in the app chrome (`apps.subscriptions.context_processors.team_access`).
+  Shown in a trial's last TRIAL_WARNING_DAYS days and while the books are read-only.
+{% endcomment %}
+{% if team_access and team_access.show_banner %}
+  <div role="status" data-testid="access-banner"
+       class="alert {% if team_access.can_write %}alert-info{% else %}alert-warning{% endif %} mb-4">
+    <span>
+      {% if team_access.can_write %}
+        {% blocktranslate trimmed count days=team_access.trial_days_left %}
+          Your free trial ends in {{ days }} day.
+        {% plural %}
+          Your free trial ends in {{ days }} days.
+        {% endblocktranslate %}
+      {% else %}
+        {% translate "These books are read-only: the free trial has ended and there is no subscription." %}
+      {% endif %}
+    </span>
+    {% if team_access_is_admin %}
+      <a class="btn btn-sm btn-primary" href="{% url 'subscriptions_team:subscription_details' request.team.slug %}">
+        {% translate "Subscribe" %}
+      </a>
+    {% elif not team_access.can_write %}
+      <span>{% translate "Ask a team admin to subscribe." %}</span>
+    {% endif %}
+  </div>
+{% endif %}

@@ -14,9 +14,10 @@ from apps.teams.roles import is_admin
 from apps.utils.billing import get_stripe_module
 
 from ..decorators import active_subscription_required, redirect_subscription_errors
+from ..entitlement import team_access
 from ..forms import UsageRecordForm
 from ..helpers import get_subscription_urls, subscription_is_active, subscription_is_trialing
-from ..metadata import ACTIVE_PLAN_INTERVALS, get_active_plan_interval_metadata, get_active_products_with_metadata
+from ..metadata import ACTIVE_PLAN_INTERVALS, get_active_plan_interval_metadata, products_for_team
 from ..models import SubscriptionModelBase
 from ..wrappers import InvoiceFacade, SubscriptionWrapper
 
@@ -116,9 +117,8 @@ def _upgrade_subscription(request, subscription_holder):
     """
     assert not subscription_holder.has_active_subscription()
 
-    active_products = list(get_active_products_with_metadata())
-    default_products = [p for p in active_products if p.metadata.is_default]
-    default_product = default_products[0] if default_products else active_products[0]
+    active_products = products_for_team(subscription_holder)
+    default_product = active_products[0]
 
     return render(
         request,
@@ -128,6 +128,8 @@ def _upgrade_subscription(request, subscription_holder):
             "settings_section": "subscription",
             "settings_page_title": _("Subscription"),
             "default_product": default_product,
+            "access": team_access(subscription_holder),
+            "is_founding_member": subscription_holder.is_founding_member,
             "active_products": active_products,
             "active_plan_intervals": get_active_plan_interval_metadata(),
             "default_interval": ACTIVE_PLAN_INTERVALS[0],

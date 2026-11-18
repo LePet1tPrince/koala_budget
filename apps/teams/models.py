@@ -1,13 +1,16 @@
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
+from django.db.models.functions import Now
 from django.urls import reverse
 from django.utils.translation import gettext
 from waffle import get_setting
 from waffle.models import CACHE_EMPTY, AbstractUserFlag
 from waffle.utils import get_cache, keyfmt
 
+from apps.subscriptions import entitlement
 from apps.subscriptions.models import SubscriptionModelBase
 from apps.utils.models import BaseModel
 from apps.web.meta import absolute_url
@@ -24,10 +27,26 @@ class Team(SubscriptionModelBase, BaseModel):
     slug = models.SlugField(unique=True)
     members = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="teams", through="Membership")
 
-    # your team customizations go here.
+    # Billing (`apps.subscriptions.entitlement`): the free trial starts when the
+    # team is created; the first FOUNDING_MEMBER_LIMIT teams are founding members
+    # (the founding price at checkout, for life); a complimentary team is never gated.
+    # The db_defaults cover rows inserted without the ORM's defaults (an older
+    # migration state's model, as the migration tests use); 60 = TRIAL_DAYS's default.
+    trial_ends_at = models.DateTimeField(default=entitlement.default_trial_end, db_default=Now() + timedelta(days=60))
+    is_founding_member = models.BooleanField(default=False, db_default=False)
+    is_complimentary = models.BooleanField(
+        default=False, db_default=False, help_text="Never read-only, with or without a subscription"
+    )
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding or self.is_founding_member:
+            return super().save(*args, **kwargs)
+        with transaction.atomic():
+            self.is_founding_member = entitlement.claim_founding_spot(Team)
+            return super().save(*args, **kwargs)
 
     @property
     def email(self):
