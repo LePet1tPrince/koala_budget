@@ -91,7 +91,7 @@ class ReservedSlugsTest(TestCase):
         segments = url_segments(team_level_urlpatterns) | url_segments(book_urlpatterns)
         self.assertLessEqual(segments, reserved_book_slugs())
         # Spot-check the ones the plan names, on both levels.
-        for slug in ("team", "subscription", "settings", "books", "budget", "bankfeed", "ynab-import", "data"):
+        for slug in ("team", "subscription", "settings", "books", "budget", "bankfeed", "ynab-import", "data", "api"):
             self.assertIn(slug, reserved_book_slugs())
 
 

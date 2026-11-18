@@ -98,6 +98,7 @@ READS = {
     "rules:rule-list": {},
     "rules:rule-prompts": {},
     "rules:rule-proposal-list": {},
+    "book_api:nav_state": {},
     "accounts:accountgroup_create": {},
     "accounts:account_create": {},
     "accounts:payee_create": {},
@@ -351,6 +352,7 @@ class ReadIsolationTest(TwoBooksTestCase):
             "reports:spending",
             "reports:export_transactions",
             "portability:export",
+            "book_api:nav_state",
         ):
             query = READS[name]
             params = {"account": self.a.chequing.id} if callable(query) else query

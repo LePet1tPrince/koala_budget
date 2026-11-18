@@ -208,6 +208,15 @@ def compute_unassigned(
     return result
 
 
+def current_unassigned(book) -> Unassigned:
+    """
+    Unassigned for this month: the figure the sidebar pill shows. Always the current
+    month, whatever month a page is on -- the pill answers "how much has no job right
+    now". Read by the pill's context processor and the nav-state API.
+    """
+    return compute_unassigned(book, date.today())
+
+
 def pill_context(unassigned: Unassigned) -> dict:
     """What the pill and the JSON endpoint need: the figure, its state, its words, and
     Expected income (`expected` is None when the book doesn't budget income ahead)."""
