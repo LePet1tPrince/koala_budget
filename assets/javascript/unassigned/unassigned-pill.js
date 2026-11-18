@@ -73,8 +73,11 @@ function paint(data) {
     const label = pill.querySelector('[data-unassigned-pill-label]');
     const value = pill.querySelector('[data-unassigned-pill-value]');
     const hint = pill.querySelector('[data-unassigned-pill-hint]');
+    const expected = pill.querySelector('[data-unassigned-pill-expected-value]');
     if (label) label.textContent = data.label;
     if (value) value.textContent = data.display;
+    // Expected income sits beside Unassigned, not in it; the first paint has none to set.
+    if (expected && data.expected) expected.textContent = data.expected.display;
     if (hint) hint.textContent = pill.dataset[`hint${data.state[0].toUpperCase()}${data.state.slice(1)}`] || '';
     if (delta) showDelta(pill, delta);
   });

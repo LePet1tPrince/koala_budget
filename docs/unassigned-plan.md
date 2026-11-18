@@ -6,24 +6,27 @@ document lives at <https://claude.ai/artifact/Co2cRn5w8K8y4wXxmvwZ1g>.
 ## 1. The metric
 
 One number for the money that has no job yet: what is left of net worth once every
-goal, every budget envelope and (optionally) budgeted income still to come has been
-accounted for.
+goal and every budget envelope has been accounted for. Budgeted income that hasn't
+arrived is **not** part of it: it is a second figure, **Expected income**, shown beside
+Unassigned wherever Unassigned is shown (only with future-income budgeting on).
 
 ```
-  Net worth                                   $20,000
-+ Budgeted income not yet received             +5,000   (only with future-income budgeting on)
+  Net worth                                   $25,000
 − Budget envelopes, unspent                     −7,500   (3,500 rolled over + 4,000 this month)
 − Left in goals                                −16,000
 = Unassigned                                    $1,500
+
+  Expected income                               $5,000   (budgeted, not yet received; beside, not in, the sum)
 ```
 
 In code, as of the end of the month being viewed (T):
 
 ```
 unassigned = net_worth(T)
-           + Σ max(0, −available_T) over income categories     # budgeted, not yet received
            − Σ max(0,  available_T) over expense categories    # unspent budget: the envelopes
            − Σ max(0,  left_T)      over goals                 # allocated − spent
+
+expected_income = Σ max(0, −available_T) over income categories   # budgeted, not yet received
 ```
 
 `available_T` is the budget page's own running balance per category
@@ -36,8 +39,8 @@ actually happened.** The effect of each action on Unassigned:
 
 | Flow | Action | Previous month | Current month | Future month |
 |---|---|---|---|---|
-| Income | Increase budget | Up | Up | – |
-| Income | Increase actual, still ≤ budget | – | – | – |
+| Income | Increase budget | – (Expected income up) | – (Expected income up) | – |
+| Income | Increase actual, still ≤ budget | Up (Expected income down) | Up (Expected income down) | – |
 | Income | Actual > budget | Up | Up | – |
 | Expense | Increase budget | Down | Down | – |
 | Expense | Increase actual, still ≤ available | – | – | – |
@@ -49,11 +52,14 @@ actually happened.** The effect of each action on Unassigned:
 Anything else that moves net worth moves Unassigned: opening balances, reconciliation
 adjustments, any other equity entry.
 
-- **Income rolls.** A shortfall stays "still due" into the next month; a surplus
+- **Income counts when it lands.** Received income is in net worth, so it raises
+  Unassigned; budgeted income only raises Expected income. Budgeting envelopes against
+  expected income therefore makes Unassigned negative (Over-assigned) until the money
+  lands, and Expected income says how much of that is covered.
+- **Expected income rolls.** A shortfall stays expected into the next month; a surplus
   offsets income still expected. A September paycheque that lands in October fills
-  September's gap rather than arriving twice. If budgeted income isn't coming, lower
-  the current month's budget; there is no need to edit history. ("Up" for last month's
-  surplus is net of what it fills: it offsets this month's income still due first.)
+  September's gap rather than being expected twice. If budgeted income isn't coming,
+  lower the current month's budget; there is no need to edit history.
 - **Overspending comes out of Unassigned.** An overspent envelope or goal claims
   nothing, so the money spent past it leaves net worth with nothing offsetting it.
   The negative balance is **carried**, never reset, so budgeting into the hole does not
@@ -61,7 +67,7 @@ adjustments, any other equity entry.
   what goes past it is a new claim. A consequence: last month's overspending that this
   month's budget already absorbs shows up as a smaller envelope, not a lower
   Unassigned — the money is gone either way, and the invariant
-  `envelopes + goals + unassigned = net worth + income due` always holds.
+  `envelopes + goals + unassigned = net worth` always holds.
 - **Covering overspending is free.** Raising the budget of an overspent row (the Cover
   dialog's "from Unassigned") only clears the red; covering from a goal releases the
   goal's money back into Unassigned; closing a negative goal tops it back to zero at
@@ -73,7 +79,8 @@ adjustments, any other equity entry.
 without a floor and carried overspending in the envelope sum, so overspending never
 moved Unassigned and income over budget was held back. v2 counted only the current
 month's unreceived income (while the month ran) and still carried overspending. v3
-(this) floors every claim at zero and lets income roll, per the table above.
+floors every claim at zero and lets income roll, per the table above. v4 (this) takes
+budgeted-but-unreceived income out of the sum and shows it beside it as Expected income.
 
 **Single source of truth:** `apps/budget/unassigned.py::compute_unassigned()`. The
 sidebar pill, the dashboard, the budget/goals card, the goal quick-assign clamp and
@@ -111,13 +118,13 @@ to assign (YNAB's term), Jobless dollars, Unclaimed.
   replacing "Total budget available" — which showed the sum of category balances, not
   this metric.
 - **Budget and Goals pages.** The net-worth card now shows every term of the sum (net
-  worth, income still due, in budget envelopes, in goals) and its bottom line carries
+  worth, in budget envelopes, in goals; Expected income beside the result) and its bottom line carries
   the metric's name and state; the Goals page summary and its toasts use the name too.
 - **Dollar Map report** (`/a/{slug}/reports/dollar-map/`, `?month=YYYY-MM-DD`, picked with the shared `BudgetMonthPicker`):
   - a stats strip (net worth, in envelopes, in goals, unassigned);
   - the *allocation bar* — every claim on your money side by side (goals, budget
     envelopes, unassigned), with a marker at net worth and, when income is budgeted
-    but not yet received, a marker for "with income due"; over-assignment, the only
+    but not yet received, a marker for "with expected income"; over-assignment, the only
     way the claims can extend past what you have, is hatched and explained;
   - a per-bucket breakdown (each goal; each envelope, noting what rolled over);
   - the *waterfall* — net worth stepping down to Unassigned, one bar per term above.

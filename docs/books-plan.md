@@ -209,11 +209,11 @@ cross-book isolation tests (§9) before moving on.
 
 `Book.budget_future_income`, edited under **Settings → This set of books → Budgeting**.
 
-- **On** (existing books): exactly today's behaviour. Income is budgeted, and this
-  month's budgeted-but-not-received income counts toward Unassigned.
+- **On** (existing books): income is budgeted, and budgeted-but-not-received income
+  is shown as **Expected income** beside Unassigned (it is not part of Unassigned).
 - **Off**:
-  - `compute_unassigned` sets `income_due = 0`, so money is unassigned only once it
-    has landed.
+  - `compute_unassigned` sets `income_due = 0` and Expected income is not shown.
+    Unassigned is the same either way: money is unassigned only once it has landed.
   - The budget page hides the Income section, the grid hides income rows, and
     Budget vs Actual hides its income section. The income-account budget chart on
     the activity pages is hidden too.

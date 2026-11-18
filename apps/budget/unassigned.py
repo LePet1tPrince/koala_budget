@@ -2,9 +2,13 @@
 The Unassigned metric: money that has no job yet (see docs/unassigned-plan.md).
 
     unassigned = net worth
-               + Σ max(0, −available) over income categories   (budgeted income not yet received)
                − Σ max(0,  available) over expense categories  (unspent budget: the envelopes)
                − Σ max(0,  left)      over goals               (allocated − spent from it)
+
+    expected income = Σ max(0, −available) over income categories  (budgeted, not yet received)
+
+Expected income is a separate figure shown beside Unassigned, never a term of it:
+money is unassigned only once it is in net worth.
 
 Every "available" is the budget page's own running balance through `month`
 (`BudgetService.get_available_with_previous`: expense budget − actual + rollover,
@@ -14,11 +18,13 @@ spending through `month` too, so nothing dated after the month moves it.
 The rule behind every term: a claim is the larger of what was planned and what
 actually happened.
 
-- **Income.** Budgeted income that hasn't arrived counts as coming, and the
-  difference rolls from month to month like an envelope's: a September paycheque
-  that lands in October fills September's gap rather than arriving twice. Income
-  beyond its budget isn't "due" — it is already in net worth, so it arrives
-  unassigned. If the money isn't coming, lower the budget: the shortfall goes with it.
+- **Income** counts toward Unassigned only as it lands in net worth. Budgeted
+  income that hasn't arrived is Expected income, and the difference rolls from month
+  to month like an envelope's: a September paycheque that lands in October fills
+  September's gap rather than being expected twice. If the money isn't coming, lower
+  the budget: the expectation goes with it. Budgeting envelopes against expected
+  income makes Unassigned negative until the income lands; Expected income says how
+  much of that is covered.
 - **Overspending comes out of Unassigned.** An overspent envelope or goal claims
   nothing (its balance is floored at zero), so the money spent past it leaves net
   worth with nothing to offset it. Money spent without a budget was not free money;
@@ -33,7 +39,7 @@ actually happened.
 - **Everything else in net worth counts as it lands**: opening balances,
   reconciliation adjustments, any equity entry.
 
-`compute_unassigned()` is the one place this is calculated. The sidebar pill, the
+`compute_unassigned()` is the one place both are calculated. The sidebar pill, the
 budget page and goals page (via `NetWorthService.get_net_worth_card_data`), the
 goal quick-assign clamp and the Dollar Map report all read it, so no two screens can
 disagree about the number.
@@ -53,6 +59,8 @@ ZERO = Decimal("0")
 # The metric's name is still being decided; every template and script reads these.
 UNASSIGNED_LABEL = _("Unassigned")
 OVER_ASSIGNED_LABEL = _("Over-assigned")
+# Budgeted income not yet received: shown beside Unassigned, not part of it.
+EXPECTED_INCOME_LABEL = _("Expected income")
 
 STATE_POSITIVE = "positive"
 STATE_ZERO = "zero"
@@ -61,13 +69,17 @@ STATE_NEGATIVE = "negative"
 
 @dataclass(frozen=True)
 class Unassigned:
-    """Every term of the Unassigned sum for one month, plus the result."""
+    """Every term of the Unassigned sum for one month, the result, and Expected income."""
 
     month: date
     net_worth: Decimal
-    income_due: Decimal  # budgeted income not yet received, rolled over
+    # Expected income: budgeted income not yet received, rolled over. Not a term of
+    # the sum; shown beside it.
+    income_due: Decimal
     envelopes: Decimal  # Σ unspent expense budget (overspent envelopes count as 0)
     goals: Decimal  # Σ left in goals (overspent goals count as 0)
+    # Whether the book budgets income before it arrives: only then is Expected income shown.
+    expects_income: bool = False
     # Not terms of the sum: overspending already left net worth, and these say how much
     # of it is still showing as a negative balance.
     overspent: Decimal = ZERO  # expense envelopes
@@ -77,7 +89,7 @@ class Unassigned:
 
     @property
     def amount(self) -> Decimal:
-        return self.net_worth + self.income_due - self.envelopes - self.goals
+        return self.net_worth - self.envelopes - self.goals
 
     @property
     def state(self) -> str:
@@ -119,9 +131,10 @@ def compute_unassigned(
     `detail=True` the result also carries the per-goal, per-envelope and per-income
     figures the Dollar Map report breaks the total down into.
 
-    `future_income` defaults to the book's own setting. With it off, income counts
-    only once it has landed, so `income_due` is zero; the budgeting settings page
-    passes the opposite of the setting to show what flipping it would do.
+    `future_income` defaults to the book's own setting. With it off, income
+    categories aren't budgeted, so `income_due` (Expected income) is zero; the
+    budgeting settings page passes the opposite of the setting to show what flipping
+    it would do. Unassigned itself is the same either way.
     """
     from apps.budget.models import Goal, goal_allocated_subquery, goal_spent_subquery
     from apps.budget.services import BudgetService, NetWorthService
@@ -156,6 +169,7 @@ def compute_unassigned(
         income_due=sum(income_due_by_account.values(), ZERO),
         envelopes=_positive(expense_available.values()),
         goals=_positive(goal_left.values()),
+        expects_income=future_income,
         overspent=-sum((v for v in expense_available.values() if v < 0), ZERO),
         goals_overspent=-sum((v for v in goal_left.values() if v < 0), ZERO),
     )
@@ -195,7 +209,8 @@ def compute_unassigned(
 
 
 def pill_context(unassigned: Unassigned) -> dict:
-    """What the pill and the JSON endpoint need: the figure, its state and its words."""
+    """What the pill and the JSON endpoint need: the figure, its state, its words, and
+    Expected income (`expected` is None when the book doesn't budget income ahead)."""
     from apps.web.templatetags.currency_tags import currency
 
     amount = unassigned.amount
@@ -207,6 +222,13 @@ def pill_context(unassigned: Unassigned) -> dict:
         "state": unassigned.state,
         "label": str(unassigned.label),
         "month": unassigned.month.isoformat(),
+        "expected": {
+            "label": str(EXPECTED_INCOME_LABEL),
+            "raw": f"{unassigned.income_due:.2f}",
+            "display": currency(unassigned.income_due),
+        }
+        if unassigned.expects_income
+        else None,
     }
 
 
@@ -224,17 +246,19 @@ def allocation_bar(unassigned: Unassigned) -> dict:
     Geometry for the allocation bar: every claim on your money side by side.
 
     Segments are goals, budget envelopes and (when positive) Unassigned. A marker
-    sits at net worth, and a second at net worth + income still due when some is.
-    Goals + envelopes + Unassigned is exactly what you have (net worth + income
-    due), so the claims only reach past it when Unassigned is negative: that
-    over-assignment is drawn hatched rather than silently rescaled away.
+    sits at net worth, and a second at net worth + Expected income when some is.
+    Goals + envelopes + Unassigned is exactly net worth, so the claims only reach
+    past it when Unassigned is negative: that over-assignment is drawn hatched
+    rather than silently rescaled away, and the Expected income marker shows how
+    much of it income still to land would cover.
     Overspending isn't a claim, so it never appears here: it has already left net worth.
     """
     amount = unassigned.amount
     free = max(amount, ZERO)
-    have = unassigned.net_worth + unassigned.income_due
+    have = unassigned.net_worth
+    with_due = have + unassigned.income_due
     filled = unassigned.goals + unassigned.envelopes + free
-    scale = max(filled, have)
+    scale = max(filled, have, with_due)
 
     segments = [
         {"key": "goals", "label": _("Goals"), "amount": unassigned.goals},
@@ -248,8 +272,8 @@ def allocation_bar(unassigned: Unassigned) -> dict:
     return {
         "segments": [s for s in segments if s["amount"] > 0],
         "empty": scale <= 0,
-        "net_worth_pct": _pct(unassigned.net_worth, scale) if unassigned.net_worth > 0 else None,
-        "with_due_pct": _pct(have, scale) if unassigned.income_due > 0 and have > 0 else None,
+        "net_worth_pct": _pct(have, scale) if have > 0 else None,
+        "with_due_pct": _pct(with_due, scale) if unassigned.income_due > 0 and with_due > 0 else None,
         "overshoot": {
             "start_pct": _pct(max(have, ZERO), scale),
             "width_pct": _pct(overshoot, scale),
@@ -262,10 +286,8 @@ def allocation_bar(unassigned: Unassigned) -> dict:
 
 def waterfall(unassigned: Unassigned) -> list[dict]:
     """Net worth stepping down to Unassigned, one floating bar per term."""
-    steps = [("net_worth", _("Net worth"), unassigned.net_worth, True)]
-    if unassigned.income_due:
-        steps.append(("income_due", _("Income still due"), unassigned.income_due, False))
-    steps += [
+    steps = [
+        ("net_worth", _("Net worth"), unassigned.net_worth, True),
         ("envelopes", _("Budget envelopes, unspent"), -unassigned.envelopes, False),
         ("goals", _("Left in goals"), -unassigned.goals, False),
         ("unassigned", unassigned.label, unassigned.amount, True),
