@@ -121,6 +121,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Signs in an `X-Session-Token` request (the phone app). Before everything that
+    # reads `request.user` -- the audit middleware above all.
+    "apps.api.middleware.SessionTokenMiddleware",
     "apps.audit.middleware.AuditUserMiddleware",
     "allauth.account.middleware.AccountMiddleware",
     "apps.teams.middleware.TeamsMiddleware",
@@ -248,6 +251,10 @@ AUTH_PASSWORD_VALIDATORS = [
 
 ACCOUNT_ADAPTER = "apps.teams.adapter.AcceptInvitationAdapter"
 HEADLESS_ADAPTER = "apps.users.adapter.CustomHeadlessAdapter"
+# `browser` is the auth SPA (cookie session + CSRF); `app` is a native client, which
+# gets a session token from `/_allauth/app/v1/auth/...` and sends it as
+# `X-Session-Token` (see `apps.api.middleware.SessionTokenMiddleware`).
+HEADLESS_CLIENTS = ("browser", "app")
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*"]
 
@@ -429,6 +436,8 @@ SITE_ID = 1
 # DRF config
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
+        # First, so a bad `X-Session-Token` is a 401 (see the class).
+        "apps.api.authentication.SessionTokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
         "rest_framework.authentication.BasicAuthentication",
     ],
