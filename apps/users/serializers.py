@@ -8,18 +8,6 @@ from apps.api.models import UserAPIKey
 from .forms import CustomUserChangeForm, UploadAvatarForm
 from .models import CustomUser
 
-
-class CustomUserSerializer(serializers.ModelSerializer):
-    """
-    Basic serializer to pass CustomUser details to the front end.
-    Extend with any fields your app needs.
-    """
-
-    class Meta:
-        model = CustomUser
-        fields = ("id", "first_name", "last_name", "email", "avatar_url", "get_display_name")
-
-
 PROFILE_FORM_FIELDS = ("email", "first_name", "last_name", "language", "timezone")
 
 

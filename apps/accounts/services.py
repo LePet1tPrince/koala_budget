@@ -100,14 +100,6 @@ def _blocking_journal_entries(account):
     return opening_ids, blocking
 
 
-def account_delete_blocked_reason(account):
-    """Why `account` can't be deleted, or None."""
-    if account.is_system:
-        return SYSTEM_ACCOUNT_MESSAGE
-    _opening, blocking = _blocking_journal_entries(account)
-    return HAS_TRANSACTIONS_MESSAGE if blocking else None
-
-
 def delete_account(account):
     """
     Delete `account` with its own opening balance, if nothing else references it.
