@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import Cookies from 'js-cookie';
 
 import AmountInput from '../../common/AmountInput';
 import Icon from '../../common/Icon';
@@ -48,8 +47,12 @@ const storeMode = (mode) => {
  * account group), columns are months. Supports pasting a block of values
  * straight from Excel / Google Sheets: the paste anchors at the focused cell
  * and fills right and down, exactly like a spreadsheet.
+ *
+ * `months` are `{key: 'YYYY-MM', label}`; a row's `amounts` are keyed by month.
+ * `saveChanges([{categoryId, month, amount}])` persists a batch (the budget API's
+ * grid save) and resolves to `{saved}`, or rejects with an Error to show.
  */
-const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, numMonths, saveUrl }) => {
+const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, numMonths, saveChanges }) => {
   // Flat row list in display order — paste fills straight down this list,
   // skipping group header rows (which aren't data rows).
   const flatRows = useMemo(
@@ -103,10 +106,7 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
     [values, savedValues],
   );
 
-  const dirtyKeys = useMemo(
-    () => Object.keys(values).filter((key) => isDirty(key)),
-    [values, isDirty],
-  );
+  const dirtyKeys = useMemo(() => Object.keys(values).filter((key) => isDirty(key)), [values, isDirty]);
 
   // Where the user asked to go while the "unsaved changes" dialog is up.
   const [leaveTo, setLeaveTo] = useState(null);
@@ -214,9 +214,7 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
   };
 
   const focusCell = (rowIdx, colIdx) => {
-    const input = containerRef.current?.querySelector(
-      `input[data-row="${rowIdx}"][data-col="${colIdx}"]`,
-    );
+    const input = containerRef.current?.querySelector(`input[data-row="${rowIdx}"][data-col="${colIdx}"]`);
     if (input) {
       input.focus();
       input.select();
@@ -247,7 +245,7 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
     const changes = dirtyKeys.map((key) => {
       const [categoryId, monthKey] = key.split('|');
       return {
-        category_id: parseInt(categoryId, 10),
+        categoryId: parseInt(categoryId, 10),
         month: monthKey,
         // A cleared cell that previously had a value is saved as 0
         amount: evaluateAmount(values[key]) ?? '0.00',
@@ -255,25 +253,12 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
     });
     setSaving(true);
     try {
-      const response = await fetch(saveUrl, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': Cookies.get('csrftoken'),
-        },
-        body: JSON.stringify({ changes }),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || 'Failed to save budgets');
-      }
-      const result = await response.json();
+      const result = await saveChanges(changes);
       // Normalize inputs to what was saved and mark everything clean
       setValues((prev) => {
         const next = { ...prev };
         changes.forEach((change) => {
-          next[cellKey(change.category_id, change.month)] = change.amount;
+          next[cellKey(change.categoryId, change.month)] = change.amount;
         });
         setSavedValues(next);
         return next;
@@ -381,11 +366,21 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <div className="flex items-center gap-1">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(prevStart)} aria-label={`Previous ${numMonths} months`}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => navigate(prevStart)}
+            aria-label={`Previous ${numMonths} months`}
+          >
             «
           </button>
           <span className="font-bold text-lg px-1">{rangeLabel}</span>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(nextStart)} aria-label={`Next ${numMonths} months`}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => navigate(nextStart)}
+            aria-label={`Next ${numMonths} months`}
+          >
             »
           </button>
         </div>
@@ -395,11 +390,17 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
       </div>
 
       {/* Grid */}
-      <div ref={containerRef} className="overflow-auto bg-base-100 rounded-lg shadow max-h-[calc(100vh-16rem)]" data-testid="budget-grid">
+      <div
+        ref={containerRef}
+        className="overflow-auto bg-base-100 rounded-lg shadow max-h-[calc(100vh-16rem)]"
+        data-testid="budget-grid"
+      >
         <table className="table table-sm w-full border-separate border-spacing-0">
           <thead>
             <tr>
-              <th ref={categoryHeaderRef} className="sticky top-0 left-0 z-30 bg-base-200 min-w-48">Category</th>
+              <th ref={categoryHeaderRef} className="sticky top-0 left-0 z-30 bg-base-200 min-w-48">
+                Category
+              </th>
               <th
                 className="sticky top-0 z-30 bg-base-200 text-right align-bottom border-r border-base-300 min-w-36"
                 style={actualsStyle}
@@ -414,7 +415,9 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
                     data-testid="budget-grid-actuals-mode"
                   >
                     {actualModes.map((mode) => (
-                      <option key={mode.key} value={mode.key}>{mode.label}</option>
+                      <option key={mode.key} value={mode.key}>
+                        {mode.label}
+                      </option>
                     ))}
                   </select>
                   <span className="text-xs font-normal opacity-70" data-testid="budget-grid-actuals-detail">
@@ -423,7 +426,9 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
                 </label>
               </th>
               {months.map((month) => (
-                <th key={month.key} className="sticky top-0 z-20 bg-base-200 text-right min-w-28">{month.label}</th>
+                <th key={month.key} className="sticky top-0 z-20 bg-base-200 text-right min-w-28">
+                  {month.label}
+                </th>
               ))}
             </tr>
           </thead>
@@ -438,7 +443,9 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
             {groups.map((group) => (
               <React.Fragment key={group.name}>
                 <tr>
-                  <td className="sticky left-0 z-10 bg-base-200 font-bold" data-testid="budget-grid-group">{group.name}</td>
+                  <td className="sticky left-0 z-10 bg-base-200 font-bold" data-testid="budget-grid-group">
+                    {group.name}
+                  </td>
                   <td className="sticky z-10 bg-base-200 border-r border-base-300" style={actualsStyle} />
                   <td colSpan={months.length} className="bg-base-200" />
                 </tr>
@@ -486,10 +493,7 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
                                 onFocus={(e) => e.target.select()}
                               />
                               {dirty && (
-                                <div
-                                  className="absolute -top-2 -right-2 z-30"
-                                  data-menu-key={key}
-                                >
+                                <div className="absolute -top-2 -right-2 z-30" data-menu-key={key}>
                                   <button
                                     type="button"
                                     tabIndex={-1}
@@ -562,7 +566,10 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
 
       {/* Save bar */}
       {dirtyKeys.length > 0 && (
-        <div className="sticky bottom-4 z-40 mt-4 flex items-center justify-between gap-4 bg-base-300 rounded-lg shadow-lg px-4 py-3" data-testid="budget-grid-save-bar">
+        <div
+          className="sticky bottom-4 z-40 mt-4 flex items-center justify-between gap-4 bg-base-300 rounded-lg shadow-lg px-4 py-3"
+          data-testid="budget-grid-save-bar"
+        >
           <span className="font-medium">
             {dirtyKeys.length} unsaved change{dirtyKeys.length === 1 ? '' : 's'}
           </span>
@@ -570,7 +577,13 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
             <button type="button" className="btn btn-ghost btn-sm" onClick={handleDiscard} disabled={saving}>
               Discard
             </button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving} data-testid="budget-grid-save">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={handleSave}
+              disabled={saving}
+              data-testid="budget-grid-save"
+            >
               {saving && <span className="loading loading-spinner loading-xs" />}
               Save Changes
             </button>
@@ -627,7 +640,10 @@ const BudgetGrid = ({ months, groups, actualModes = [], prevStart, nextStart, nu
       {/* Toast */}
       {toast && (
         <div className="toast toast-end z-50">
-          <div className={`alert ${toast.type === 'success' ? 'alert-success' : 'alert-error'}`} data-testid="budget-grid-toast">
+          <div
+            className={`alert ${toast.type === 'success' ? 'alert-success' : 'alert-error'}`}
+            data-testid="budget-grid-toast"
+          >
             <span>{toast.message}</span>
           </div>
         </div>

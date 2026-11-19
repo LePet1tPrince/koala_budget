@@ -9,10 +9,17 @@
  * After any successful same-origin write it re-reads the figure; if it moved, the
  * pill flashes and a delta chip ("+$300.00", "−$150.00") says by how much.
  *
+ * The figure is read from the budget API (`budgetUnassignedRetrieve`, this month,
+ * for the pill's book) through the generated client.
+ *
  * A full-page form post reloads instead, so the last figure seen is also kept in
  * sessionStorage: arriving on a page with a different figure than the one just
  * left shows the same chip, as long as it is the same month and only minutes old.
  */
+import { BudgetApi, Configuration } from 'api-client';
+
+import { getApiHeaders } from '../api';
+import { formatMoney } from '../common/amount';
 
 const DEBOUNCE_MS = 350;
 const CARRY_OVER_MS = 30 * 60 * 1000;
@@ -20,16 +27,18 @@ const STORAGE_KEY = 'koala:unassigned';
 
 let pills = [];
 let url = '';
+let client = null;
+let slugs = null;
 let current = null;
 let timer = null;
 let ticket = 0;
 
 const money = (value) =>
-  Math.abs(value).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function remember(data) {
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({url, month: data.month, raw: data.raw, at: Date.now()}));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ url, month: data.month, raw: data.raw, at: Date.now() }));
   } catch {
     // Storage blocked (private window): the chip after a reload is a nicety.
   }
@@ -94,14 +103,25 @@ function paint(data) {
   remember(data);
 }
 
+/** The API's `Unassigned` as the pill paints it: the figure, its words, the money formatted. */
+function pillData(unassigned) {
+  return {
+    raw: unassigned.amount,
+    display: formatMoney(unassigned.amount),
+    state: unassigned.state,
+    label: unassigned.label,
+    // The page renders the month as the first of it; keep one spelling for the carry-over.
+    month: `${unassigned.month}-01`,
+    expected: unassigned.expectedIncome ? { display: formatMoney(unassigned.expectedIncome.amount) } : null,
+  };
+}
+
 async function refresh() {
   const mine = ++ticket;
   try {
-    const response = await nativeFetch(url, {credentials: 'same-origin', headers: {Accept: 'application/json'}});
-    if (!response.ok) return;
-    const data = await response.json();
+    const unassigned = await client.budgetUnassignedRetrieve(slugs);
     // A slower, older response must not overwrite a newer figure.
-    if (mine === ticket) paint(data);
+    if (mine === ticket) paint(pillData(unassigned));
   } catch {
     // Offline or mid-navigation: the next write or page load catches up.
   }
@@ -146,6 +166,11 @@ function init() {
   pills = Array.from(document.querySelectorAll('[data-unassigned-pill]'));
   if (!pills.length) return;
   url = pills[0].dataset.url;
+  slugs = { teamSlug: pills[0].dataset.teamSlug, bookSlug: pills[0].dataset.bookSlug };
+  // The native fetch: the pill's own read must not count as a write it watches for.
+  client = new BudgetApi(
+    new Configuration({ basePath: window.location.origin, headers: getApiHeaders(), fetchApi: nativeFetch }),
+  );
   const raw = pills[0].dataset.raw;
   const month = pills[0].dataset.month;
 
@@ -167,7 +192,7 @@ function init() {
   });
   // Anything that changes money without a fetch can still ask.
   document.addEventListener('koala:unassigned-refresh', schedule);
-  window.koalaUnassigned = {refresh};
+  window.koalaUnassigned = { refresh };
 }
 
 if (document.readyState === 'loading') {

@@ -4,7 +4,7 @@
 {% load i18n %}
 
 {% block app %}
-  {{ grid_props|json_script:'budget-grid-props' }}
+  {{ request.book.base_url|json_script:'book-base' }}
 
   <div class="container mx-auto px-4 py-6">
     <div class="flex flex-wrap items-center gap-4 mb-4">

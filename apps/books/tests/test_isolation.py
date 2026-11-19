@@ -60,7 +60,8 @@ READS = {
     "budget:budget_home": month_query(),
     "budget:budget_grid": {"start": "2026-01-01"},
     "budget:api_unassigned": {},
-    "budget:budget_figures": month_query(),
+    "budget:api_month": {"month": "2026-03"},
+    "budget:api_grid": {"start": "2026-01"},
     "budget:goals_list": month_query(),
     "reports:reports_home": {},
     "reports:spending": {"start_date": "2026-03-01", "end_date": "2026-03-31"},
@@ -167,6 +168,7 @@ OBJECTS = {
     "budget:goal_unlink": ("goal_link", "link_pk", "post"),
     "budget:goal_contribution_edit": ("goal_allocation", "line_pk", "post"),
     "budget:category_visibility": ("account", "pk", "post"),
+    "budget:api_category_visibility": ("account", "pk", "post"),
     "reports:export_account_activity": ("account", "account_id", "get"),
     "plaid:plaid-item-detail": ("plaid_item", "pk", "get"),
     "plaid:plaid-item-sync": ("plaid_item", "pk", "post"),
@@ -211,15 +213,21 @@ WRITES = {
     "journal:transaction-edit": lambda a, b: {"ids": [b.entry.id], "description": "moved"},
     "journal:transaction-batch-delete": lambda a, b: {"ids": [b.entry.id]},
     "journal:transaction-batch-status": lambda a, b: {"ids": [b.entry.id], "status": "void"},
-    "budget:budget_save_amount": lambda a, b: {"category_id": b.groceries.id, "month": "2026-03-01", "amount": "999"},
-    "budget:budget_grid_save": lambda a, b: {
-        "changes": [{"category_id": b.groceries.id, "month": "2026-03-01", "amount": "999"}]
+    "budget:api_amount": lambda a, b: {"category_id": b.groceries.id, "month": "2026-03", "amount": "999"},
+    "budget:api_grid_save": lambda a, b: {
+        "changes": [{"category_id": b.groceries.id, "month": "2026-03", "amount": "999"}]
+    },
+    # Book B's category ids select nothing in book A.
+    "budget:api_autofill": lambda a, b: {
+        "action": "assign_zero",
+        "month": "2026-03",
+        "category_ids": [b.groceries.id],
     },
     # Book A's category covered from book B's goal: the goal is the row that must not move.
     # (B's category from Unassigned is BudgetCoverIsolationTest's.)
-    "budget:budget_cover": lambda a, b: {
+    "budget:api_cover": lambda a, b: {
         "category_id": a.groceries.id,
-        "month": "2026-03-01",
+        "month": "2026-03",
         "amount": "10",
         "source": "goal",
         "goal_id": b.goal.id,
@@ -470,8 +478,8 @@ class BudgetCoverIsolationTest(TwoBooksTestCase):
     def test_a_book_b_category_cannot_be_covered(self):
         before = snapshot(self.b.book)
         response = self.client.post(
-            self.url("budget:budget_cover"),
-            data=json.dumps({"category_id": self.b.groceries.id, "month": "2026-03-01", "amount": "10"}),
+            self.url("budget:api_cover"),
+            data=json.dumps({"category_id": self.b.groceries.id, "month": "2026-03", "amount": "10"}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
