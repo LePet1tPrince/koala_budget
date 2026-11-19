@@ -2,6 +2,7 @@ from rest_framework import permissions
 from rest_framework.exceptions import NotFound
 
 from apps.teams.permissions import _request_allowed_for_team, _view_for_members_edit_for_admins
+from apps.teams.roles import is_admin
 
 
 def _request_allowed_for_book(request) -> bool:
@@ -48,3 +49,10 @@ class BookAdminWritePermissions(BookAccessPermissions):
 
     def has_permission(self, request, view):
         return super().has_permission(request, view) and _view_for_members_edit_for_admins(request, request.team)
+
+
+class BookAdminPermissions(BookAccessPermissions):
+    """Admins of the book's team only, reads included -- as `book_admin_required` (the book's settings)."""
+
+    def has_permission(self, request, view):
+        return super().has_permission(request, view) and is_admin(request.user, request.team)
