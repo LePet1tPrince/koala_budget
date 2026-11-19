@@ -10,7 +10,7 @@ from .api import views as api
 
 app_name = "budget"
 
-goals = goals_api.GoalViewSet.as_view({"get": "list", "post": "create"})
+goals = goals_api.GoalViewSet.as_view({"get": "overview", "post": "create"})
 goal = goals_api.GoalViewSet.as_view(
     {"get": "retrieve", "put": "update", "patch": "partial_update", "delete": "destroy"}
 )

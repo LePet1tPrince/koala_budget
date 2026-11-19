@@ -99,7 +99,7 @@ class GoalViewSet(viewsets.GenericViewSet):
         ],
         responses=GoalListSerializer,
     )
-    def list(self, request, team_slug, book_slug):
+    def overview(self, request, team_slug, book_slug):
         """The goals page for a month: each goal's card, their totals and Unassigned."""
         month = month_query_param(request, default=this_month)
         closed = request.query_params.get("closed") in ("1", "true", "True")
