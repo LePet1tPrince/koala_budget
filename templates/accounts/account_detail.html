@@ -111,7 +111,7 @@
 </section>
 {% endif %}
 
-<section class="app-card" data-testid="account-activity">
+<section class="app-card" data-testid="account-activity" id="account-activity" data-account-id="{{ account.pk }}" data-start-date="{{ start_date|date:'Y-m-d' }}" data-end-date="{{ end_date|date:'Y-m-d' }}">
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <h2 class="text-base font-semibold">{% translate "Activity" %}</h2>
     <div class="flex flex-wrap items-center gap-2">
@@ -142,12 +142,7 @@
 {% vite_react_refresh %}
 {% vite_asset 'assets/javascript/reports/ReportsDateRangePicker.jsx' %}
 {% vite_asset 'assets/javascript/accounts/account-activity-editor.jsx' %}
-{% if balance_chart_data %}
-{{ balance_chart_data|json_script:'account-balance-data' }}
-{% vite_asset 'assets/javascript/reports/account-balance-chart.js' %}
-{% endif %}
-{% if budget_chart_data %}
-{{ budget_chart_data|json_script:'account-budget-data' }}
-{% vite_asset 'assets/javascript/reports/account-budget-chart.js' %}
+{% if has_balance_chart or budget_chart_kind %}
+{% vite_asset 'assets/javascript/accounts/account-charts.js' %}
 {% endif %}
 {% endblock %}

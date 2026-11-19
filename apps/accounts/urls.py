@@ -2,11 +2,20 @@
 URL configuration for accounts app.
 """
 
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
 
-from . import views
+from . import api, views
 
 app_name = "accounts"
+
+# The accounts API (`/a/{team}/{book}/accounts/api/...`), see `api.py`.
+router = DefaultRouter()
+router.register(r"board", api.AccountsBoardViewSet, basename="board")
+router.register(r"accounts", api.AccountViewSet, basename="account")
+router.register(r"groups", api.AccountGroupViewSet, basename="account-group")
+router.register(r"payees", api.PayeeViewSet, basename="payee")
+router.register(r"institutions", api.InstitutionViewSet, basename="institution")
 
 urlpatterns = [
     # Home
@@ -35,10 +44,6 @@ urlpatterns = [
     path("institutions/<int:pk>/accounts/", views.InstitutionAccountsView.as_view(), name="institution_accounts"),
     path("institutions/<int:pk>/update/", views.InstitutionUpdateView.as_view(), name="institution_update"),
     path("institutions/<int:pk>/delete/", views.InstitutionDeleteView.as_view(), name="institution_delete"),
-    # JSON API for the drag-and-drop chart-of-accounts board
-    path("api/reorder-accounts/", views.api_reorder_accounts, name="api_reorder_accounts"),
-    path("api/reorder-groups/", views.api_reorder_groups, name="api_reorder_groups"),
-    path("api/create-account/", views.api_create_account, name="api_create_account"),
-    path("api/create-group/", views.api_create_group, name="api_create_group"),
-    path("api/set-hidden/", views.api_set_hidden, name="api_set_hidden"),
+    path("api/board/", api.BoardView.as_view(), name="board"),
+    path("api/", include(router.urls)),
 ]

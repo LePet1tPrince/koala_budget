@@ -467,6 +467,11 @@ SPECTACULAR_SETTINGS = {
     "PREPROCESSING_HOOKS": [
         "apps.api.schema.filter_schema_apis",
     ],
+    "ENUM_NAME_OVERRIDES": {
+        # Every type the model stores (budget buckets included), and the ones a user may pick.
+        "AccountTypeEnum": "apps.accounts.models.ALL_ACCOUNT_TYPE_CHOICES",
+        "PickableAccountTypeEnum": "apps.accounts.models.ACCOUNT_TYPE_CHOICES",
+    },
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}
     },
