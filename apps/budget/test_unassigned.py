@@ -400,15 +400,40 @@ class UnassignedViewsTest(UnassignedFixture):
         response = self.client.get(reverse("budget:api_unassigned", args=[self.team.slug, self.book.slug]))
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(set(data), {"amount", "raw", "display", "state", "label", "month", "expected"})
-        self.assertEqual(data["raw"], f"{compute_unassigned(self.book, date.today()).amount:.2f}")
+        self.assertEqual(
+            set(data),
+            {
+                "month",
+                "amount",
+                "state",
+                "label",
+                "net_worth",
+                "envelopes",
+                "goals",
+                "overspent",
+                "goals_overspent",
+                "expected_income",
+            },
+        )
+        unassigned = compute_unassigned(self.book, date.today())
+        self.assertEqual(data["amount"], f"{unassigned.amount:.2f}")
+        self.assertEqual(data["month"], date.today().strftime("%Y-%m"))
+
+    def test_api_takes_a_month(self):
+        url = reverse("budget:api_unassigned", args=[self.team.slug, self.book.slug])
+        data = self.client.get(url, {"month": "2025-01"}).json()
+        self.assertEqual(data["month"], "2025-01")
+        self.assertEqual(data["amount"], f"{compute_unassigned(self.book, date(2025, 1, 1)).amount:.2f}")
+        response = self.client.get(url, {"month": "January"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("month", response.json())
 
     def test_api_refuses_non_members_and_anonymous(self):
         url = reverse("budget:api_unassigned", args=[self.team.slug, self.book.slug])
         self.client.logout()
-        self.assertEqual(self.client.get(url).status_code, 302)
+        self.assertIn(self.client.get(url).status_code, (401, 403))
         self.client.login(username="outsider-u@example.com", password="testpass123")
-        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertIn(self.client.get(url).status_code, (403, 404))
 
     def test_api_is_read_only(self):
         response = self.client.post(reverse("budget:api_unassigned", args=[self.team.slug, self.book.slug]))

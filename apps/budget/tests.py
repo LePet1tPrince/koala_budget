@@ -325,8 +325,22 @@ class BudgetMonthViewTest(TestCase):
         self.assertEqual(len(budgeted_by_month_category(self.book)), 1)
 
 
+def figure_rows(figures):
+    """`{category_id: row}` across every section and group of a month-figures response."""
+    return {
+        row["category_id"]: row
+        for section in figures["sections"]
+        for group in section["groups"]
+        for row in group["rows"]
+    }
+
+
+def figure_section(figures, key):
+    return next(section for section in figures["sections"] if section["key"] == key)
+
+
 class BudgetSaveAmountViewTest(TestCase):
-    """Tests for budget_save_amount — the in-place auto-save the budget table uses.
+    """The budget API's `api_amount` — the in-place auto-save the budget table uses.
 
     Its job is to save one amount and hand back every figure the page shows, so
     the page never has to reload (which used to reset the scroll position).
@@ -373,47 +387,46 @@ class BudgetSaveAmountViewTest(TestCase):
 
     def post(self, **payload):
         return self.client.post(
-            f"/a/{self.team.slug}/{self.book.slug}/budget/save-amount/",
+            f"/a/{self.team.slug}/{self.book.slug}/budget/api/amount/",
             data=json.dumps(payload),
             content_type="application/json",
         )
 
     def test_creates_budget_row_lazily(self):
-        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="123.45")
+        response = self.post(category_id=self.groceries.pk, month="2025-06", amount="123.45")
         self.assertEqual(response.status_code, 200)
         budget = budget_amount(self.book, self.groceries, self.month)
         self.assertEqual(budget, Decimal("123.45"))
 
     def test_updates_existing_budget_in_place(self):
         set_budget(self.book, self.groceries, self.month, Decimal("10.00"))
-        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="55")
+        response = self.post(category_id=self.groceries.pk, month="2025-06", amount="55")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(budget_amount(self.book, self.groceries, self.month), Decimal("55.00"))
         self.assertEqual(len(budgeted_by_month_category(self.book)), 1)
 
     def test_does_not_redirect(self):
         """The whole point: a save must not navigate, or the page scrolls back to the top."""
-        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="20")
+        response = self.post(category_id=self.groceries.pk, month="2025-06", amount="20")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "application/json")
 
     def test_returns_recomputed_figures(self):
-        """The response carries every cell the page shows, so it can repaint in place."""
-        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="250")
-        cells = response.json()["cells"]
-        self.assertEqual(cells[f"row:{self.groceries.pk}:available"]["value"], "$250.00")
-        self.assertEqual(cells[f"row:{self.groceries.pk}:available"]["tone"], "pos")
-        self.assertEqual(cells["group:expense:0:budgeted"]["value"], "$250.00")
-        self.assertEqual(cells["section:expense:budgeted"]["value"], "$250.00")
-        self.assertEqual(cells["sidebar:expense:assigned"]["value"], "$250.00")
-        self.assertEqual(cells["tab:expense:budgeted"]["value"], "$250.00")
-        self.assertIn("networth:available", cells)
+        """The response carries every figure the page shows, so it can repaint in place."""
+        response = self.post(category_id=self.groceries.pk, month="2025-06", amount="250")
+        figures = response.json()["figures"]
+        self.assertEqual(figures["month"], "2025-06")
+        self.assertEqual(figure_rows(figures)[self.groceries.pk]["available"], "250.00")
+        expense = figure_section(figures, "expense")
+        self.assertEqual(expense["groups"][0]["subtotals"]["budgeted"], "250.00")
+        self.assertEqual(expense["totals"]["budgeted"], "250.00")
+        self.assertEqual(expense["summary"]["assigned_this_month"], "250.00")
+        self.assertIn("amount", figures["unassigned"])
 
     def test_income_not_yet_received_is_still_expected_not_red(self):
-        response = self.post(category_id=self.salary.pk, month="2025-06-01", amount="3000")
-        cell = response.json()["cells"][f"row:{self.salary.pk}:available"]
-        self.assertEqual(cell["value"], "$3,000.00 still expected")
-        self.assertEqual(cell["tone"], "expected")
+        response = self.post(category_id=self.salary.pk, month="2025-06", amount="3000")
+        # Budgeted income not received: a negative income Available, which the page words.
+        self.assertEqual(figure_rows(response.json()["figures"])[self.salary.pk]["available"], "-3000.00")
         page = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/?month=2025-06-01&tab=income")
         self.assertContains(page, "$3,000.00 still expected")
         self.assertNotContains(page, "-$3,000.00")
@@ -425,64 +438,66 @@ class BudgetSaveAmountViewTest(TestCase):
         self.assertContains(page, "#budget-table-card .budget-select-col { display: none; }")
 
     def test_amount_is_normalized_in_the_response(self):
-        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="7")
+        response = self.post(category_id=self.groceries.pk, month="2025-06", amount="7")
         self.assertEqual(response.json()["amount"], "7.00")
 
     def test_accepts_a_pasted_spreadsheet_amount(self):
-        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="$1,234.56")
+        response = self.post(category_id=self.groceries.pk, month="2025-06", amount="$1,234.56")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(budget_amount(self.book, self.groceries, self.month), Decimal("1234.56"))
 
     def test_blank_amount_clears_the_budget(self):
         set_budget(self.book, self.groceries, self.month, Decimal("99.00"))
-        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="")
+        response = self.post(category_id=self.groceries.pk, month="2025-06", amount="")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(budget_amount(self.book, self.groceries, self.month), Decimal("0.00"))
         self.assertIsNone(budget_entry(self.book, self.month))
 
     def test_rejects_a_non_numeric_amount(self):
-        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="abc")
+        response = self.post(category_id=self.groceries.pk, month="2025-06", amount="abc")
         self.assertEqual(response.status_code, 400)
         self.assertFalse(bool(budgeted_by_month_category(self.book)))
 
     def test_rejects_an_invalid_month(self):
         response = self.post(category_id=self.groceries.pk, month="not-a-date", amount="10")
         self.assertEqual(response.status_code, 400)
+        self.assertIn("month", response.json())
 
     def test_rejects_a_non_category_account(self):
         """Only income/expense accounts are budget categories."""
-        response = self.post(category_id=self.checking.pk, month="2025-06-01", amount="10")
+        response = self.post(category_id=self.checking.pk, month="2025-06", amount="10")
         self.assertEqual(response.status_code, 400)
         self.assertFalse(bool(budgeted_by_month_category(self.book)))
 
     def test_rejects_another_teams_category(self):
-        response = self.post(category_id=self.foreign_category.pk, month="2025-06-01", amount="10")
+        response = self.post(category_id=self.foreign_category.pk, month="2025-06", amount="10")
         self.assertEqual(response.status_code, 400)
         self.assertFalse(budgeted_by_month_category(self.other_book))
 
     def test_requires_login(self):
         self.client.logout()
-        response = self.post(category_id=self.groceries.pk, month="2025-06-01", amount="10")
-        self.assertIn(response.status_code, (302, 403, 404))
+        response = self.post(category_id=self.groceries.pk, month="2025-06", amount="10")
+        self.assertIn(response.status_code, (401, 403))
         self.assertFalse(bool(budgeted_by_month_category(self.book)))
 
     def test_rejects_a_non_numeric_category_id(self):
-        response = self.post(category_id="abc", month="2025-06-01", amount="10")
+        response = self.post(category_id="abc", month="2025-06", amount="10")
         self.assertEqual(response.status_code, 400)
 
     def test_rejects_get(self):
-        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/save-amount/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/api/amount/")
         self.assertEqual(response.status_code, 405)
 
-    def test_month_is_normalized_to_the_first(self):
-        self.post(category_id=self.salary.pk, month="2025-06-17", amount="42")
+    def test_month_is_a_month_not_a_day(self):
+        self.assertEqual(self.post(category_id=self.salary.pk, month="2025-06-17", amount="42").status_code, 400)
+        self.post(category_id=self.salary.pk, month="2025-06", amount="42")
         self.assertEqual(budget_amount(self.book, self.salary, self.month), Decimal("42.00"))
         self.assertEqual(budget_entry(self.book, self.month).entry_date, self.month)
 
 
 class BudgetFiguresViewTest(TestCase):
-    """budget_figures: the page's cells re-read after a write that isn't a budget save —
-    moving a transaction to another category from the Actual popover moves Available."""
+    """The budget API's `api_month`: the page's figures re-read after a write that isn't a
+    budget save — moving a transaction to another category from the Actual popover moves Available."""
 
     @classmethod
     def setUpTestData(cls):
@@ -512,13 +527,13 @@ class BudgetFiguresViewTest(TestCase):
             book=self.book, journal_entry=entry, account=self.checking, cr_amount=Decimal("30.00")
         )
 
-    def get(self, month="2025-06-01"):
-        return self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/figures/", {"month": month})
+    def get(self, month="2025-06"):
+        return self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/api/month/", {"month": month})
 
     def test_available_follows_a_recategorized_transaction(self):
-        cells = self.get().json()["cells"]
-        self.assertEqual(cells[f"row:{self.groceries.pk}:available"]["value"], "$70.00")
-        self.assertEqual(cells[f"row:{self.dining.pk}:available"]["value"], "$100.00")
+        rows = figure_rows(self.get().json())
+        self.assertEqual(rows[self.groceries.pk]["available"], "70.00")
+        self.assertEqual(rows[self.dining.pk]["available"], "100.00")
 
         response = self.client.post(
             f"/a/{self.team.slug}/{self.book.slug}/journal/api/lines/{self.line.pk}/recategorize/",
@@ -527,25 +542,26 @@ class BudgetFiguresViewTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
-        cells = self.get().json()["cells"]
-        self.assertEqual(cells[f"row:{self.groceries.pk}:available"]["value"], "$100.00")
-        self.assertEqual(cells[f"row:{self.dining.pk}:available"]["value"], "$70.00")
-        self.assertEqual(cells["section:expense:available"]["value"], "$170.00")
-
-    def test_month_is_normalized_to_the_first(self):
-        cells = self.get("2025-06-17").json()["cells"]
-        self.assertEqual(cells[f"row:{self.groceries.pk}:available"]["value"], "$70.00")
+        figures = self.get().json()
+        rows = figure_rows(figures)
+        self.assertEqual(rows[self.groceries.pk]["available"], "100.00")
+        self.assertEqual(rows[self.dining.pk]["available"], "70.00")
+        self.assertEqual(figure_section(figures, "expense")["totals"]["available"], "170.00")
 
     def test_rejects_an_invalid_month(self):
-        self.assertEqual(self.get("nope").status_code, 400)
+        for month in ("nope", "2025-06-17", ""):
+            with self.subTest(month=month):
+                response = self.get(month)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("month", response.json())
 
     def test_rejects_post(self):
-        response = self.client.post(f"/a/{self.team.slug}/{self.book.slug}/budget/figures/?month=2025-06-01")
+        response = self.client.post(f"/a/{self.team.slug}/{self.book.slug}/budget/api/month/?month=2025-06")
         self.assertEqual(response.status_code, 405)
 
     def test_requires_membership(self):
         self.client.logout()
-        self.assertIn(self.get().status_code, (302, 403, 404))
+        self.assertIn(self.get().status_code, (401, 403))
 
 
 class BudgetAmountParsingTest(TestCase):
@@ -691,7 +707,8 @@ class BudgetGridViewTest(TestCase):
         cls.other_account = Account.objects.create(book=cls.other_book, name="Other Rent", account_group=other_group)
 
         cls.grid_url = f"/a/{cls.team.slug}/{cls.book.slug}/budget/grid/"
-        cls.save_url = f"/a/{cls.team.slug}/{cls.book.slug}/budget/grid/save/"
+        cls.api_url = f"/a/{cls.team.slug}/{cls.book.slug}/budget/api/grid/"
+        cls.save_url = f"/a/{cls.team.slug}/{cls.book.slug}/budget/api/grid/save/"
 
     def setUp(self):
         self.client.login(username="griduser@example.com", password="testpass123")
@@ -701,31 +718,48 @@ class BudgetGridViewTest(TestCase):
 
     # ------------------------------------------------------------------ GET
 
-    def test_grid_view_renders_with_existing_amounts(self):
-        set_budget(self.book, self.groceries, date(2026, 3, 1), Decimal("250.00"))
+    def grid(self, **query):
+        return self.client.get(self.api_url, query)
+
+    def test_grid_page_is_a_shell_the_api_fills(self):
         response = self.client.get(f"{self.grid_url}?start=2026-01-01")
         self.assertEqual(response.status_code, 200)
-        props = response.context["grid_props"]
-        self.assertEqual(len(props["months"]), 12)
-        self.assertEqual(props["months"][0], {"key": "2026-01-01", "label": "Jan 2026"})
-        groceries_row = next(
-            row for group in props["groups"] for row in group["rows"] if row["id"] == self.groceries.pk
-        )
-        self.assertEqual(groceries_row["amounts"]["2026-03-01"], "250.00")
+        self.assertContains(response, 'id="budget-grid"')
+        self.assertNotContains(response, "budget-grid-props")
+
+    def test_grid_view_renders_with_existing_amounts(self):
+        set_budget(self.book, self.groceries, date(2026, 3, 1), Decimal("250.00"))
+        response = self.grid(start="2026-01")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data["months"]), 12)
+        self.assertEqual(data["months"][0], {"month": "2026-01", "label": "Jan 2026"})
+        self.assertEqual((data["start"], data["prev_start"], data["next_start"]), ("2026-01", "2025-01", "2027-01"))
+        groceries_row = next(row for group in data["groups"] for row in group["rows"] if row["id"] == self.groceries.pk)
+        self.assertEqual(groceries_row["amounts"], {"2026-03": "250.00"})
 
     def test_grid_view_does_not_create_budget_rows(self):
-        response = self.client.get(f"{self.grid_url}?start=2031-01-01")
+        response = self.grid(start="2031-01")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(budgeted_by_month_category(self.book)), 0)
 
     def test_grid_view_excludes_other_teams_accounts(self):
-        response = self.client.get(self.grid_url)
-        row_ids = {row["id"] for group in response.context["grid_props"]["groups"] for row in group["rows"]}
+        response = self.grid()
+        row_ids = {row["id"] for group in response.json()["groups"] for row in group["rows"]}
         self.assertNotIn(self.other_account.pk, row_ids)
+        self.assertIn(self.groceries.pk, row_ids)
 
-    def test_grid_view_clamps_months_param(self):
-        response = self.client.get(f"{self.grid_url}?start=2026-01-01&months=999")
-        self.assertEqual(len(response.context["grid_props"]["months"]), 24)
+    def test_grid_defaults_to_january_this_year(self):
+        data = self.grid().json()
+        self.assertEqual(data["start"], f"{date.today().year}-01")
+        self.assertEqual(data["num_months"], 12)
+
+    def test_grid_rejects_a_bad_range(self):
+        for query in ({"months": "999"}, {"months": "0"}, {"months": "x"}, {"start": "2026-01-01"}):
+            with self.subTest(query=query):
+                response = self.grid(**query)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(next(iter(query)), response.json())
 
     def _spend(self, day, amount, account=None):
         from apps.accounts.models import ACCOUNT_TYPE_ASSET
@@ -742,7 +776,7 @@ class BudgetGridViewTest(TestCase):
         return entry
 
     def test_grid_actuals_modes(self):
-        from .views import _grid_actuals
+        from .grid import grid_actuals as _grid_actuals
 
         # Last year: $1,200 over two months → $100/month across all 12.
         self._spend(date(2025, 3, 10), "700.00")
@@ -764,29 +798,30 @@ class BudgetGridViewTest(TestCase):
         self.assertEqual(modes[2]["detail"], "Aug 2026")
         self.assertEqual(
             actuals[self.groceries.pk],
-            {"avg_this_year": "50.00", "avg_last_year": "100.00", "last_month": "300.00"},
+            {"avg_this_year": Decimal("50.00"), "avg_last_year": Decimal("100.00"), "last_month": Decimal("300.00")},
         )
         self.assertEqual(
             actuals[self.salary.pk],
-            {"avg_this_year": "0.00", "avg_last_year": "0.00", "last_month": "0.00"},
+            {"avg_this_year": Decimal("0.00"), "avg_last_year": Decimal("0.00"), "last_month": Decimal("0.00")},
         )
 
     def test_grid_actuals_in_january_has_no_this_year_average(self):
-        from .views import _grid_actuals
+        from .grid import grid_actuals as _grid_actuals
 
         self._spend(date(2025, 12, 15), "240.00")
         modes, actuals = _grid_actuals(self.book, [self.groceries], date(2026, 1, 15))
         self.assertEqual(modes[2]["detail"], "Dec 2025")
         self.assertEqual(
             actuals[self.groceries.pk],
-            {"avg_this_year": None, "avg_last_year": "20.00", "last_month": "240.00"},
+            {"avg_this_year": None, "avg_last_year": Decimal("20.00"), "last_month": Decimal("240.00")},
         )
 
     def test_grid_view_includes_actuals(self):
-        response = self.client.get(f"{self.grid_url}?start=2031-01-01")
-        props = response.context["grid_props"]
-        self.assertEqual(len(props["actualModes"]), 3)
-        row = next(row for group in props["groups"] for row in group["rows"] if row["id"] == self.groceries.pk)
+        data = self.grid(start="2031-01").json()
+        self.assertEqual(
+            [mode["key"] for mode in data["actual_modes"]], ["avg_this_year", "avg_last_year", "last_month"]
+        )
+        row = next(row for group in data["groups"] for row in group["rows"] if row["id"] == self.groceries.pk)
         self.assertEqual(set(row["actuals"]), {"avg_this_year", "avg_last_year", "last_month"})
 
     def test_grid_back_link_keeps_the_budget_month(self):
@@ -801,10 +836,13 @@ class BudgetGridViewTest(TestCase):
         self.client.logout()
         response = self.client.get(self.grid_url)
         self.assertEqual(response.status_code, 302)
+        self.assertIn(self.grid().status_code, (401, 403))
 
     def test_grid_view_requires_team_membership(self):
         response = self.client.get(f"/a/{self.other_team.slug}/{self.other_book.slug}/budget/grid/")
         self.assertEqual(response.status_code, 404)
+        response = self.client.get(f"/a/{self.other_team.slug}/{self.other_book.slug}/budget/api/grid/")
+        self.assertIn(response.status_code, (403, 404))
 
     # ----------------------------------------------------------------- POST
 
@@ -812,9 +850,9 @@ class BudgetGridViewTest(TestCase):
         set_budget(self.book, self.groceries, date(2026, 1, 1), Decimal("100.00"))
         response = self.post_save(
             [
-                {"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "150.00"},
-                {"category_id": self.groceries.pk, "month": "2026-02-01", "amount": "175.50"},
-                {"category_id": self.salary.pk, "month": "2026-01-01", "amount": "4000"},
+                {"category_id": self.groceries.pk, "month": "2026-01", "amount": "150.00"},
+                {"category_id": self.groceries.pk, "month": "2026-02", "amount": "175.50"},
+                {"category_id": self.salary.pk, "month": "2026-01", "amount": "4000"},
             ]
         )
         self.assertEqual(response.status_code, 200)
@@ -832,7 +870,7 @@ class BudgetGridViewTest(TestCase):
     def test_save_logs_audit_event(self):
         from apps.audit.models import AuditEvent
 
-        self.post_save([{"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "10"}])
+        self.post_save([{"category_id": self.groceries.pk, "month": "2026-01", "amount": "10"}])
         event = AuditEvent.objects.filter(team=self.team, event_type=AuditEvent.BULK_EDIT).latest("timestamp")
         self.assertEqual(event.metadata["scope"], "budget_grid")
         self.assertEqual(event.metadata["saved"], 1)
@@ -840,8 +878,8 @@ class BudgetGridViewTest(TestCase):
     def test_save_rejects_other_teams_category(self):
         response = self.post_save(
             [
-                {"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "50.00"},
-                {"category_id": self.other_account.pk, "month": "2026-01-01", "amount": "50.00"},
+                {"category_id": self.groceries.pk, "month": "2026-01", "amount": "50.00"},
+                {"category_id": self.other_account.pk, "month": "2026-01", "amount": "50.00"},
             ]
         )
         self.assertEqual(response.status_code, 400)
@@ -849,13 +887,16 @@ class BudgetGridViewTest(TestCase):
         self.assertFalse(budgeted_by_month_category(self.book))
 
     def test_save_rejects_invalid_amount(self):
-        response = self.post_save([{"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "abc"}])
+        response = self.post_save([{"category_id": self.groceries.pk, "month": "2026-01", "amount": "abc"}])
         self.assertEqual(response.status_code, 400)
         self.assertFalse(budgeted_by_month_category(self.book))
 
     def test_save_rejects_invalid_month(self):
-        response = self.post_save([{"category_id": self.groceries.pk, "month": "not-a-date", "amount": "10"}])
-        self.assertEqual(response.status_code, 400)
+        for month in ("not-a-date", "2026-01-15"):
+            with self.subTest(month=month):
+                response = self.post_save([{"category_id": self.groceries.pk, "month": month, "amount": "10"}])
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("changes", response.json())
 
     def test_save_rejects_malformed_body(self):
         response = self.client.post(self.save_url, "not json", content_type="application/json")
@@ -863,16 +904,16 @@ class BudgetGridViewTest(TestCase):
         response = self.client.post(self.save_url, {"changes": "nope"}, content_type="application/json")
         self.assertEqual(response.status_code, 400)
 
-    def test_save_normalizes_month_to_first_day(self):
-        response = self.post_save([{"category_id": self.groceries.pk, "month": "2026-01-15", "amount": "20"}])
+    def test_save_rounds_to_cents(self):
+        response = self.post_save([{"category_id": self.groceries.pk, "month": "2026-01", "amount": "20.005"}])
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(budget_amount(self.book, self.groceries, date(2026, 1, 1)), Decimal("20.00"))
+        self.assertEqual(budget_amount(self.book, self.groceries, date(2026, 1, 1)), Decimal("20.01"))
 
     def test_save_last_write_wins_for_duplicate_cells(self):
         response = self.post_save(
             [
-                {"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "10"},
-                {"category_id": self.groceries.pk, "month": "2026-01-01", "amount": "30"},
+                {"category_id": self.groceries.pk, "month": "2026-01", "amount": "10"},
+                {"category_id": self.groceries.pk, "month": "2026-01", "amount": "30"},
             ]
         )
         self.assertEqual(response.status_code, 200)
@@ -888,11 +929,11 @@ class BudgetGridViewTest(TestCase):
 
     def test_save_requires_team_membership(self):
         response = self.client.post(
-            f"/a/{self.other_team.slug}/{self.other_book.slug}/budget/grid/save/",
+            f"/a/{self.other_team.slug}/{self.other_book.slug}/budget/api/grid/save/",
             {"changes": []},
             content_type="application/json",
         )
-        self.assertEqual(response.status_code, 404)
+        self.assertIn(response.status_code, (403, 404))
 
 
 class BudgetSectionOrderingTest(TestCase):
@@ -936,8 +977,8 @@ class BudgetSectionOrderingTest(TestCase):
         self.assertEqual(expense_section["totals"]["budgeted"], Decimal("1500.00"))
 
     def test_grid_view_groups_income_first(self):
-        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/grid/?start=2026-01-01")
-        groups = response.context["grid_props"]["groups"]
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/api/grid/?start=2026-01")
+        groups = response.json()["groups"]
         self.assertEqual([g["type"] for g in groups], ["income", "expense"])
         self.assertEqual(groups[0]["name"], "Zeta Income")
 
@@ -1340,24 +1381,47 @@ class HiddenCategoryTest(TestCase):
     def hide(self, account, **headers):
         return self.client.post(self.url(account), {"hidden": "1", "month": "2025-06-01"}, **headers)
 
-    def test_hide_answers_json_when_asked(self):
-        response = self.hide(self.gym, HTTP_ACCEPT="application/json")
+    def api_url(self, account):
+        return f"/a/{self.team.slug}/{self.book.slug}/budget/api/categories/{account.pk}/visibility/"
+
+    def api_hide(self, account, hidden=True, month="2025-06"):
+        return self.client.post(
+            self.api_url(account), json.dumps({"hidden": hidden, "month": month}), content_type="application/json"
+        )
+
+    def test_api_hide_answers_with_the_month_regrouped(self):
+        response = self.api_hide(self.gym)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"category_id": self.gym.pk, "hidden": True})
+        data = response.json()
+        self.assertEqual((data["category_id"], data["hidden"]), (self.gym.pk, True))
+        expense = next(s for s in data["figures"]["sections"] if s["key"] == "expense")
+        visible, hidden = expense["groups"]
+        self.assertEqual([r["category_id"] for r in visible["rows"]], [self.groceries.pk])
+        self.assertTrue(hidden["hidden"])
+        self.assertEqual([r["category_id"] for r in hidden["rows"]], [self.gym.pk])
+        self.assertEqual(hidden["overspent"], 1)
+        self.assertEqual(expense["hidden_count"], 1)
         self.gym.refresh_from_db()
         self.assertTrue(self.gym.hidden_from_budget)
 
-    def test_hide_from_the_page_answers_with_the_redrawn_region(self):
-        """The page's script asks for the `#budget-swap` partial, saving a second request."""
+    def test_api_unhide(self):
+        Account.objects.filter(pk=self.gym.pk).update(hidden_from_budget=True)
+        self.assertEqual(self.api_hide(self.gym, hidden=False).status_code, 200)
+        self.gym.refresh_from_db()
+        self.assertFalse(self.gym.hidden_from_budget)
+
+    def test_api_validation_and_scope(self):
         response = self.client.post(
-            self.url(self.gym), {"hidden": "1", "month": "2025-06-01"}, HTTP_X_BUDGET_FRAGMENT="1"
+            self.api_url(self.gym), json.dumps({"hidden": True}), content_type="application/json"
         )
-        self.assertEqual(response.status_code, 200)
-        html = response.content.decode()
-        self.assertTrue(html.lstrip().startswith("<!-- Main Content"), html[:80])
-        self.assertIn('id="budget-swap"', html)
-        self.assertIn('data-testid="budget-hidden-row" data-hidden-row="expense" hidden', html)
-        self.assertNotIn("<html", html)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("month", response.json())
+        self.assertEqual(self.api_hide(self.checking).status_code, 404)
+        self.assertEqual(self.api_hide(self.foreign).status_code, 404)
+        self.foreign.refresh_from_db()
+        self.assertFalse(self.foreign.hidden_from_budget)
+        self.client.logout()
+        self.assertIn(self.api_hide(self.gym).status_code, (401, 403))
 
     def test_hide_without_js_redirects_back_to_the_month(self):
         response = self.hide(self.gym)
@@ -1369,7 +1433,7 @@ class HiddenCategoryTest(TestCase):
 
     def test_unhide(self):
         Account.objects.filter(pk=self.gym.pk).update(hidden_from_budget=True)
-        self.client.post(self.url(self.gym), {"hidden": "0"}, HTTP_ACCEPT="application/json")
+        self.client.post(self.url(self.gym), {"hidden": "0"})
         self.gym.refresh_from_db()
         self.assertFalse(self.gym.hidden_from_budget)
 
@@ -1405,8 +1469,8 @@ class HiddenCategoryTest(TestCase):
 
     def test_grid_leaves_hidden_categories_out(self):
         self.hide(self.gym)
-        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/grid/?start=2025-06-01")
-        rows = [row["id"] for group in response.context["grid_props"]["groups"] for row in group["rows"]]
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/budget/api/grid/?start=2025-06")
+        rows = [row["id"] for group in response.json()["groups"] for row in group["rows"]]
         self.assertEqual(rows, [self.groceries.pk])
 
     def test_autofill_leaves_hidden_categories_alone(self):
@@ -1420,8 +1484,8 @@ class HiddenCategoryTest(TestCase):
     def test_hidden_category_still_takes_a_budget_amount(self):
         self.hide(self.gym)
         response = self.client.post(
-            f"/a/{self.team.slug}/{self.book.slug}/budget/save-amount/",
-            data=json.dumps({"category_id": self.gym.pk, "month": "2025-06-01", "amount": "50"}),
+            f"/a/{self.team.slug}/{self.book.slug}/budget/api/amount/",
+            data=json.dumps({"category_id": self.gym.pk, "month": "2025-06", "amount": "50"}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
@@ -1552,15 +1616,15 @@ class BudgetTabsTest(TestCase):
         self.assertEqual(expense["overspent"], 1)
 
         response = self.client.post(
-            f"{self.base}save-amount/",
-            data=json.dumps({"category_id": self.rent.pk, "month": "2025-06-01", "amount": "1200"}),
+            f"{self.base}api/amount/",
+            data=json.dumps({"category_id": self.rent.pk, "month": "2025-06", "amount": "1200"}),
             content_type="application/json",
         )
-        cells = response.json()["cells"]
-        self.assertEqual(cells["tab:expense:overspent"]["hidden"], True)
-        self.assertEqual(cells["tab:income:budgeted"]["value"], "$3,000.00")
-        self.assertEqual(cells["sidebar:income:assigned"]["value"], "$3,000.00")
-        self.assertEqual(cells["sidebar:expense:assigned"]["value"], "$1,600.00")
+        income, expense = response.json()["figures"]["sections"]
+        self.assertEqual(expense["overspent"], 0)
+        self.assertEqual(income["totals"]["budgeted"], "3000.00")
+        self.assertEqual(income["summary"]["assigned_this_month"], "3000.00")
+        self.assertEqual(expense["summary"]["assigned_this_month"], "1600.00")
 
     def test_autofill_touches_only_its_own_tab(self):
         response = self.client.post(
@@ -1581,13 +1645,11 @@ class BudgetTabsTest(TestCase):
         # An unbudgeted section is ignored, so the action covers what the book does budget.
         self.assertEqual(amounts.get(self.groceries.pk, 0), Decimal("0"))
 
-    def test_hiding_redraws_the_categorys_own_tab(self):
+    def test_hiding_without_js_returns_to_the_categorys_own_tab(self):
         response = self.client.post(
-            f"{self.base}categories/{self.salary.pk}/visibility/",
-            {"hidden": "1", "month": "2025-06-01"},
-            HTTP_X_BUDGET_FRAGMENT="1",
+            f"{self.base}categories/{self.salary.pk}/visibility/", {"hidden": "1", "month": "2025-06-01"}
         )
-        self.assertEqual(response.context["budget_tab"], "income")
+        self.assertRedirects(response, f"{self.base}?month=2025-06-01&tab=income", fetch_redirect_response=False)
 
     def test_no_js_save_returns_to_the_rows_tab(self):
         response = self.client.post(
