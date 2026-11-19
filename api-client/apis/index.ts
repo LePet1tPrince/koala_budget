@@ -4,6 +4,7 @@ export * from './AApi';
 export * from './ApiApi';
 export * from './AuditApi';
 export * from './BankFeedApi';
+export * from './BudgetApi';
 export * from './JournalApi';
 export * from './PlaidApi';
 export * from './ReconciliationApi';
