@@ -22,8 +22,8 @@
     </section>
     <section class="app-card" data-testid="metric-income-ytd">
       <div class="text-sm text-base-content/70">{% translate "Income − expenses (YTD)" %}</div>
-      <div class="text-2xl font-semibold tracking-tight mt-1 {% if income_ytd.net_profit < 0 %}text-error{% else %}text-success{% endif %}">
-        {{ income_ytd.net_profit|currency }}
+      <div class="text-2xl font-semibold tracking-tight mt-1 {% if income_ytd.net < 0 %}text-error{% else %}text-success{% endif %}">
+        {{ income_ytd.net|currency }}
       </div>
       <a href="{% url 'reports:spending' request.team.slug request.book.slug %}" class="link text-xs mt-2 inline-block">{% translate "View profit & loss" %}</a>
     </section>
@@ -41,8 +41,12 @@
       <h2 class="text-2xl font-semibold">{% translate "Net worth" %}</h2>
       <a href="{% url 'reports:net_worth' request.team.slug request.book.slug %}" class="link text-sm">{% translate "See more reports" %}</a>
     </div>
-    {% if net_worth_chart_data %}
-      <div class="w-full" style="height: 220px;">
+    {% if has_net_worth_trend %}
+      <div class="w-full relative" style="height: 220px;" data-chart-frame>
+        {# Drawn from `GET …/api/home/` (home-net-worth-chart.js); the spinner shows until it lands. #}
+        <div class="absolute inset-0 flex items-center justify-center" data-chart-loading>
+          <span class="loading loading-spinner loading-md text-base-content/40" aria-label="{% translate 'Loading' %}"></span>
+        </div>
         <canvas id="home-net-worth-chart" class="w-full h-full"></canvas>
       </div>
     {% else %}
@@ -109,8 +113,8 @@
             type="button"
             class="btn btn-ghost btn-sm"
             data-dismiss-monthly-review
-            data-url="{{ monthly_review_dismiss_url }}"
-            data-month="{{ monthly_review_month|date:'Y-m-d' }}"
+            data-book-base="{{ request.book.base_url }}"
+            data-month="{{ monthly_review_month|date:'Y-m' }}"
           >
             {% translate "Dismiss" %}
           </button>
@@ -171,8 +175,8 @@
 {% block page_js %}
   {% if show_resume %}{% vite_asset 'assets/javascript/onboarding/resume.js' %}{% endif %}
   {% if show_monthly_review_nudge %}{% vite_asset 'assets/javascript/monthly_review/resume.js' %}{% endif %}
-{% if net_worth_chart_data %}
-{{ net_worth_chart_data|json_script:'home-net-worth-data' }}
+{% if has_net_worth_trend %}
+{{ request.book.base_url|json_script:'book-base' }}
 {% vite_asset 'assets/javascript/dashboard/home-net-worth-chart.js' %}
 {% endif %}
 {% endblock %}

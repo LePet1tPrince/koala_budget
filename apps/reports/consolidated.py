@@ -13,8 +13,9 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.utils.translation import gettext as _
+from django.utils.translation import gettext_lazy
 
-from apps.utils.months import months_between
+from apps.utils.months import add_months, months_between
 
 from .services import ReportService
 from .wealth_rank import global_rank
@@ -34,6 +35,11 @@ def bucket_for(start_date, end_date):
 
 # Statement column periods, coarsest first: the order the "By …" buttons appear in.
 COLUMN_PERIODS = ("year", "quarter", "month")
+COLUMN_LABELS = {
+    "year": gettext_lazy("By year"),
+    "quarter": gettext_lazy("By quarter"),
+    "month": gettext_lazy("By month"),
+}
 
 
 def column_periods(start_date, end_date):
@@ -43,6 +49,21 @@ def column_periods(start_date, end_date):
     month only; a range inside one month gets none (Total is all there is).
     """
     return [p for p in COLUMN_PERIODS if len(ReportService._period_range(start_date, end_date, p)) > 1]
+
+
+# Months per statement column period.
+PERIOD_MONTHS = {"month": 1, "quarter": 3, "year": 12}
+
+
+def period_bounds(periods, period, start_date, end_date):
+    """
+    `(first, last)` day of each statement column -- the dates an account opens on
+    from that column's cell -- clamped to the report's range, so a partial first or
+    last month stays partial. `periods` are the columns' first days (the income
+    statement's `periods`), `period` their length.
+    """
+    step = PERIOD_MONTHS[period]
+    return [(max(first, start_date), min(add_months(first, step) - timedelta(days=1), end_date)) for first in periods]
 
 
 def _pct(part, whole):
@@ -154,6 +175,7 @@ def net_worth_report(book, start_date, end_date):
             composition_data = None
     return {
         "sections": sections,
+        "trend": trend,
         "stats": stats,
         "chart_data": chart_data,
         "composition_data": composition_data,
