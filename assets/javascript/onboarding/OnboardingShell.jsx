@@ -30,7 +30,7 @@ const isAnswered = (question, value) => {
 };
 
 const OnboardingShell = ({ props }) => {
-  const { questions, phases, state, teamName, firstName, urls, homeUrl, ynabUrl, api } = props;
+  const { questions, phases, state, teamName, firstName, homeUrl, ynabUrl, api } = props;
 
   const [answers, setAnswers] = useState(() => state.answers || {});
   const [started, setStarted] = useState(() => state.phase !== 'welcome');
@@ -57,8 +57,8 @@ const OnboardingShell = ({ props }) => {
   }, []);
 
   useEffect(() => {
-    if (!state.question_phase) return;
-    const resumeAt = questions.findIndex((q) => q.phase === state.question_phase);
+    if (!state.questionPhase) return;
+    const resumeAt = questions.findIndex((q) => q.phase === state.questionPhase);
     if (resumeAt > 0) setIndex(resumeAt);
     // Deliberately once, on mount: after that the user drives the position.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,15 +75,9 @@ const OnboardingShell = ({ props }) => {
   const answeredHere = question ? isAnswered(question, answers[question.id]) : true;
   const canContinue = !question?.required || answeredHere;
 
-  const phaseIndex = useMemo(
-    () => phases.findIndex((p) => p.key === question?.phase),
-    [phases, question],
-  );
+  const phaseIndex = useMemo(() => phases.findIndex((p) => p.key === question?.phase), [phases, question]);
 
-  const setAnswer = useCallback(
-    (value) => setAnswers((prev) => ({ ...prev, [question.id]: value })),
-    [question],
-  );
+  const setAnswer = useCallback((value) => setAnswers((prev) => ({ ...prev, [question.id]: value })), [question]);
 
   // Save quietly in the background. A failed save must not block the user --
   // every answer is posted again with the final submit, so the worst case is
@@ -155,8 +149,9 @@ const OnboardingShell = ({ props }) => {
     setBusy(true);
     setError(null);
     try {
-      const { redirect } = await api.complete(answers, edits);
-      window.location.href = redirect || homeUrl;
+      // The answer is the finished state; the next stop is always the book's home.
+      await api.complete(answers, edits);
+      window.location.href = homeUrl;
     } catch (e) {
       setError(e.message);
       setBusy(false);
@@ -167,8 +162,8 @@ const OnboardingShell = ({ props }) => {
     setBusy(true);
     setError(null);
     try {
-      const { redirect } = await api.skip();
-      window.location.href = redirect || homeUrl;
+      await api.skip();
+      window.location.href = homeUrl;
     } catch (e) {
       setError(e.message);
       setBusy(false);
@@ -204,9 +199,7 @@ const OnboardingShell = ({ props }) => {
       <div className="onboarding-panel app-card" role="dialog" aria-modal="true" aria-label={greeting}>
         {!started ? (
           <div className="onboarding-question" data-testid="onboarding-welcome">
-            <p className="text-sm font-semibold uppercase tracking-[0.08em] text-base-content/70">
-              {teamName}
-            </p>
+            <p className="text-sm font-semibold uppercase tracking-[0.08em] text-base-content/70">{teamName}</p>
             <h1 className="mt-2 text-[1.75rem] font-semibold tracking-tight">{greeting}</h1>
             <p className="mt-3 max-w-prose text-base-content/70">
               {gettext(
@@ -258,10 +251,7 @@ const OnboardingShell = ({ props }) => {
                   title={phase.label}
                 />
               ))}
-              <span
-                className={`onboarding-dot ${reviewing ? 'is-filled' : ''}`}
-                title={gettext('Your accounts')}
-              />
+              <span className={`onboarding-dot ${reviewing ? 'is-filled' : ''}`} title={gettext('Your accounts')} />
             </div>
 
             {reviewing ? (

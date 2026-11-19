@@ -12,7 +12,7 @@ import Icon from '../common/Icon';
  * or cutting a question in `apps/onboarding/questions.py` needs no change here.
  *
  * Props:
- * - question: a catalog entry ({ id, prompt, help_text, kind, options, required })
+ * - question: a catalog entry ({ id, prompt, helpText, kind, options, required })
  * - value: the current answer (array for multi, string for single, string for currency)
  * - onChange: (value) => void
  */
@@ -30,9 +30,7 @@ const OptionButton = ({ option, selected, onClick }) => (
     </span>
     <span className="min-w-0">
       <span className="block">{option.label}</span>
-      {option.help_text && (
-        <span className="block text-sm text-base-content/70">{option.help_text}</span>
-      )}
+      {option.helpText && <span className="block text-sm text-base-content/70">{option.helpText}</span>}
     </span>
   </button>
 );
@@ -48,7 +46,7 @@ const QuestionCard = ({ question, value, onChange }) => {
     }
 
     const current = Array.isArray(value) ? value : [];
-    const isCatchAll = question.options.find((o) => o.value === optionValue)?.catch_all;
+    const isCatchAll = question.options.find((o) => o.value === optionValue)?.catchAll;
 
     if (current.includes(optionValue)) {
       onChange(current.filter((v) => v !== optionValue));
@@ -58,10 +56,8 @@ const QuestionCard = ({ question, value, onChange }) => {
     // "None of these" and the other options are mutually exclusive: picking a
     // catch-all clears the rest, and picking anything else clears the catch-all.
     // Without this a user can answer "None of these, and also a student loan".
-    const catchAllValues = question.options.filter((o) => o.catch_all).map((o) => o.value);
-    const next = isCatchAll
-      ? [optionValue]
-      : [...current.filter((v) => !catchAllValues.includes(v)), optionValue];
+    const catchAllValues = question.options.filter((o) => o.catchAll).map((o) => o.value);
+    const next = isCatchAll ? [optionValue] : [...current.filter((v) => !catchAllValues.includes(v)), optionValue];
 
     onChange(next);
   };
@@ -69,9 +65,7 @@ const QuestionCard = ({ question, value, onChange }) => {
   return (
     <div className="onboarding-question" data-testid={`onboarding-question-${question.id}`}>
       <h2 className="text-xl font-semibold tracking-tight">{question.prompt}</h2>
-      {question.help_text && (
-        <p className="mt-1 text-sm text-base-content/70">{question.help_text}</p>
-      )}
+      {question.helpText && <p className="mt-1 text-sm text-base-content/70">{question.helpText}</p>}
 
       {question.options.length > 0 && (
         <div className="mt-5 grid gap-2 sm:grid-cols-2">

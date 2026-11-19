@@ -1,18 +1,25 @@
-import { getJson, postForm, postJson } from '../common/http';
+import { YnabImportApi } from 'api-client';
+
+import { apiCall, getApiConfiguration } from '../api';
 
 /**
- * The YNAB import endpoints.
+ * The YNAB import endpoints, through the generated api-client.
  *
  * The server owns every decision: these helpers hand it files and choices and read
  * back what it made of them. Nothing here infers anything about an export.
+ * `choices` travels as the JSON object the screens build (see `parse_choices`).
  */
-export const getYnabApi = (urls) => ({
-  upload: (files) => {
-    const form = new FormData();
-    files.forEach((file) => form.append('files', file));
-    return postForm(urls.upload, form);
-  },
-  preview: (importId, choices) => postJson(urls.preview, { import_id: importId, choices }),
-  apply: (importId, choices) => postJson(urls.apply, { import_id: importId, choices }),
-  status: (importId) => getJson(`${urls.status}?import_id=${encodeURIComponent(importId)}`),
-});
+export const getYnabApi = (book) => {
+  const client = new YnabImportApi(getApiConfiguration(''));
+  const { params } = book;
+
+  return {
+    state: () => apiCall(client.ynabImportState(params)),
+    upload: (files) => apiCall(client.ynabImportUpload({ ...params, files: Array.from(files) })),
+    preview: (importId, choices) =>
+      apiCall(client.ynabImportPreview({ ...params, ynabChoicesRequest: { importId, choices } })),
+    apply: (importId, choices) =>
+      apiCall(client.ynabImportApply({ ...params, ynabChoicesRequest: { importId, choices } })),
+    status: (importId) => apiCall(client.ynabImportStatus({ ...params, importId })),
+  };
+};
