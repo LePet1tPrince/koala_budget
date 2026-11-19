@@ -8,7 +8,8 @@ import { ApiApi, TeamsApi } from 'api-client';
 
 const domContainer = document.querySelector('#team-content');
 const apiUrls = JSON.parse(document.getElementById('api-urls').textContent);
-const configuration = getApiConfiguration(SERVER_URL_BASE);
+// Same origin as the page: the Site domain (`server_url`) can differ from the host serving it.
+const configuration = getApiConfiguration(window.location.origin);
 const apiClient = new TeamsApi(configuration);
 const meClient = new ApiApi(configuration);
 

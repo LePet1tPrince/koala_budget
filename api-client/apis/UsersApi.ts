@@ -46,7 +46,7 @@ export interface DeleteAccountRequest {
 }
 
 export interface ProfileAvatarUploadRequest {
-    avatar: string;
+    avatar: Blob;
 }
 
 export interface ProfilePartialUpdateRequest {
@@ -292,6 +292,8 @@ export class UsersApi extends runtime.BaseAPI {
 
         let formParams: { append(param: string, value: any): any };
         let useForm = false;
+        // use FormData to transmit files using content-type "multipart/form-data"
+        useForm = canConsumeForm;
         if (useForm) {
             formParams = new FormData();
         } else {

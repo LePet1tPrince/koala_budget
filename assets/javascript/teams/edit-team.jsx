@@ -10,8 +10,8 @@ const domContainer = document.querySelector('#manage-team-content');
 // Only the team's id is in the page; the team and the user are loaded from the API.
 const teamId = JSON.parse(document.getElementById('team-id').textContent);
 const apiUrls = JSON.parse(document.getElementById('api-urls').textContent);
-const serverUrl = JSON.parse(document.getElementById('server-url').textContent);
-const configuration = getApiConfiguration(serverUrl);
+// Same origin as the page: the Site domain (`server_url`) can differ from the host serving it.
+const configuration = getApiConfiguration(window.location.origin);
 const apiClient = new TeamsApi(configuration);
 const meClient = new ApiApi(configuration);
 

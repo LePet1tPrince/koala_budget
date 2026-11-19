@@ -39,6 +39,26 @@ class SchemaGenerationTest(TestCase):
         # type the rest with `@extend_schema_field` / `@extend_schema`.
         self.assertEqual(self.warnings, {}, "drf-spectacular reported schema warnings")
 
+    def test_multipart_uploads_are_binary(self):
+        # A multipart body's file must be `format: binary` (`apps.api.base.UploadField`):
+        # DRF's `FileField` is documented as a URI, and the generated client then sends
+        # the file urlencoded as the string "[object File]".
+        components = self.schema["components"]["schemas"]
+        offenders = []
+        for path, operations in self.schema["paths"].items():
+            for method, operation in operations.items():
+                body = operation.get("requestBody", {}).get("content", {}).get("multipart/form-data")
+                if not body:
+                    continue
+                schema = body["schema"]
+                if "$ref" in schema:
+                    schema = components[schema["$ref"].rsplit("/", 1)[1]]
+                for name, prop in schema.get("properties", {}).items():
+                    items = prop.get("items", prop)
+                    if items.get("format") == "uri":
+                        offenders.append(f"{method.upper()} {path}: {name}")
+        self.assertEqual(offenders, [], "Use apps.api.base.UploadField for these upload fields")
+
     def test_valid_openapi(self):
         validate_schema(self.schema)
 

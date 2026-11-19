@@ -13,9 +13,11 @@ class TeamAccessPermissions(permissions.BasePermission):
     """
 
     def has_permission(self, request, view):
-        # DRF only calls has_object_permission for detail actions, so without this
-        # check list/create (and custom non-detail actions) would be open to anyone.
-        return _request_allowed_for_team(request)
+        # The team viewset lives at `/teams/api/teams/`, outside any team's URLs, so
+        # there is no `request.team` to check: it is scoped to the user instead (its
+        # queryset is the user's own teams, and a create makes them its admin). Any
+        # signed-in user may list and create; the object is checked below.
+        return bool(request.user and request.user.is_authenticated)
 
     def has_object_permission(self, request, view, obj):
         # Read permissions are allowed to any request

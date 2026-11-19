@@ -245,7 +245,6 @@ class TemplateDataPropsTest(SimpleTestCase):
         "book-base": "`/a/{team}/{book}/`, the root every book URL and api-client call is built from",
         "team-id": "the team a team page asks the API for",
         "api-urls": "page-link URL templates (teams pages), not data",
-        "server-url": "the site's origin, for building invitation links",
     }
     # (template, id) pairs allowed to carry data, with the reason.
     DATA_ALLOWED = {

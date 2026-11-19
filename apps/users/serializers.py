@@ -3,6 +3,7 @@ import copy
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
+from apps.api.base import UploadField
 from apps.api.models import UserAPIKey
 
 from .forms import CustomUserChangeForm, UploadAvatarForm
@@ -67,7 +68,9 @@ class ProfileUpdateSerializer(ProfileSerializer):
 class AvatarUploadSerializer(serializers.Serializer):
     """A profile picture (multipart): an image file of up to 5 MB, as the profile page accepts."""
 
-    avatar = serializers.FileField()
+    # `UploadField`, not DRF's `FileField` (documented as a URI): the generated
+    # client must send the file as a multipart part, not "[object File]".
+    avatar = UploadField()
 
     def validate(self, attrs):
         form = UploadAvatarForm(files={"avatar": attrs["avatar"]})

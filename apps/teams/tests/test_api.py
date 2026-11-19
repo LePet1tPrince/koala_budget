@@ -40,6 +40,48 @@ class TeamAPITestCase(TestCase):
         return self.client.patch(url, data=json.dumps(body), content_type="application/json")
 
 
+class TeamViewSetTest(TeamAPITestCase):
+    """`/teams/api/teams/`: the user's own teams, outside any team's URLs (no `request.team`)."""
+
+    def test_a_member_lists_and_reads_their_teams(self):
+        self.client.force_login(self.member)
+        listed = self.client.get(reverse("teams:team-list"))
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual([t["slug"] for t in listed.json()["results"]], ["sox"])
+        detail = self.client.get(reverse("teams:team-detail", args=[self.team.pk]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["slug"], "sox")
+
+    def test_only_an_admin_edits_the_team(self):
+        self.client.force_login(self.member)
+        self.assertEqual(
+            self.patch(reverse("teams:team-detail", args=[self.team.pk]), {"name": "Nope"}).status_code, 403
+        )
+        self.client.force_login(self.admin)
+        self.assertEqual(
+            self.patch(reverse("teams:team-detail", args=[self.team.pk]), {"name": "Sox"}).status_code, 200
+        )
+        self.team.refresh_from_db()
+        self.assertEqual(self.team.name, "Sox")
+
+    def test_an_outsider_sees_no_team(self):
+        self.client.force_login(self.outsider)
+        self.assertEqual(self.client.get(reverse("teams:team-list")).json()["results"], [])
+        self.assertEqual(self.client.get(reverse("teams:team-detail", args=[self.team.pk])).status_code, 404)
+
+    def test_anonymous_is_refused(self):
+        self.assertIn(self.client.get(reverse("teams:team-list")).status_code, (401, 403))
+
+    def test_creating_a_team_makes_the_user_its_admin(self):
+        self.client.force_login(self.outsider)
+        response = self.client.post(
+            reverse("teams:team-list"), data=json.dumps({"name": "Yankees"}), content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        team = Team.objects.get(pk=response.json()["id"])
+        self.assertEqual(Membership.objects.get(team=team, user=self.outsider).role, ROLE_ADMIN)
+
+
 class MembershipListTest(TeamAPITestCase):
     def test_a_member_lists_the_team_by_email(self):
         self.client.force_login(self.member)
