@@ -26,10 +26,18 @@ class SchemaGenerationTest(TestCase):
         with GENERATOR_STATS.silence():
             cls.schema = SchemaGenerator().get_schema(request=None, public=True)
         cls.errors = dict(GENERATOR_STATS._error_cache)
+        cls.warnings = dict(GENERATOR_STATS._warn_cache)
         GENERATOR_STATS.reset()
 
     def test_no_errors(self):
         self.assertEqual(self.errors, {}, "drf-spectacular reported schema errors")
+
+    def test_no_warnings(self):
+        # A warning is usually a name the generated client will lose: an enum
+        # collision resolved with a hash suffix (`DirectionE31Enum`), an untyped
+        # method field. Name enums in `SPECTACULAR_SETTINGS["ENUM_NAME_OVERRIDES"]`,
+        # type the rest with `@extend_schema_field` / `@extend_schema`.
+        self.assertEqual(self.warnings, {}, "drf-spectacular reported schema warnings")
 
     def test_valid_openapi(self):
         validate_schema(self.schema)

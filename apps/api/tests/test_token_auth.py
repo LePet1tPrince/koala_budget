@@ -7,6 +7,7 @@ waives CSRF by default, which would make the CSRF assertions vacuous.
 """
 
 import json
+from unittest import mock
 
 from allauth.account.models import EmailAddress
 from django.core.cache import cache
@@ -14,8 +15,10 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from apps.audit.models import AuditLog
+from apps.audit.utils import get_current_user
 from apps.books.helpers import SESSION_BOOK_BY_TEAM
 from apps.books.tests.factories import build_book_data, second_book
+from apps.budget.services import GoalService
 from apps.journal.models import JournalEntry
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN
@@ -128,6 +131,37 @@ class TokenRequestTest(TokenAuthTestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.data.groceries.refresh_from_db()
         self.assertTrue(self.data.groceries.is_hidden)
+
+    def test_token_signs_in_a_plain_django_page(self):
+        # Not a DRF view: only `SessionTokenMiddleware` can have set `request.user`
+        # (DRF authentication never runs), so a 200 rather than a redirect to login
+        # is the middleware's doing.
+        token = self.login()
+        response = self.client.get(self.book_url("web_book:home"), headers={"X-Session-Token": token})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.wsgi_request.user, self.user)
+
+    def test_token_plain_form_post_skips_csrf_and_is_audited_as_the_user(self):
+        # A no-JS form view (plain Django): the middleware must both waive CSRF for
+        # the header token and sign the user in before `AuditUserMiddleware` stashes
+        # them for the audit signals, or the write would be audited as nobody.
+        token = self.login()
+        seen = []
+        update_allocation = GoalService.update_allocation
+
+        def spy(service, *args, **kwargs):
+            seen.append(get_current_user())
+            return update_allocation(service, *args, **kwargs)
+
+        with mock.patch.object(GoalService, "update_allocation", spy):
+            response = self.client.post(
+                self.book_url("budget:goal_allocate", pk=self.data.goal.pk),
+                data={"month": "2026-03-01", "amount": "75"},
+                headers={"X-Session-Token": token},
+            )
+        self.assertEqual(response.status_code, 302, response.content)
+        self.assertNotIn(reverse("account_login"), response["Location"])
+        self.assertEqual(seen, [self.user])
 
     def test_a_token_request_sets_no_session_cookie_and_keeps_state_on_the_token(self):
         token = self.login()

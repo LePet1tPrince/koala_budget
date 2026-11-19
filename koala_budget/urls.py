@@ -94,7 +94,6 @@ urlpatterns = [
     path("teams/", include("apps.teams.urls")),
     path("", include("apps.web.urls")),
     path("support/", include("apps.support.urls")),
-    path("celery-progress/", include("celery_progress.urls")),
     # API docs
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     # Optional UI - you may wish to remove one of these depending on your preference

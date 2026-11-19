@@ -88,3 +88,23 @@ class StripeSessionAPITest(TestCase):
                 self.assertEqual(self.portal().status_code, 403)
         checkout.assert_not_called()
         portal.assert_not_called()
+
+
+class ActiveProductsAPITest(TestCase):
+    """`GET /subscriptions/api/active-products/`: the plans a client offers before checkout."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = CustomUser.objects.create_user(username="plans@billing.test", password="pass")
+
+    @mock.patch(f"{VIEWS}.get_active_products_with_metadata")
+    def test_a_signed_in_user_gets_the_plans(self, products):
+        products.return_value = [SimpleNamespace(to_dict=lambda: {"metadata": {"slug": "plan-api"}})]
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("subscriptions:products_api"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [{"metadata": {"slug": "plan-api"}}])
+
+    def test_anonymous_is_refused(self):
+        response = self.client.get(reverse("subscriptions:products_api"))
+        self.assertIn(response.status_code, (401, 403))

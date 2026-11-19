@@ -14,11 +14,16 @@ from ..helpers import create_stripe_checkout_session, create_stripe_portal_sessi
 from ..metadata import ProductWithMetadata, get_active_products_with_metadata
 
 
-@extend_schema(tags=["subscriptions"], exclude=True)
+@extend_schema(tags=["subscriptions"])
 class ProductWithMetadataAPI(APIView):
+    """The plans on offer, with their prices: what a client shows before `create_checkout_session`."""
+
     permission_classes = (IsAuthenticatedOrHasUserAPIKey,)
 
-    @extend_schema(operation_id="active_products_list", responses={200: ProductWithMetadata.serializer()})
+    @extend_schema(
+        operation_id="active_products_list",
+        responses={200: serializers.ListSerializer(child=ProductWithMetadata.serializer())},
+    )
     def get(self, request, *args, **kw):
         products_with_metadata = get_active_products_with_metadata()
         return Response(data=[p.to_dict() for p in products_with_metadata])

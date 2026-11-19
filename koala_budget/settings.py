@@ -496,6 +496,8 @@ SPECTACULAR_SETTINGS = {
         "GoalOutflowEnum": "apps.budget.api.goal_serializers.GOAL_OUTFLOWS",
         "GoalPlanStatusEnum": "apps.budget.api.goal_serializers.GOAL_PLAN_STATUSES",
         "GoalActivityKindEnum": "apps.budget.api.goal_serializers.GOAL_ACTIVITY_KINDS",
+        # A rule's stored direction (the rule builder's draft keeps its own `RuleDraftDirectionEnum`).
+        "RuleDirectionEnum": "apps.rules.models.Rule.DIRECTION_CHOICES",
     },
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}
