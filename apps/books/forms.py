@@ -1,10 +1,8 @@
-from datetime import date
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
-from .helpers import reserved_book_slugs
 from .models import Book
+from .validation import clean_book_name, clean_book_slug, clean_confirm_name, clean_locked_through
 
 START_QUESTIONNAIRE = "questionnaire"
 START_YNAB = "ynab"
@@ -23,15 +21,8 @@ class BookNameMixin:
     """Book names are unique within a team, compared case-insensitively: "Business" and "business" clash."""
 
     def clean_name(self):
-        name = self.cleaned_data["name"].strip()
-        if not name:
-            raise forms.ValidationError(_("Give the set of books a name."))
-        clash = Book.objects.filter(team=self.team, name__iexact=name)
-        if self.instance and self.instance.pk:
-            clash = clash.exclude(pk=self.instance.pk)
-        if clash.exists():
-            raise forms.ValidationError(_("This team already has a set of books called %(name)s.") % {"name": name})
-        return name
+        exclude_pk = self.instance.pk if self.instance else None
+        return clean_book_name(self.team, self.cleaned_data["name"], exclude_pk=exclude_pk)
 
 
 class BookCreateForm(BookNameMixin, forms.ModelForm):
@@ -116,20 +107,10 @@ class BookSettingsForm(BookNameMixin, forms.ModelForm):
         # A post that leaves the field out keeps the saved lock; a blank one clears it.
         if self.add_prefix("locked_through") not in self.data:
             return self.instance.locked_through
-        value = self.cleaned_data.get("locked_through")
-        if value is not None and value > date.today():
-            raise forms.ValidationError(_("Only a period that has already ended can be closed."))
-        return value
+        return clean_locked_through(self.cleaned_data.get("locked_through"))
 
     def clean_slug(self):
-        slug = self.cleaned_data["slug"].strip().lower()
-        if slug in reserved_book_slugs():
-            raise forms.ValidationError(
-                _("%(slug)s is used by another page, so it can't be a book's address.") % {"slug": slug}
-            )
-        if Book.objects.filter(team=self.team, slug=slug).exclude(pk=self.instance.pk).exists():
-            raise forms.ValidationError(_("Another set of books in this team already uses that address."))
-        return slug
+        return clean_book_slug(self.team, self.cleaned_data["slug"], exclude_pk=self.instance.pk)
 
 
 class ConfirmNameForm(forms.Form):
@@ -143,7 +124,4 @@ class ConfirmNameForm(forms.Form):
         self.fields["confirm"].widget.attrs.update({"class": INPUT, "autocomplete": "off"})
 
     def clean_confirm(self):
-        value = self.cleaned_data["confirm"].strip()
-        if value != self.book.name:
-            raise forms.ValidationError(_("That isn't the name of this set of books."))
-        return value
+        return clean_confirm_name(self.book, self.cleaned_data["confirm"])

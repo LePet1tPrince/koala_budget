@@ -1,7 +1,7 @@
 from django.test import TestCase
 from django.urls import reverse
 
-from apps.teams.models import Invitation, Team
+from apps.teams.models import Team
 from apps.teams.roles import ROLE_ADMIN, ROLE_MEMBER
 from apps.users.models import CustomUser
 
@@ -60,26 +60,19 @@ class TeamsAuthTest(TestCase):
 
     def test_team_admin_view(self):
         self._login(self.sox_admin)
-        invite = self._create_invitation()
-        response = self.client.post(reverse("single_team:resend_invitation", args=[self.sox.slug, invite.id]))
+        response = self.client.get(reverse("books_team:create", args=[self.sox.slug]))
         self.assertEqual(200, response.status_code)
         self._assertRequestHasTeam(response, self.sox, self.sox_admin, ROLE_ADMIN)
 
     def test_team_admin_view_denied(self):
         self._login(self.yanks_member)
-        invite = self._create_invitation()
-        response = self.client.post(reverse("single_team:resend_invitation", args=[self.yanks.slug, invite.id]))
+        response = self.client.get(reverse("books_team:create", args=[self.yanks.slug]))
         self.assertEqual(404, response.status_code)
         self._assertRequestHasTeam(response, self.yanks, self.yanks_member, ROLE_MEMBER)
 
     def _login(self, user):
         success = self.client.login(username=user.username, password="123")
         self.assertTrue(success, f"User login failed: {user.username}")
-
-    def _create_invitation(self):
-        return Invitation.objects.create(
-            team=self.sox, email="dj@yankees.com", role=ROLE_MEMBER, invited_by=self.sox_admin
-        )
 
     def _assertRequestHasTeam(self, response, team, user=None, role=None):
         request = response.wsgi_request

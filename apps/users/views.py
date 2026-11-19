@@ -1,22 +1,17 @@
-from allauth.account.models import EmailAddress
 from allauth.socialaccount.models import SocialAccount
 from django.contrib import messages
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
-from django.shortcuts import render
+from django.http import HttpResponseRedirect
+from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone, translation
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 
-from apps.api.models import UserAPIKey
-
+from . import services
 from .adapter import user_has_valid_totp_device
-from .forms import CustomUserChangeForm, UploadAvatarForm
-from .helpers import require_email_confirmation, user_has_confirmed_email_address
-from .models import CustomUser
-from .services import delete_user_account, export_user_data
+from .forms import CustomUserChangeForm
 
 
 @login_required
@@ -25,22 +20,9 @@ def profile(request):
         form = CustomUserChangeForm(request.POST, instance=request.user)
         if form.is_valid():
             user = form.save(commit=False)
-            user_before_update = CustomUser.objects.get(pk=user.pk)
-            need_to_confirm_email = (
-                user_before_update.email != user.email
-                and require_email_confirmation()
-                and not user_has_confirmed_email_address(user, user.email)
-            )
-            if need_to_confirm_email:
-                new_email = user.email
-                # don't change it but instead rely on allauth to send a confirmation email.
-                # email will be changed by signal when confirmed
-                EmailAddress.objects.add_email(request, user, new_email, confirm=True)
-                # revert the email to the original value until confirmation is completed
-                user.email = user_before_update.email
-                # recreate the form to avoid populating the previous email in the returned page
+            if services.save_profile(request, user):
+                # recreate the form to avoid populating the unconfirmed email in the returned page
                 form = CustomUserChangeForm(instance=user)
-            user.save()
 
             user_language = user.language
             if user_language and user_language != translation.get_language():
@@ -73,24 +55,8 @@ def profile(request):
 
 @login_required
 @require_POST
-def upload_profile_image(request):
-    user = request.user
-    form = UploadAvatarForm(request.POST, request.FILES)
-    if form.is_valid():
-        user.avatar = request.FILES["avatar"]
-        user.save()
-        return HttpResponse(_("Success!"))
-    else:
-        readable_errors = ", ".join(str(error) for key, errors in form.errors.items() for error in errors)
-        return JsonResponse(status=403, data={"errors": readable_errors})
-
-
-@login_required
-@require_POST
 def create_api_key(request):
-    api_key, key = UserAPIKey.objects.create_key(
-        name=f"{request.user.get_display_name()[:40]} API Key", user=request.user
-    )
+    _api_key, key = services.create_api_key(request.user)
     messages.success(
         request,
         _("API Key created. Your key is: {key}. Save this somewhere safe - you will only see it once!").format(
@@ -104,9 +70,8 @@ def create_api_key(request):
 @require_POST
 def revoke_api_key(request):
     key_id = request.POST.get("key_id")
-    api_key = request.user.api_keys.get(id=key_id)
-    api_key.revoked = True
-    api_key.save()
+    api_key = get_object_or_404(request.user.api_keys, id=key_id)
+    services.revoke_api_key(api_key)
     messages.success(
         request,
         _("API Key {key} has been revoked. It can no longer be used to access the site.").format(
@@ -117,23 +82,15 @@ def revoke_api_key(request):
 
 
 @login_required
-def download_data(request):
-    """Download all user data as a ZIP archive (GDPR data portability)."""
-    buffer = export_user_data(request.user)
-    response = HttpResponse(buffer.getvalue(), content_type="application/zip")
-    filename = f"koala_budget_data_{request.user.email}.zip"
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return response
-
-
-@login_required
 def delete_account(request):
     """Account deletion view with confirmation."""
     if request.method == "POST":
         confirmation = request.POST.get("confirmation", "")
         if confirmation == request.user.email:
-            delete_user_account(request.user)
+            user = request.user
+            # Signed out first: the logout's audit event needs the user to still exist.
             logout(request)
+            services.delete_user_account(user)
             messages.success(request, _("Your account has been permanently deleted."))
             return HttpResponseRedirect(reverse("web:home"))
         else:

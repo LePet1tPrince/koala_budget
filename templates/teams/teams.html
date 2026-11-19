@@ -5,7 +5,6 @@
 {% block app %}
   <div id="team-content"></div>
   {{ api_urls|json_script:'api-urls' }}
-  {{ user_json|json_script:'user-details' }}
 {% endblock %}
 {% block page_js %}
 {# NOTE: the rest framework imports must precede the react bundle #}

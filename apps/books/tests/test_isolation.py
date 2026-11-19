@@ -37,6 +37,7 @@ def month_query(**extra):
 READS = {
     "web_book:home": {},
     "books:settings": {},
+    "books:api_settings": {},
     "accounts:accounts_home": {},
     "accounts:accountgroup_list": {},
     "accounts:payee_list": {},
