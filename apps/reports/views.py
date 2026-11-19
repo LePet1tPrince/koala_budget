@@ -5,7 +5,7 @@ CSV exports they link.
 """
 
 import contextlib
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from urllib.parse import urlencode
 
 from django.shortcuts import get_object_or_404, render
@@ -15,10 +15,12 @@ from apps.books.decorators import login_and_book_required
 from apps.utils.months import add_months
 
 from .consolidated import (
+    COLUMN_LABELS,
     bucket_for,
     budget_goals_report,
     column_periods,
     net_worth_report,
+    period_bounds,
     spending_report,
 )
 from .exports import (
@@ -69,28 +71,19 @@ def _drill_qs(start_date, end_date):
     return urlencode({"start_date": start_date.isoformat(), "end_date": end_date.isoformat()})
 
 
-PERIOD_MONTHS = {"month": 1, "quarter": 3, "year": 12}
-
-
 def _attach_period_drill(report, start_date, end_date):
     """
     Give every account row of the statement `period_cells`: (amount, drill_qs) per
-    column, the query string opening the account on that column's dates (clamped to
-    the report's range, so a partial first or last month stays partial).
+    column, the query string opening the account on that column's dates.
     """
     data = report["data"]
-    step = PERIOD_MONTHS[report["period"]]
     drill = [
-        _drill_qs(max(first, start_date), min(add_months(first, step) - timedelta(days=1), end_date))
-        for first in data["periods"]
+        _drill_qs(first, last) for first, last in period_bounds(data["periods"], report["period"], start_date, end_date)
     ]
     items = [item for group in data["income_groups"] + data["expense_groups"] for item in group["accounts"]]
     items += data["goal_spending"]["items"]
     for item in items:
         item["period_cells"] = list(zip(item["per_period"], drill, strict=True))
-
-
-COLUMN_LABELS = {"year": _("By year"), "quarter": _("By quarter"), "month": _("By month")}
 
 
 def _column_choice(request, start_date, end_date):

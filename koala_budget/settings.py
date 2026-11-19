@@ -486,6 +486,11 @@ SPECTACULAR_SETTINGS = {
         "BudgetAutofillActionEnum": "apps.budget.figures.AUTOFILL_ACTIONS",
         "BudgetCoverSourceEnum": "apps.budget.api.serializers.COVER_SOURCES",
         "BudgetGridActualModeEnum": "apps.budget.grid.GRID_ACTUAL_MODES",
+        # Reports and the monthly review (apps/reports/serializers.py, apps/monthly_review/serializers.py).
+        "ReportColumnsEnum": "apps.reports.serializers.COLUMN_CHOICES",
+        "NetWorthSectionKeyEnum": "apps.reports.serializers.NET_WORTH_SECTION_KEYS",
+        "WaterfallStepKeyEnum": "apps.reports.serializers.WATERFALL_KEYS",
+        "ReviewBaselineEnum": "apps.monthly_review.serializers.BASELINE_IDS",
     },
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}

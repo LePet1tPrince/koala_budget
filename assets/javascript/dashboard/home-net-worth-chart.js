@@ -1,13 +1,24 @@
 'use strict';
 import Chart from 'chart.js/auto';
 import {MONEY, GRID, getInk, getSurface, currency, monthLabel, observeTheme} from '../reports/chart-theme';
+import {bookParams, getDashboardApi, isoDate, loadChart, onReady} from '../reports/report-data';
 
-document.addEventListener('DOMContentLoaded', () => {
-  const dataEl = document.getElementById('home-net-worth-data');
+// The dashboard's net-worth trend, from `GET …/api/home/` (apps/web/api.py).
+onReady(() => {
   const canvas = document.getElementById('home-net-worth-chart');
-  if (!dataEl || !canvas) return;
+  if (!canvas) return;
+  loadChart(
+    canvas,
+    () => getDashboardApi().bookHomeRetrieve({...bookParams()}),
+    (home) =>
+      draw(canvas, {
+        labels: home.netWorthTrend.map((point) => isoDate(point.date)),
+        net_worth: home.netWorthTrend.map((point) => Number(point.netWorth)),
+      }),
+  );
+});
 
-  const data = JSON.parse(dataEl.textContent);
+function draw(canvas, data) {
   if (!data.labels || data.labels.length === 0) return;
 
   const labels = data.labels.map(monthLabel);
@@ -78,4 +89,4 @@ document.addEventListener('DOMContentLoaded', () => {
       dataset.pointBorderColor = newSurface;
     });
   });
-});
+}

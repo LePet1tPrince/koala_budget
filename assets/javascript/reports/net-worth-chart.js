@@ -1,12 +1,10 @@
 'use strict';
 import Chart from 'chart.js/auto';
 
-document.addEventListener('DOMContentLoaded', () => {
-  const dataEl = document.getElementById('net-worth-data');
-  const canvas = document.getElementById('net-worth-chart');
-  if (!dataEl || !canvas) return;
-
-  const data = JSON.parse(dataEl.textContent);
+/**
+ * The Net Worth totals chart. `data`: {labels: [ISO month end], net_worth, assets, liabilities} -- numbers.
+ */
+export function drawNetWorthChart(canvas, data) {
   if (!data.labels || data.labels.length === 0) return;
 
   // Labels arrive as ISO month-end dates; parse the parts directly so a
@@ -115,4 +113,4 @@ document.addEventListener('DOMContentLoaded', () => {
     chart.update('none');
   });
   themeObserver.observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
-});
+}

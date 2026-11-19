@@ -4,11 +4,11 @@ import {SankeyController, Flow} from 'chartjs-chart-sankey';
 
 Chart.register(SankeyController, Flow);
 
-document.addEventListener('DOMContentLoaded', () => {
-  const dataEl = document.getElementById('sankey-data');
-  if (!dataEl) return;
-
-  const data = JSON.parse(dataEl.textContent);
+/**
+ * The Income & Spending flow (Sankey). `data`: {income, expenses: [{name, amount, group}],
+ * income_groups, expense_groups: [{name, amount}], net_profit, goal_spending} -- numbers.
+ */
+export function drawSankey(canvas, data) {
   const income = data.income || [];
   const expenses = data.expenses || [];
   const incomeGroups = data.income_groups || [];
@@ -101,9 +101,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const getColor = (key) => colorMap[key] || hubColor;
 
-  const canvas = document.getElementById('sankey-chart');
-  if (!canvas) return;
-
   const createChart = () => new Chart(canvas, {
     type: 'sankey',
     data: {
@@ -141,4 +138,4 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   observer.observe(canvas);
-});
+}

@@ -1,5 +1,7 @@
 from django.urls import path
 
+from apps.web.api import BookHomeView
+
 from . import views
 
 # `/api/...` -- user-level and global endpoints (the per-app pattern keeps book data
@@ -16,6 +18,8 @@ urlpatterns = [
 book_urlpatterns = (
     [
         path("nav-state/", views.NavStateView.as_view(), name="nav_state"),
+        # The book's dashboard (its root page, so it has no app prefix of its own).
+        path("home/", BookHomeView.as_view(), name="home"),
     ],
     "book_api",
 )

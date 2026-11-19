@@ -140,7 +140,7 @@ const ReviewApp = ({ props }) => {
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h1 className="text-2xl font-semibold">{title}</h1>
-        <BudgetMonthPicker initialMonth={review.month} triggerClassName="btn btn-ghost btn-sm" />
+        <BudgetMonthPicker initialMonth={`${review.month}-01`} triggerClassName="btn btn-ghost btn-sm" />
       </div>
 
       {showBaselineBar && (

@@ -41,12 +41,8 @@ function wrap(label, width = 14) {
   return lines;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const dataEl = document.getElementById('dollar-map-data');
-  const canvas = document.getElementById('dollar-map-chart');
-  if (!dataEl || !canvas) return;
-
-  const bars = JSON.parse(dataEl.textContent);
+/** The Budget & Goals waterfall. `bars`: [{key, label, value, start, end, total}] -- numbers. */
+export function drawDollarMap(canvas, bars) {
   if (!bars.length) return;
   const ink = getInk(canvas);
 
@@ -101,4 +97,4 @@ document.addEventListener('DOMContentLoaded', () => {
     c.options.scales.y.ticks.color = newInk;
     c.data.datasets[0].backgroundColor = bars.map(colorFor);
   });
-});
+}

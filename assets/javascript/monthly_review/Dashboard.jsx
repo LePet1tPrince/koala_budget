@@ -33,7 +33,7 @@ const Dashboard = ({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <BudgetMonthPicker
-            initialMonth={review.month}
+            initialMonth={`${review.month}-01`}
             triggerClassName="btn btn-ghost btn-sm px-0 text-2xl font-semibold"
           />
           {review.is_current_month && (
