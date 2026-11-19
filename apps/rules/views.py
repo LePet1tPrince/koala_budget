@@ -17,6 +17,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.accounts.models import Account
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
@@ -37,6 +38,7 @@ from .serializers import (
     RuleMatchSerializer,
     RuleProposalSerializer,
     RuleSerializer,
+    RulesPageSerializer,
     RuleTestResultSerializer,
     TransactionIdSerializer,
 )
@@ -242,6 +244,24 @@ class RuleViewSet(viewsets.ModelViewSet):
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(operation_id="rules_page", tags=["rules"], responses={200: RulesPageSerializer})
+    @action(detail=False, methods=["get"])
+    def page(self, request, team_slug=None, book_slug=None):
+        """What the Rules page opens on: whether the user may edit, the categories and the feed accounts."""
+        feed_accounts = list(
+            Account.objects.filter(book=request.book, has_feed=True, is_hidden=False)
+            .annotate(account_group_name=F("account_group__name"))
+            .order_by("account_group__name", "name")
+            .values("id", "name", "account_group_name")
+        )
+        return Response(
+            {
+                "can_edit": is_admin(request.user, request.team),
+                "categories": picker_accounts_data(request.book),
+                "feed_accounts": feed_accounts,
+            }
+        )
+
     @extend_schema(operation_id="rules_prompts", tags=["rules"])
     @action(detail=False, methods=["get"])
     def prompts(self, request, team_slug=None, book_slug=None):
@@ -411,18 +431,7 @@ class RuleProposalViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
 @login_and_book_required
 def rules_home(request, team_slug, book_slug):
-    """The Rules page: the book's rules, the builder, and proposed rules."""
-    from django.urls import reverse
-
-    from apps.accounts.models import Account
-
-    feed_accounts = list(
-        Account.objects.filter(book=request.book, has_feed=True, is_hidden=False)
-        .annotate(account_group_name=F("account_group__name"))
-        .order_by("account_group__name", "name")
-        .values("id", "name", "account_group_name")
-    )
-    base = reverse("rules:rules_home", args=request.book.url_args)
+    """The Rules page: the book's rules, the builder, and proposed rules (loaded from `api/rules/page/`)."""
     return render(
         request,
         "rules/rules_home.html",
@@ -430,13 +439,5 @@ def rules_home(request, team_slug, book_slug):
             "page_title": _("Rules | {name}").format(name=book_display_name(request.book)),
             "active_tab": "accounts",
             "accounts_section": "rules",
-            "rules_props": {
-                "api": f"{base}api/",
-                "book_base": request.book.base_url,
-                "feed_url": reverse("bank_feed:bank_feed_home", args=request.book.url_args),
-                "can_edit": is_admin(request.user, request.team),
-                "categories": picker_accounts_data(request.book),
-                "feed_accounts": feed_accounts,
-            },
         },
     )

@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load icons %}
 {% load currency_tags %}
+{% load django_vite %}
 
 {% block manage_title %}{% translate "Recurring transactions" %}{% endblock %}
 {% block manage_subtitle %}{% blocktranslate trimmed %}
@@ -11,6 +12,7 @@
 
 {% block manage_content %}
 <div data-testid="recurring-list">
+  <p class="alert alert-error mb-4 hidden" role="alert" data-recurring-error></p>
   {% if rules %}
     <div class="overflow-x-auto">
       <table class="table table-sm table-quiet" data-testid="recurring-table">
@@ -55,13 +57,10 @@
               </td>
               <td class="text-right">
                 {% translate "Stop this recurring transaction? Transactions it already added are kept." as stop_confirm %}
-                <form method="post" action="{% url 'bank_feed:recurring_delete' request.team.slug request.book.slug rule.id %}"
-                      onsubmit="return confirm('{{ stop_confirm|escapejs }}')">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-ghost btn-sm" data-testid="recurring-stop">
-                    {% icon "trash" class="w-4 h-4" %}{% translate "Stop" %}
-                  </button>
-                </form>
+                <button type="button" class="btn btn-ghost btn-sm" data-testid="recurring-stop"
+                        data-recurring-stop="{{ rule.id }}" data-confirm="{{ stop_confirm }}">
+                  {% icon "trash" class="w-4 h-4" %}{% translate "Stop" %}
+                </button>
               </td>
             </tr>
           {% endfor %}
@@ -74,4 +73,9 @@
     {% endblocktranslate %}</p>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block page_js %}
+  {{ request.book.base_url|json_script:'book-base' }}
+  {% vite_asset 'assets/javascript/bank_feed/recurring-list.js' %}
 {% endblock %}

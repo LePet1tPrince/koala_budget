@@ -53,6 +53,7 @@ READS = {
     "journal:line-list": lambda a, b: {"account": b.groceries.id},
     "journal:transaction-list": {},
     "journal:transaction-facets": {"column": "payee"},
+    "journal:transaction-pickers": {},
     "journal:api-root": {},
     "audit:audit-event-list": {},
     "audit:api-root": {},
@@ -82,6 +83,7 @@ READS = {
     "bank_feed:bank-feed-account-groups": {},
     "bank_feed:bank-feed-category-suggestions": {},
     "bank_feed:bank-feed-feed-accounts": {},
+    "bank_feed:bank-feed-pickers": {},
     "bank_feed:bank-feed-sample-csv": {},
     "bank_feed:bank-feed-similar-categories": lambda a, b: {"ids": f"{b.uncategorized_tx.id},{a.uncategorized_tx.id}"},
     "bank_feed:bank-feed-transfer-suggestions": {},
@@ -90,7 +92,10 @@ READS = {
     "bank_feed:bank-feed-locate": lambda a, b: {"row": b.uncategorized_tx.id},
     "bank_feed:api-root": {},
     "bank_feed:recurring_list": {},
-    "bank_feed:recurring-schedule-list": lambda a, b: {"account": f"{a.chequing.id},{b.chequing.id}"},
+    "bank_feed:recurring-schedule-list": lambda a, b: {
+        "account": f"{a.chequing.id},{b.chequing.id}",
+        "include_finished": "1",
+    },
     "onboarding:home": {},
     "onboarding:api_catalog": {},
     "onboarding:api_state": {},
@@ -109,6 +114,7 @@ READS = {
     "rules:api-root": {},
     "rules:rule-list": {},
     "rules:rule-prompts": {},
+    "rules:rule-page": {},
     "rules:rule-proposal-list": {},
     "book_api:nav_state": {},
     "accounts:accountgroup_create": {},
@@ -124,6 +130,7 @@ READS = {
 QUERY_OBJECTS = {
     "ynab_import:api_status": lambda b: {"import_id": b.ynab_import.id},
     "portability:api_status": lambda b: {"import_id": b.data_import.id},
+    "reconciliation:reconciliation-page": lambda b: {"account": b.savings.id},
 }
 
 # name -> (kind of B's object passed as the URL kwarg, kwarg name, method)
@@ -178,10 +185,9 @@ OBJECTS = {
     "plaid:plaid-account-detail": ("plaid_account", "pk", "get"),
     "plaid:imported-transaction-detail": ("plaid_transaction", "pk", "get"),
     "bank_feed:bank-feed-detail": ("bank_transaction", "pk", "put"),
-    "bank_feed:recurring_delete": ("recurring", "pk", "post"),
+    "bank_feed:recurring-schedule-detail": ("recurring", "pk", "delete"),
     "reconciliation:account": ("asset_account", "account_id", "get"),
     "reconciliation:statement": ("reconciliation", "pk", "get"),
-    "reconciliation:statement_undo": ("reconciliation", "pk", "post"),
     "reconciliation:reconciliation-detail": ("reconciliation", "pk", "get"),
     "reconciliation:reconciliation-finish": ("reconciliation", "pk", "post"),
     "reconciliation:reconciliation-tick": ("reconciliation", "pk", "post"),

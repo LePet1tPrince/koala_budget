@@ -5,10 +5,9 @@
 
 {% block app %}
   {% comment %}
-    Config for the page's scripts: the book (the budget API's slugs) and the Actual
-    popover's account picker. Every budget figure comes from the budget API.
+    Config for the page's scripts: the book (the budget API's slugs). The Actual
+    popover's picker and every budget figure come from the API.
   {% endcomment %}
-  {{ all_accounts|json_script:'all-accounts' }}
   {{ request.book.base_url|json_script:'book-base' }}
 
   <div class="container mx-auto px-4 py-6">
