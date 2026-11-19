@@ -3,6 +3,7 @@ import io
 import json
 import zipfile
 
+from allauth.account.models import EmailAddress
 from django.db import transaction
 
 from apps.accounts.models import Account, AccountGroup, Payee
@@ -13,6 +14,8 @@ from apps.journal.models import JournalEntry, JournalLine
 from apps.plaid.models import PlaidAccount, PlaidItem
 from apps.portability.services.wipe import wipe_book
 from apps.teams.models import Membership
+
+from .helpers import require_email_confirmation, user_has_confirmed_email_address
 
 
 def export_user_data(user):
@@ -279,3 +282,42 @@ def delete_user_account(user):
 
     # Delete the user account itself
     user.delete()
+
+
+def save_profile(request, user) -> bool:
+    """
+    Save a profile change (`user` changed, not yet saved), as the profile page and
+    the profile API both do. A new email address that needs confirming is not
+    applied: allauth emails a confirmation link to it and the signal swaps it in
+    once confirmed, so the old address stays until then. Returns whether that
+    confirmation was sent.
+    """
+    from .models import CustomUser
+
+    before = CustomUser.objects.get(pk=user.pk)
+    confirmation_sent = (
+        before.email != user.email
+        and require_email_confirmation()
+        and not user_has_confirmed_email_address(user, user.email)
+    )
+    if confirmation_sent:
+        EmailAddress.objects.add_email(request, user, user.email, confirm=True)
+        user.email = before.email
+    user.save()
+    return confirmation_sent
+
+
+def api_key_name(user) -> str:
+    return f"{user.get_display_name()[:40]} API Key"
+
+
+def create_api_key(user):
+    """A new API key for `user`: the key row and the key itself, which is never stored and shown once."""
+    from apps.api.models import UserAPIKey
+
+    return UserAPIKey.objects.create_key(name=api_key_name(user), user=user)
+
+
+def revoke_api_key(api_key):
+    api_key.revoked = True
+    api_key.save()
