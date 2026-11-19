@@ -39,7 +39,7 @@ def test_budget_amount_formula_is_evaluated_and_saved(requires_vite, authenticat
 
     field = authenticated_page.locator(f"#budget-form-{category.pk} input[name='budget_amount']")
     field.fill("120+35*2")
-    with authenticated_page.expect_response(lambda r: "save-amount" in r.url, timeout=10_000) as response:
+    with authenticated_page.expect_response(lambda r: "budget/api/amount/" in r.url, timeout=10_000) as response:
         field.press("Tab")
 
     assert response.value.ok

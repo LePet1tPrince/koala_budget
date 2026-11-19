@@ -19,9 +19,11 @@ class BankFeedPage(BasePage):
         self.page.on("requestfailed", lambda req: failed_urls.append(f"{req.failure} {req.url}"))
 
         self.page.goto(self.url(self.path(book)))
-        # Wait until at least one account card or the line-app container is visible
+        # The server skeleton stands in until the feed accounts and pickers load
+        # from the API; then React mounts over it (or over a load-error card).
         try:
             self.page.wait_for_selector("#line-app", timeout=15_000)
+            self.page.wait_for_selector("[data-testid='bank-feed-skeleton']", state="detached", timeout=15_000)
         except Exception:
             print(f"\n[BankFeedPage] Page HTML snippet:\n{self.page.content()[:3000]}")
             print("\n[BankFeedPage] Console messages:\n" + "\n".join(console_msgs[-20:]))
