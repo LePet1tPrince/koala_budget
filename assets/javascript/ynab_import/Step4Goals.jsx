@@ -96,11 +96,11 @@ const Step4Goals = ({ categories, choices, onChange }) => {
               </select>
 
               <p className="text-xs text-base-content/70">
-                {category.transfer_legs > 0
-                  ? gettext('{n} transfers into this category').replace('{n}', category.transfer_legs.toLocaleString())
+                {category.transferLegs > 0
+                  ? gettext('{n} transfers into this category').replace('{n}', category.transferLegs.toLocaleString())
                   : gettext('No transfers — this one was only ever spent from')}
-                {category.plain_rows > 0 &&
-                  ` · ${gettext('{n} payments out of it').replace('{n}', category.plain_rows.toLocaleString())}`}
+                {category.plainRows > 0 &&
+                  ` · ${gettext('{n} payments out of it').replace('{n}', category.plainRows.toLocaleString())}`}
               </p>
             </div>
           );

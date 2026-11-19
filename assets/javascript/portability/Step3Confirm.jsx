@@ -88,12 +88,19 @@ const Step3Confirm = ({ api, importId, bookName, file, destination, onApplyStart
       <div>
         <h2 className="text-lg font-semibold">{gettext('This will replace everything in this team')}</h2>
         <p className="text-base-content/70 text-sm mt-1">
-          {gettext('There is no merge. Everything on the right is deleted first; everything on the left is written in its place.')}
+          {gettext(
+            'There is no merge. Everything on the right is deleted first; everything on the left is written in its place.',
+          )}
         </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <SummaryColumn title={gettext('In the file')} checks={file.checks} tone="border-success/30" testId="summary-file" />
+        <SummaryColumn
+          title={gettext('In the file')}
+          checks={file.checks}
+          tone="border-success/30"
+          testId="summary-file"
+        />
         <SummaryColumn
           title={gettext('Will be destroyed')}
           checks={destination.checks}
@@ -102,7 +109,7 @@ const Step3Confirm = ({ api, importId, bookName, file, destination, onApplyStart
         />
       </div>
 
-      {destination.has_plaid && (
+      {destination.hasPlaid && (
         <div className="alert alert-warning" data-testid="plaid-warning">
           <Icon name="triangle-alert" className="h-5 w-5 shrink-0" />
           <span>
@@ -113,11 +120,11 @@ const Step3Confirm = ({ api, importId, bookName, file, destination, onApplyStart
         </div>
       )}
 
-      {file.hash_warnings?.length > 0 && (
+      {file.hashWarnings?.length > 0 && (
         <div className="alert alert-warning" data-testid="hash-warning">
           <Icon name="triangle-alert" className="h-5 w-5 shrink-0" />
           <div className="text-sm">
-            {file.hash_warnings.map((warning) => (
+            {file.hashWarnings.map((warning) => (
               <div key={warning}>{warning}</div>
             ))}
           </div>

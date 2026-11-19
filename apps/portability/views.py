@@ -1,38 +1,52 @@
 """
-The export/import page and its endpoints (§7 Phase 4).
+The export/import page and its API (§7 Phase 4).
 
-Every write endpoint is `@book_admin_required` (§4.4.3) -- exporting is
-harmless for any member, but importing is the most destructive operation in
-the product, and the export button lives on the same page as the import
-button either way. The apply endpoint re-checks the typed book name
-server-side (§4.4.4): the confirmation the browser enforces is a courtesy,
-not the guard.
+Everything but the export itself is admin-only (`@book_admin_required`,
+`BookAdminPermissions`; §4.4.3) -- exporting is harmless for any member, but
+importing is the most destructive operation in the product, and the export
+button lives on the same page as the import button either way. The apply
+endpoint re-checks the typed book name server-side (§4.4.4): the confirmation
+the browser enforces is a courtesy, not the guard.
 """
 
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import HttpResponse
 from django.shortcuts import render
-from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_POST
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from kombu.exceptions import OperationalError
+from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.response import Response
 
+from apps.api.base import BookAPIView
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
 from apps.books.decorators import book_admin_required, login_and_book_required
+from apps.books.permissions import BookAdminPermissions
 from apps.plaid.models import PlaidAccount
-from apps.utils.json_views import json_body, json_errors
+from apps.utils.json_views import UnexpectedErrorsAsJson
 from apps.utils.progress import status_payload
+from apps.utils.progress_serializers import ImportStatusQuerySerializer
 
 from .models import MAX_UPLOAD_BYTES, DataImport
+from .serializers import (
+    DataApplyRequestSerializer,
+    DataImportStartedSerializer,
+    DataImportStatusSerializer,
+    DataUploadRequestSerializer,
+    DataUploadResultSerializer,
+    PortabilityPageSerializer,
+)
 from .services import export, read, write
 from .services.export import ExportError
 from .services.schema import DocumentError
 from .tasks import run_data_import
 
-portability_json_errors = json_errors(log_label="Data export/import request")
+TAGS = ["portability"]
 
 
 def _archive_filename(book, *, suffix: str = "") -> str:
@@ -88,14 +102,7 @@ def export_view(request, team_slug, book_slug):
 @ensure_csrf_cookie
 @book_admin_required
 def portability_home(request, team_slug, book_slug):
-    """The page: an Export card and an Import card (§7 Phase 4)."""
-    uncategorized_count = BankTransaction.objects.filter(book=request.book, journal_entry__isnull=True).count()
-    resume = (
-        DataImport.objects.filter(book=request.book, status__in=[DataImport.STATUS_UPLOADED, DataImport.STATUS_RUNNING])
-        .order_by("-created_at")
-        .first()
-    )
-
+    """The page: an Export card and an Import card (§7 Phase 4). The wizard loads its state from `api/state/`."""
     return render(
         request,
         "portability/portability.html",
@@ -107,52 +114,76 @@ def portability_home(request, team_slug, book_slug):
                 "Download everything in this set of books, or replace it entirely with a Koala Budget export."
             ),
             "page_title": _("Export & Import"),
-            "portability_props": {
-                "teamSlug": team_slug,
-                "teamName": request.team.name,
-                "bookName": request.book.name,
-                "uncategorizedCount": uncategorized_count,
-                "bankFeedUrl": reverse("bank_feed:bank_feed_home", args=[team_slug, book_slug]),
-                "homeUrl": reverse("web_book:home", args=[team_slug, book_slug]),
-                "resume": resume.as_dict() if resume else None,
-                "urls": {
-                    "export": reverse("portability:export", args=[team_slug, book_slug]),
-                    "upload": reverse("portability:api_upload", args=[team_slug, book_slug]),
-                    "apply": reverse("portability:api_apply", args=[team_slug, book_slug]),
-                    "status": reverse("portability:api_status", args=[team_slug, book_slug]),
-                    "safetyExport": reverse("portability:api_safety_export", args=[team_slug, book_slug]),
-                },
-            },
         },
     )
 
 
-@require_POST
-@book_admin_required
-@portability_json_errors
-def api_upload(request, team_slug, book_slug):
+class PortabilityAPIView(UnexpectedErrorsAsJson, BookAPIView):
+    permission_classes = [BookAdminPermissions]
+    unexpected_error_label = "Data export/import request"
+
+    def record(self, import_id, message="That import is no longer available.") -> DataImport:
+        """The import this request is about, scoped to the book -- never by id alone."""
+        record = DataImport.objects.filter(book=self.book, id=import_id).first()
+        if record is None:
+            raise NotFound(message)
+        return record
+
+
+class StateView(PortabilityAPIView):
+    """
+    What the page opens on: the export warning's count, and an import to pick back
+    up -- one uploaded or running, the most recent first.
+    """
+
+    @extend_schema(operation_id="portability_state", tags=TAGS, responses=PortabilityPageSerializer)
+    def get(self, request, team_slug, book_slug):
+        resume = (
+            DataImport.objects.filter(
+                book=self.book, status__in=[DataImport.STATUS_UPLOADED, DataImport.STATUS_RUNNING]
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        data = {
+            "book_name": self.book.name,
+            "uncategorized_count": BankTransaction.objects.filter(book=self.book, journal_entry__isnull=True).count(),
+            "resume": resume.as_dict() if resume else None,
+        }
+        return Response(PortabilityPageSerializer(data).data)
+
+
+class UploadView(PortabilityAPIView):
     """
     Parse and validate the uploaded archive, and show what it will replace.
     Writes nothing -- the row this creates just remembers the bytes for the
     apply step, the way `YnabImport` does.
     """
-    uploads = request.FILES.getlist("file")
-    if not uploads:
-        return JsonResponse({"error": "Choose an export file (.zip) to upload."}, status=400)
-    upload = uploads[0]
-    if upload.size > MAX_UPLOAD_BYTES:
-        return JsonResponse({"error": f"{upload.name} is too large to import."}, status=400)
-    data = upload.read()
 
-    try:
-        tables = read.read_archive(data)
-    except DocumentError as error:
-        return JsonResponse({"error": str(error)}, status=400)
+    parser_classes = [MultiPartParser, FormParser]
 
-    record = DataImport.objects.create(book=request.book, created_by=request.user, archive=data)
+    @extend_schema(
+        operation_id="portability_upload",
+        tags=TAGS,
+        request={"multipart/form-data": DataUploadRequestSerializer},
+        responses=DataUploadResultSerializer,
+    )
+    def post(self, request, team_slug, book_slug):
+        upload = request.FILES.get("file")
+        if upload is None:
+            raise ValidationError({"file": ["Choose an export file (.zip) to upload."]})
+        if upload.size > MAX_UPLOAD_BYTES:
+            raise ValidationError({"file": [f"{upload.name} is too large to import."]})
+        data = upload.read()
 
-    return JsonResponse(
-        {
+        try:
+            tables = read.read_archive(data)
+        except DocumentError as error:
+            raise ValidationError({"file": [str(error)]}) from None
+
+        record = DataImport.objects.create(book=self.book, created_by=request.user, archive=data)
+
+        payload = {
             "import_id": record.id,
             "file": {
                 "source": tables.manifest.source,
@@ -162,66 +193,97 @@ def api_upload(request, team_slug, book_slug):
             },
             "destination": {
                 "team_name": request.team.name,
-                "book_name": request.book.name,
-                "checks": export.build_checks(request.book),
-                "has_plaid": PlaidAccount.objects.filter(book=request.book).exists(),
+                "book_name": self.book.name,
+                "checks": export.build_checks(self.book),
+                "has_plaid": PlaidAccount.objects.filter(book=self.book).exists(),
             },
         }
+        return Response(DataUploadResultSerializer(payload).data)
+
+
+class ApplyView(PortabilityAPIView):
+    """
+    Start the import: the book is wiped and replaced by the uploaded archive. The
+    typed book name is checked here, server-side -- the confirmation dialog the
+    browser shows is a courtesy, not the guard (§4.4.4). An import already started
+    answers its status rather than starting again.
+    """
+
+    @extend_schema(
+        operation_id="portability_apply",
+        tags=TAGS,
+        request=DataApplyRequestSerializer,
+        responses=DataImportStartedSerializer,
     )
+    def post(self, request, team_slug, book_slug):
+        body = DataApplyRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        record = self.record(body.validated_data["import_id"], "That upload is no longer available. Start again.")
+        if record.status != DataImport.STATUS_UPLOADED:
+            return self._started(record, task_id=record.task_id)
+
+        # The book is what gets replaced, so its name -- not the team's -- is the one
+        # typed: in a team with several books, that is what says which one goes.
+        if body.validated_data["book_name"].strip() != self.book.name:
+            raise ValidationError({"book_name": ["Type the name of this set of books exactly to confirm."]})
+
+        try:
+            async_result = run_data_import.delay(record.id)
+            task_id = str(async_result.id or "")
+            DataImport.objects.filter(id=record.id).update(task_id=task_id)
+        except OperationalError:
+            # No broker reachable (a dev machine without Celery, say). Running it
+            # here makes for a slow request, which is far better than a wizard
+            # that sits at 0% forever with nothing to explain why.
+            run_data_import(record.id)
+            task_id = ""
+
+        record.refresh_from_db()
+        return self._started(record, task_id=task_id)
+
+    @staticmethod
+    def _started(record, *, task_id):
+        data = {"import_id": record.id, "task_id": task_id, **record.as_dict()}
+        return Response(DataImportStartedSerializer(data).data)
 
 
-@require_POST
-@book_admin_required
-@portability_json_errors
-def api_apply(request, team_slug, book_slug):
-    """
-    Start the import. The typed book name is checked here, server-side --
-    the confirmation dialog the browser shows is a courtesy, not the guard
-    (§4.4.4).
-    """
-    body = json_body(request)
-    record = DataImport.objects.filter(book=request.book, id=body.get("import_id")).first()
-    if record is None:
-        return JsonResponse({"error": "That upload is no longer available. Start again."}, status=404)
-    if record.status != DataImport.STATUS_UPLOADED:
-        return JsonResponse({"import_id": record.id, **record.as_dict()})
-
-    # The book is what gets replaced, so its name -- not the team's -- is the one
-    # typed: in a team with several books, that is what says which one goes.
-    typed_name = (body.get("book_name") or "").strip()
-    if typed_name != request.book.name:
-        return JsonResponse({"error": "Type the name of this set of books exactly to confirm."}, status=400)
-
-    try:
-        async_result = run_data_import.delay(record.id)
-        DataImport.objects.filter(id=record.id).update(task_id=async_result.id)
-        task_id = async_result.id
-    except OperationalError:
-        # No broker reachable (a dev machine without Celery, say). Running it
-        # here makes for a slow request, which is far better than a wizard
-        # that sits at 0% forever with nothing to explain why.
-        run_data_import(record.id)
-        task_id = ""
-
-    record.refresh_from_db()
-    return JsonResponse({"import_id": record.id, "task_id": task_id, **record.as_dict()})
-
-
-@book_admin_required
-@portability_json_errors
-def api_status(request, team_slug, book_slug):
+class StatusView(PortabilityAPIView):
     """Where the import has got to. See `apps.utils.progress.status_payload`."""
-    record = DataImport.objects.filter(book=request.book, id=request.GET.get("import_id")).first()
-    if record is None:
-        return JsonResponse({"error": "That import is no longer available."}, status=404)
 
-    return JsonResponse(status_payload(record))
+    # Polled about once a second for as long as an import runs: the per-user
+    # throttle would cut a long import's progress bar off part-way.
+    throttle_classes = []
+
+    @extend_schema(
+        operation_id="portability_status",
+        tags=TAGS,
+        parameters=[ImportStatusQuerySerializer],
+        responses=DataImportStatusSerializer,
+    )
+    def get(self, request, team_slug, book_slug):
+        query = ImportStatusQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        record = self.record(query.validated_data["import_id"])
+        return Response(DataImportStatusSerializer(status_payload(record)).data)
 
 
-@book_admin_required
-def api_safety_export(request, team_slug, book_slug):
-    """The pre-wipe copy, while `SAFETY_EXPORT_WINDOW` has not yet elapsed."""
-    record = DataImport.objects.filter(book=request.book, id=request.GET.get("import_id")).first()
-    if record is None or not record.safety_archive_available:
-        raise Http404
-    return _archive_response(bytes(record.safety_archive), _archive_filename(request.book, suffix="before-import"))
+class SafetyExportView(PortabilityAPIView):
+    """
+    The pre-wipe copy of the book, as a .zip download, while `SAFETY_EXPORT_WINDOW`
+    has not yet elapsed; a 404 after it, or before anything has run. A plain link
+    in the web app (a browser download), so it is not wrapped by the api-client.
+    """
+
+    @extend_schema(
+        operation_id="portability_safety_export",
+        tags=TAGS,
+        parameters=[ImportStatusQuerySerializer],
+        responses={(200, "application/zip"): OpenApiResponse(OpenApiTypes.BINARY, description="The archive.")},
+    )
+    def get(self, request, team_slug, book_slug):
+        query = ImportStatusQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        record = self.record(query.validated_data["import_id"])
+        if not record.safety_archive_available:
+            raise NotFound("The copy taken before this import is no longer available.")
+        return _archive_response(bytes(record.safety_archive), _archive_filename(self.book, suffix="before-import"))

@@ -159,7 +159,6 @@ def book_home(request, team_slug, book_slug):
             "goals": goals_qs[:4],
             "net_worth_chart_data": net_worth_chart_data,
             "show_resume": show_resume,
-            "resume_url": reverse("onboarding:api_task", args=book.url_args),
             "ynab_url": ynab_url,
             "ynab_state": ynab_state,
             "show_monthly_review_nudge": show_monthly_review_nudge,

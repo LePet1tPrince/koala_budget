@@ -467,8 +467,21 @@ SPECTACULAR_SETTINGS = {
     "PREPROCESSING_HOOKS": [
         "apps.api.schema.filter_schema_apis",
     ],
-    # Choice sets shared by several budget fields get one stable enum name each.
+    # Choice sets whose field name (`status`, `state`, `kind`...) other components
+    # share: named here so they neither collide nor rename another component's enum.
     "ENUM_NAME_OVERRIDES": {
+        "ImportStatusEnum": "apps.utils.progress_serializers.STATUS_CHOICES",
+        "OnboardingPhaseEnum": "apps.onboarding.serializers.PHASES",
+        "OnboardingQuestionKindEnum": "apps.onboarding.serializers.QUESTION_KINDS",
+        "OnboardingTaskStateEnum": "apps.onboarding.serializers.TASK_STATES",
+        "OnboardingTaskActionEnum": "apps.onboarding.serializers.TASK_ACTIONS",
+        "OpeningBalanceAccountTypeEnum": "apps.onboarding.serializers.OPENING_ACCOUNT_TYPES",
+        # nav-state's Unassigned pill (apps.budget.unassigned), under the name it had first.
+        "StateEnum": ["positive", "zero", "negative"],
+        # Every type the model stores (budget buckets included), and the ones a user may pick.
+        "AccountTypeEnum": "apps.accounts.models.ALL_ACCOUNT_TYPE_CHOICES",
+        "PickableAccountTypeEnum": "apps.accounts.models.ACCOUNT_TYPE_CHOICES",
+        # The budget API's choice sets (apps/budget/api/serializers.py).
         "BudgetSectionEnum": "apps.budget.api.serializers.SECTION_KEYS",
         "BudgetAutofillActionEnum": "apps.budget.figures.AUTOFILL_ACTIONS",
         "BudgetCoverSourceEnum": "apps.budget.api.serializers.COVER_SOURCES",

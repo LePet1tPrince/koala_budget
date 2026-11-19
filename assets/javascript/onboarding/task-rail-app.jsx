@@ -1,13 +1,17 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import Cookies from 'js-cookie';
 
+import { bookFromBase } from '../common/book';
+import { getOnboardingApi } from './api';
 import TaskRail from './TaskRail';
 
+/**
+ * The server decides whether the rail belongs on the page (`onboarding_rail`) and
+ * says which book it walks; the rail loads its tasks through the API once mounted.
+ */
 const mount = document.getElementById('task-rail-app');
-const propsEl = document.getElementById('task-rail-props');
 
-if (mount && propsEl) {
-  const props = JSON.parse(propsEl.textContent);
-  createRoot(mount).render(<TaskRail props={{ ...props, csrf: Cookies.get('csrftoken') }} />);
+if (mount) {
+  const api = getOnboardingApi(bookFromBase(mount.dataset.bookBase));
+  createRoot(mount).render(<TaskRail props={{ api, path: window.location.pathname }} />);
 }

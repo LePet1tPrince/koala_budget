@@ -92,7 +92,7 @@ const Step5Preview = ({ preview, loading }) => {
               </li>
             ))}
           </ul>
-          {reconciliation.export_month && (
+          {reconciliation.exportMonth && (
             <p className="text-xs text-base-content/70">
               {gettext(
                 'The month you exported in is left out of these checks: your plan was a snapshot taken part-way through it, while the register already carries the whole month.',

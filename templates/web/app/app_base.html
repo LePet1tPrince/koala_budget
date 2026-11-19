@@ -20,7 +20,11 @@
   {% comment %}
  The guided task rail, while a team is working through the walkthrough's task
      phase. The context processor only sets this once the questionnaire is done,
-     so it costs one query and no markup on every other page.
+     so it costs one query and no markup on every other page. Whether to mount it
+     stays a server decision (nav-state's `onboarding_rail.visible` says the same
+     thing to an API client): deciding it client-side would load the rail's code
+     and make a request on every page of every book, and pop the rail in late.
+     It reads its tasks from `api/tasks/` through the api-client once mounted.
   {% endcomment %}
   {% comment %}
  The script loads here rather than in `page_js`: child templates define their
@@ -34,8 +38,7 @@
     {% vite_asset 'assets/javascript/unassigned/unassigned-pill.js' %}
   {% endif %}
   {% if onboarding_rail %}
-    {{ onboarding_rail|json_script:'task-rail-props' }}
-    <div id="task-rail-app"></div>
+    <div id="task-rail-app" data-book-base="{{ onboarding_rail.book_base }}"></div>
     {% vite_react_refresh %}
     {% vite_asset 'assets/javascript/onboarding/task-rail-app.jsx' %}
   {% endif %}

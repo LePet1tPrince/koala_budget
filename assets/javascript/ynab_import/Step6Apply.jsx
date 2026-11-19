@@ -99,7 +99,7 @@ const Step6Apply = ({ status, urls, onRetry }) => {
   const running = !failed && !done;
 
   const percent = useCreepingProgress(status?.progress || 0, running);
-  const elapsed = status?.elapsed_seconds || 0;
+  const elapsed = status?.elapsedSeconds || 0;
   const queued = running && !status?.started && elapsed === 0;
   const [waited, setWaited] = useState(0);
 
@@ -128,7 +128,7 @@ const Step6Apply = ({ status, urls, onRetry }) => {
   }
 
   if (running) {
-    const remaining = remainingText(status?.eta_seconds);
+    const remaining = remainingText(status?.etaSeconds);
     const waiting = queued && waited > QUEUE_PATIENCE_SECONDS;
 
     return (

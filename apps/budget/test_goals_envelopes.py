@@ -706,10 +706,10 @@ class GoalReportsTest(GoalsFixture):
         self.assertNotIn("Goal: Car", [row["name"] for row in review["net_worth"]["by_account"]])
 
     def test_accounts_board_shows_left_and_splits_goals_from_equity(self):
-        page = self.client.get(reverse("accounts:accounts_home", args=self.book.url_args))
-        types = {section["key"]: section for section in page.context["manage_props"]["types"]}
+        board = self.client.get(reverse("accounts:board", args=self.book.url_args)).json()
+        types = {section["key"]: section for section in board["sections"]}
         goal_rows = [a for g in types["goal"]["groups"] for a in g["accounts"]]
-        self.assertEqual([a["balance"] for a in goal_rows if a["isGoal"]], ["-14400.00"])
+        self.assertEqual([a["balance"] for a in goal_rows if a["is_goal"]], ["-14400.00"])
         equity_names = {g["name"] for g in types["equity"]["groups"]}
         self.assertIn("Opening Balances", equity_names)
         self.assertNotIn(GOALS_GROUP_NAME, equity_names)

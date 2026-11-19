@@ -273,11 +273,11 @@ class BucketsHiddenTest(BucketFixture):
         self.assertIn(self.opening.pk, ids)
 
     def test_accounts_board_and_group_list_leave_buckets_out(self):
-        response = self.client.get(self.url("accounts:accounts_home"))
+        response = self.client.get(self.url("accounts:board"))
         self.assertEqual(response.status_code, 200)
-        board = response.context["manage_props"]
+        board = response.json()
         names = {
-            account["name"] for kind in board["types"] for group in kind["groups"] for account in group["accounts"]
+            account["name"] for kind in board["sections"] for group in kind["groups"] for account in group["accounts"]
         }
         self.assertIn("Groceries", names)
         self.assertNotIn("Unassigned", names)
@@ -296,7 +296,7 @@ class BucketsHiddenTest(BucketFixture):
     def test_board_cannot_create_an_account_in_the_budget_group(self):
         group = bucket_of(self.groceries).account_group
         response = self.client.post(
-            self.url("accounts:api_create_account"),
+            self.url("accounts:board-create-account"),
             {"name": "Sneaky", "group_id": group.pk},
             content_type="application/json",
         )

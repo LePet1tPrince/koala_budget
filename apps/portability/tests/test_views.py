@@ -90,6 +90,20 @@ class UploadApplyStatusFlowTests(TestCase):
     def test_home_page_loads(self):
         response = self.client.get(self.url("home"))
         self.assertEqual(response.status_code, 200)
+        # The wizard loads its state through the API; the page names only its book.
+        self.assertContains(response, 'id="book-base"')
+        self.assertNotContains(response, "portability-props")
+
+    def test_the_state_endpoint_says_what_the_page_opens_on(self):
+        payload = self.client.get(self.url("api_state")).json()
+        self.assertEqual(payload, {"book_name": self.dest_book.name, "uncategorized_count": 0, "resume": None})
+
+    def test_an_upload_in_flight_is_handed_back(self):
+        record = DataImport.objects.create(book=self.dest_book, archive=b"", status=DataImport.STATUS_RUNNING)
+        resume = self.client.get(self.url("api_state")).json()["resume"]
+        self.assertEqual(resume["id"], record.id)
+        self.assertEqual(resume["status"], "running")
+        self.assertFalse(resume["safety_archive_available"])
 
     def test_upload_returns_a_file_summary_and_writes_nothing(self):
         before = DataImport.objects.filter(book=self.dest_book).count()
@@ -107,7 +121,12 @@ class UploadApplyStatusFlowTests(TestCase):
         junk = SimpleUploadedFile("notes.txt", b"not an export", content_type="text/plain")
         response = self.client.post(self.url("api_upload"), {"file": junk})
         self.assertEqual(response.status_code, 400)
-        self.assertIn("error", response.json())
+        self.assertIn("file", response.json())
+
+    def test_upload_without_a_file_is_a_400(self):
+        response = self.client.post(self.url("api_upload"), {})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.json())
 
     def test_apply_refuses_a_wrong_book_name(self):
         upload = self.client.post(self.url("api_upload"), {"file": _export_file(self.source_book)}).json()
@@ -117,6 +136,7 @@ class UploadApplyStatusFlowTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
+        self.assertIn("book_name", response.json())
         record = DataImport.objects.get(id=upload["import_id"])
         self.assertEqual(record.status, DataImport.STATUS_UPLOADED)  # never queued
 
@@ -207,6 +227,15 @@ class GuardTests(TestCase):
             f"{reverse('portability:api_safety_export', args=[self.team.slug, self.book.slug])}?import_id=1"
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_state_refuses_a_plain_member(self):
+        response = self.client.get(reverse("portability:api_state", args=[self.team.slug, self.book.slug]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_the_api_refuses_anonymous_callers(self):
+        self.client.logout()
+        response = self.client.get(reverse("portability:api_state", args=[self.team.slug, self.book.slug]))
+        self.assertIn(response.status_code, (401, 403))
 
     def test_a_logged_out_user_is_redirected_to_login(self):
         self.client.logout()

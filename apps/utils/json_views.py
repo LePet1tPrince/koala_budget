@@ -55,3 +55,32 @@ def json_errors(message: str = GENERIC_ERROR, *, log_label: str = "JSON request"
         return wrapped
 
     return decorator
+
+
+class UnexpectedErrorsAsJson:
+    """
+    `json_errors` for a DRF view: an unexpected exception answers JSON, not
+    Django's HTML error page.
+
+    DRF already answers its own exceptions (validation, 404, permission) as
+    JSON; anything else it re-raises, and the page calling it is left with an
+    HTML 500 it cannot read. Mixed in before the DRF view class, this logs the
+    exception with its traceback and answers `{"detail": message, "debug": ...}`
+    with a 500 -- `debug` carrying the reason itself in DEBUG only, because a
+    developer looking at the page is the person who can act on it.
+    """
+
+    unexpected_error_message = GENERIC_ERROR
+    unexpected_error_label = "API request"
+
+    def handle_exception(self, exc):
+        from django.core.exceptions import PermissionDenied
+        from django.http import Http404
+        from rest_framework.exceptions import APIException
+        from rest_framework.response import Response
+
+        if isinstance(exc, APIException | Http404 | PermissionDenied):
+            return super().handle_exception(exc)
+        logger.exception("%s failed: %s", self.unexpected_error_label, self.request.path)
+        debug = f"{type(exc).__name__}: {exc}" if settings.DEBUG else ""
+        return Response({"detail": str(self.unexpected_error_message), "debug": debug}, status=500)
