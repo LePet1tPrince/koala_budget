@@ -89,5 +89,12 @@ policy). Tracked separately.
 | WP | Status |
 |---|---|
 | WP1 | done (platform: token auth, `/api/me/`, nav-state, `apps/api/base.py`, `scripts/build_api_client.sh`) |
-| WP2–WP8 | pending |
-| WP9–WP10 | pending |
+| WP2 | done (budget month, grid, Unassigned) |
+| WP3 | done (goals) |
+| WP4 | done (accounts) |
+| WP5 | done (dashboard, reports, monthly review) |
+| WP6 | done (onboarding, YNAB import, portability) |
+| WP7 | done (bank feed, transactions, reconciliation, rules) |
+| WP8 | done (books, teams, users, subscriptions) |
+| WP9 | done (enforcement tests in `apps/api/tests/test_api_surface.py`, schema warnings, dead code, full backend + E2E suites, browser QA) |
+| WP10 | pending |
