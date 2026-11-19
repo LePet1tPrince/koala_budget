@@ -84,10 +84,14 @@ READS = {
     "bank_feed:recurring_list": {},
     "bank_feed:recurring-schedule-list": lambda a, b: {"account": f"{a.chequing.id},{b.chequing.id}"},
     "onboarding:home": {},
+    "onboarding:api_catalog": {},
+    "onboarding:api_state": {},
     "onboarding:api_tasks": {},
     "onboarding:api_opening_balances": {},
     "ynab_import:home": {},
+    "ynab_import:api_state": {},
     "portability:home": {},
+    "portability:api_state": {},
     "portability:export": {},
     "reconciliation:hub": {},
     "reconciliation:reconciliation-list": lambda a, b: {"account": b.savings.id},
@@ -235,6 +239,7 @@ WRITES = {
     "onboarding:api_complete": lambda a, b: {"answers": {}},
     "onboarding:api_task": lambda a, b: {"slug": "net_worth"},
     "onboarding:api_skip": lambda a, b: {},
+    "onboarding:skip": lambda a, b: {},
     "reconciliation:reconciliation-list": None,  # placeholder, see WRITE_OVERRIDES
     "rules:rule-reorder": lambda a, b: {"ids": [b.rule.id, a.rule.id]},
     # Book B's account, category and row are unknown to book A: refused or read as nothing.

@@ -118,6 +118,17 @@ class MonthField(serializers.Field):
         return format_month(value)
 
 
+@extend_schema_field(OpenApiTypes.BINARY)
+class UploadField(serializers.FileField):
+    """
+    An uploaded file in a `multipart/form-data` request body.
+
+    DRF's `FileField` is documented as a URI (what it renders on a model); this
+    one is `format: binary`, so the generated client takes a `Blob` and sends it
+    as a file part. Pair it with `parser_classes = [MultiPartParser, ...]`.
+    """
+
+
 class BookAPIView(APIView):
     """
     An `APIView` inside one set of books (`/a/{team}/{book}/...`).

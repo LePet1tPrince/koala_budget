@@ -467,6 +467,18 @@ SPECTACULAR_SETTINGS = {
     "PREPROCESSING_HOOKS": [
         "apps.api.schema.filter_schema_apis",
     ],
+    # Choice sets whose field name (`status`, `state`, `kind`...) other components
+    # share: named here so they neither collide nor rename another component's enum.
+    "ENUM_NAME_OVERRIDES": {
+        "ImportStatusEnum": "apps.utils.progress_serializers.STATUS_CHOICES",
+        "OnboardingPhaseEnum": "apps.onboarding.serializers.PHASES",
+        "OnboardingQuestionKindEnum": "apps.onboarding.serializers.QUESTION_KINDS",
+        "OnboardingTaskStateEnum": "apps.onboarding.serializers.TASK_STATES",
+        "OnboardingTaskActionEnum": "apps.onboarding.serializers.TASK_ACTIONS",
+        "OpeningBalanceAccountTypeEnum": "apps.onboarding.serializers.OPENING_ACCOUNT_TYPES",
+        # nav-state's Unassigned pill (apps.budget.unassigned), under the name it had first.
+        "StateEnum": ["positive", "zero", "negative"],
+    },
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}
     },

@@ -9,8 +9,9 @@ app_name = "portability"
 urlpatterns = [
     path("", views.portability_home, name="home"),
     path("export/", views.export_view, name="export"),
-    path("api/upload/", views.api_upload, name="api_upload"),
-    path("api/apply/", views.api_apply, name="api_apply"),
-    path("api/status/", views.api_status, name="api_status"),
-    path("api/safety-export/", views.api_safety_export, name="api_safety_export"),
+    path("api/state/", views.StateView.as_view(), name="api_state"),
+    path("api/upload/", views.UploadView.as_view(), name="api_upload"),
+    path("api/apply/", views.ApplyView.as_view(), name="api_apply"),
+    path("api/status/", views.StatusView.as_view(), name="api_status"),
+    path("api/safety-export/", views.SafetyExportView.as_view(), name="api_safety_export"),
 ]

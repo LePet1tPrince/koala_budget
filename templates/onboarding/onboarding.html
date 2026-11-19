@@ -18,7 +18,7 @@
 {% block footer %}{% endblock %}
 
 {% block body %}
-  {{ onboarding_props|json_script:'onboarding-props' }}
+  {{ request.book.base_url|json_script:'book-base' }}
 
   <div id="onboarding-app"></div>
 
@@ -32,7 +32,7 @@
             chart of accounts instead.
           {% endblocktranslate %}
         </p>
-        <form method="post" action="{% url 'onboarding:api_skip' request.team.slug request.book.slug %}" class="mt-5">
+        <form method="post" action="{% url 'onboarding:skip' request.team.slug request.book.slug %}" class="mt-5">
           {% csrf_token %}
           <button type="submit" class="btn btn-primary">{% translate "Skip setup" %}</button>
         </form>

@@ -217,7 +217,8 @@ class OpeningBalanceEndpointTest(OpeningTestCase):
         payload = self.client.get(self.url).json()
 
         self.assertFalse(payload["allowed"])
-        self.assertTrue(payload["error"])
+        self.assertTrue(payload["reason"])
+        self.assertEqual(payload["accounts"], [])
 
     def test_lists_accounts_once_unlocked(self):
         self.categorize_something()

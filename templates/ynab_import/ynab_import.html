@@ -7,7 +7,7 @@
   were squeezed until their selects were unreadable.
 {% endcomment %}
 {% block takeover_content %}
-  {{ ynab_props|json_script:'ynab-props' }}
+  {{ request.book.base_url|json_script:'book-base' }}
 
   <p class="mb-6 max-w-prose text-sm text-base-content/70">
     {% blocktranslate trimmed %}

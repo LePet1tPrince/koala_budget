@@ -56,6 +56,13 @@ class WizardTest(TestCase):
         response = self.client.get(self.url("home"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "ynab-import-app")
+        # The wizard loads its state through the API; the page names only its book.
+        self.assertContains(response, 'id="book-base"')
+        self.assertNotContains(response, "ynab-props")
+
+    def test_the_state_endpoint_says_where_the_wizard_opens(self):
+        payload = self.client.get(self.url("api_state")).json()
+        self.assertEqual(payload, {"book_name": self.book.name, "can_import": True, "resume": None})
 
     def test_the_page_is_a_full_screen_takeover(self):
         """The wizard's tables need the whole width, so no sidebar and no settings rail."""
@@ -102,7 +109,7 @@ class WizardTest(TestCase):
         junk = SimpleUploadedFile("notes.csv", b"a,b,c\n1,2,3\n", content_type="text/csv")
         response = self.client.post(self.url("api_upload"), {"files": [junk, upload_files()[0]]})
         self.assertEqual(response.status_code, 400)
-        self.assertIn("plan file", response.json()["error"])
+        self.assertIn("plan file", response.json()["files"][0])
 
     def test_preview_reflects_the_choices(self):
         payload = self.upload()
@@ -184,7 +191,7 @@ class WizardTest(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 409)
-        self.assertIn("already has transactions", response.json()["error"])
+        self.assertIn("already has transactions", response.json()["detail"])
 
     @override_settings(CELERY_TASK_ALWAYS_EAGER=True, ONBOARDING_ENABLED=True)
     def test_an_import_finishes_the_onboarding_takeover(self):
@@ -227,12 +234,51 @@ class TeamScopingTest(TestCase):
 
     def test_another_teams_import_is_not_reachable(self):
         self.client.force_login(self.user)
-        response = self.client.post(
-            reverse("ynab_import:api_preview", args=[self.team.slug, self.book.slug]),
-            data=json.dumps({"import_id": self.record.id}),
-            content_type="application/json",
+        for name in ("api_preview", "api_apply"):
+            with self.subTest(name=name):
+                response = self.client.post(
+                    reverse(f"ynab_import:{name}", args=[self.team.slug, self.book.slug]),
+                    data=json.dumps({"import_id": self.record.id}),
+                    content_type="application/json",
+                )
+                self.assertEqual(response.status_code, 404)
+        response = self.client.get(
+            reverse("ynab_import:api_status", args=[self.team.slug, self.book.slug]), {"import_id": self.record.id}
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_a_non_member_cannot_reach_the_api(self):
+        self.client.force_login(self.user)
+        urls = {
+            name: reverse(f"ynab_import:{name}", args=self.other_book.url_args) for name in ("api_state", "api_status")
+        }
+        self.assertIn(self.client.get(urls["api_state"]).status_code, (403, 404))
+        self.assertIn(self.client.get(urls["api_status"], {"import_id": self.record.id}).status_code, (403, 404))
+        response = self.client.post(
+            reverse("ynab_import:api_upload", args=self.other_book.url_args), {"files": upload_files()}
+        )
+        self.assertIn(response.status_code, (403, 404))
+        self.assertFalse(YnabImport.objects.filter(book=self.other_book).exclude(id=self.record.id).exists())
+
+    def test_anonymous_api_calls_are_refused(self):
+        response = self.client.get(reverse("ynab_import:api_state", args=[self.team.slug, self.book.slug]))
+        self.assertIn(response.status_code, (401, 403))
+
+    def test_a_status_poll_without_an_import_id_is_a_400(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("ynab_import:api_status", args=[self.team.slug, self.book.slug]))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("import_id", response.json())
+
+    def test_a_preview_without_an_import_id_is_a_400(self):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("ynab_import:api_preview", args=[self.team.slug, self.book.slug]),
+            data=json.dumps({"choices": {}}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("import_id", response.json())
 
     def test_a_non_member_cannot_open_the_wizard(self):
         self.client.force_login(self.user)
@@ -269,7 +315,7 @@ class UnexpectedErrorTest(TestCase):
             response = self.client.post(url, {"files": upload_files()})
 
         self.assertEqual(response.status_code, 500)
-        self.assertIn("migrating", response.json()["error"])
+        self.assertIn("migrating", response.json()["detail"])
 
     @override_settings(DEBUG=True)
     def test_in_debug_the_reason_itself_reaches_the_browser(self):
@@ -277,7 +323,7 @@ class UnexpectedErrorTest(TestCase):
         with patch("apps.ynab_import.views.YnabImport.objects.create", side_effect=ProgrammingError("no such table")):
             response = self.client.post(url, {"files": upload_files()})
 
-        self.assertIn("ProgrammingError: no such table", response.json()["detail"])
+        self.assertIn("ProgrammingError: no such table", response.json()["debug"])
 
 
 class ProgressChannelTest(TransactionTestCase):
@@ -456,9 +502,9 @@ class ResumeTest(TestCase):
         return YnabImport.objects.create(book=self.book, register_csv=TINY_REGISTER, plan_csv=TINY_PLAN, **fields)
 
     def resume(self):
-        response = self.client.get(reverse("ynab_import:home", args=[self.team.slug, self.book.slug]))
+        response = self.client.get(reverse("ynab_import:api_state", args=[self.team.slug, self.book.slug]))
         self.assertEqual(response.status_code, 200)
-        return response.context["ynab_props"]["resume"]
+        return response.json()["resume"]
 
     def test_an_upload_that_was_never_applied_is_not_resumed(self):
         # Nothing is running and nothing was written: the wizard should start where
