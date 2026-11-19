@@ -2,8 +2,9 @@
 {% comment %}
   The Unassigned figure, on every app page (docs/unassigned-plan.md §3). Rendered by
   the `unassigned_pill` context processor's lazy value and kept current by
-  assets/javascript/unassigned/unassigned-pill.js, which refreshes it after every
-  write and shows the change as a delta chip. The words for each state live in
+  assets/javascript/unassigned/unassigned-pill.js, which re-reads it from the budget
+  API (`budget:api_unassigned`, for the nav book) after every write and shows the
+  change as a delta chip. The words for each state live in
   data attributes so the script never hardcodes copy.
 
   `compact` is the mobile top-bar variant: the figure, and Expected income beside it.
@@ -17,6 +18,8 @@
        data-raw="{{ unassigned_pill.raw }}"
        data-month="{{ unassigned_pill.month }}"
        data-url="{{ unassigned_url }}"
+       data-team-slug="{{ nav_team.slug }}"
+       data-book-slug="{{ nav_book.slug }}"
        data-label-unassigned="{{ unassigned_labels.unassigned }}"
        data-label-over-assigned="{{ unassigned_labels.over_assigned }}"
        data-hint-positive="{% translate 'waiting for a job' %}"

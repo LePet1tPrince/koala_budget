@@ -3,13 +3,22 @@
 // Each row used to submit its own <form>, so every blur triggered a POST, a
 // redirect and a full page load — which reset the scroll position to the top
 // and dropped focus. Typing down a column was unusable. Here the amount is
-// POSTed as JSON and the server returns every figure for the month, which we
-// write straight into the `data-budget-cell` spans the templates carry.
+// saved through the budget API (`budgetAmountSave`), which answers with the
+// month's figures recomputed; budget-api.js paints them into the
+// `data-budget-cell` spans the templates carry.
 //
-// The <noscript> Save buttons remain the fallback when JS is disabled.
-import Cookies from 'js-cookie';
+// The same module runs the two other writes that move this month's figures —
+// covering an overspent row and the sidebar's Auto-Assign — so every write
+// shares one ordering: a stale response never overwrites fresher totals.
+//
+// The <noscript> Save buttons (and the Auto-Assign forms' own action) remain
+// the fallback when JS is disabled.
+import { computeFormula, formatMoney, parseAmount } from '../common/amount';
+import { apiMonth, budget, errorMessage, fetchMonth, paintFigures, rowsById } from './budget-api';
 
-import { computeFormula, parseAmount } from '../common/amount';
+/* globals gettext */
+
+const t = (text) => (typeof gettext === 'function' ? gettext(text) : text);
 
 // A write made elsewhere on the page that moves this month's figures without
 // going through a budget save — the Actual popover moving a transaction to
@@ -19,39 +28,47 @@ import { computeFormula, parseAmount } from '../common/amount';
 let refreshFigures = null;
 document.addEventListener('budget:actuals-changed', () => refreshFigures?.());
 
+// Changed month in place (month-swap.js): the same rows, another month.
+let monthChanged = null;
+document.addEventListener('budget:month-changed', (event) => monthChanged?.(event.detail));
+
+// Auto-Assign: the sidebar's inline script confirms (and adds the selection to
+// the form), then submits it; that submission is ours to send over the API.
+let autofill = null;
+document.addEventListener('submit', (event) => {
+  const form = event.target.closest?.('form[data-autofill-form]');
+  if (!form || event.defaultPrevented || !autofill) return;
+  event.preventDefault();
+  autofill(form);
+});
+
 init();
 
-// Changing month replaces the table without reloading the page (month-swap.js),
-// so every form and figure this module holds a reference to is thrown away and
-// rebuilt. Bind again over the new markup: the previous listeners went out with
-// the elements they were attached to, and all the state below is per-call.
+// A redraw replaces the table (month-swap.js `redraw`, after hiding a
+// category), so every form and figure this module holds a reference to is
+// thrown away and rebuilt. Bind again over the new markup: the previous
+// listeners went out with the elements they were attached to, and all the state
+// below is per-call.
 document.addEventListener('budget:swapped', init);
 
 function init() {
   refreshFigures = null;
-  const SAVE_URL = document.querySelector('[data-budget-save-url]')?.dataset.budgetSaveUrl;
-  const FIGURES_URL = document.querySelector('[data-budget-figures-url]')?.dataset.budgetFiguresUrl;
+  monthChanged = null;
+  autofill = null;
   const forms = Array.from(document.querySelectorAll('form[data-budget-autosave]'));
-  if (!SAVE_URL || !forms.length) return;
+  if (!forms.length) return;
+  const { api, params } = budget();
 
-  // A stale response must never overwrite fresher totals: each save takes a
+  // A stale response must never overwrite fresher totals: each request takes a
   // ticket, and only the newest one that has come back gets to paint.
   let ticket = 0;
   let painted = 0;
-
-  const cells = new Map();
-  document.querySelectorAll('[data-budget-cell]').forEach((el) => {
-    cells.set(el.dataset.budgetCell, el);
-  });
+  // The newest figures painted, for the cover dialog (Unassigned, the goals).
+  let latest = null;
 
   // One shared live region: the per-row dot is decorative, so save state has to
   // reach a screen reader some other way.
   const live = document.querySelector('[data-budget-live]');
-
-  const checkboxes = new Map();
-  document.querySelectorAll('.budget-row-checkbox').forEach((cb) => {
-    checkboxes.set(`row:${cb.dataset.categoryId}:budgeted`, cb);
-  });
 
   const rows = forms
     .map((form) => {
@@ -61,8 +78,31 @@ function init() {
     .filter(Boolean);
 
   rows.forEach((row, index) => wire(row, index));
-  wireCover();
-  if (FIGURES_URL) refreshFigures = refetchFigures;
+  const cover = wireCover();
+  refreshFigures = refetchFigures;
+  autofill = runAutofill;
+  monthChanged = ({ figures }) => {
+    // Responses still in flight belong to the month just left.
+    painted = ++ticket;
+    latest = figures;
+    rows.forEach((row) => {
+      row.month = row.form.dataset.month;
+      row.saved = row.input.value;
+      row.queued = null;
+      row.input.classList.remove('input-error');
+      setStatus(row, '');
+    });
+    cover?.close();
+  };
+
+  const currentMonth = () => forms[0].dataset.month;
+
+  function paint(figures, mine) {
+    if (mine <= painted) return;
+    painted = mine;
+    latest = figures;
+    paintFigures(figures);
+  }
 
   // -------------------------------------------------------------------------
   // Row state
@@ -90,7 +130,7 @@ function init() {
 
     input.addEventListener('focus', () => input.select());
 
-    // With JS on, the row never navigates: saving happens over fetch.
+    // With JS on, the row never navigates: saving happens over the API.
     row.form.addEventListener('submit', (event) => {
       event.preventDefault();
       commit(row);
@@ -176,50 +216,37 @@ function init() {
     row.inFlight = true;
     setStatus(row, 'saving');
     const mine = ++ticket;
+    const month = row.month;
 
-    let response;
-    let payload;
+    let result;
     try {
-      response = await fetch(SAVE_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': Cookies.get('csrftoken') || '',
-        },
-        body: JSON.stringify({
-          category_id: Number(row.categoryId),
-          month: row.month,
-          amount: value,
-        }),
+      result = await api.budgetAmountSave({
+        ...params,
+        budgetAmountRequest: { categoryId: Number(row.categoryId), month: apiMonth(month), amount: value },
       });
-      payload = await response.json().catch(() => ({}));
-    } catch {
+    } catch (error) {
       row.inFlight = false;
-      fail(row, 'Could not reach the server. Your change was not saved.');
+      const fallback = error?.response
+        ? t('Could not save that amount.')
+        : t('Could not reach the server. Your change was not saved.');
+      fail(row, await errorMessage(error, fallback));
       return;
     }
 
     row.inFlight = false;
+    // Saved, but the page has moved to another month since: nothing on screen is that month's.
+    if (row.month !== month) return;
 
-    if (!response.ok) {
-      fail(row, payload.error || 'Could not save that amount.');
-      return;
-    }
-
-    row.saved = payload.amount;
+    row.saved = result.amount;
     // Normalize the display to 2dp — but never yank the text out from under
     // someone who has focused the field again and is typing.
     if (document.activeElement !== row.input) {
-      row.input.value = payload.amount;
+      row.input.value = result.amount;
     }
     row.input.classList.remove('input-error');
     setStatus(row, 'saved');
-    announce(`${row.categoryName} saved as ${payload.amount}.`);
-
-    if (mine > painted) {
-      painted = mine;
-      paint(payload.cells);
-    }
+    announce(`${row.categoryName} saved as ${result.amount}.`);
+    paint(result.figures, mine);
 
     if (row.queued !== null) {
       const next = row.queued;
@@ -228,22 +255,14 @@ function init() {
     }
   }
 
-  // Re-read every figure for the month and paint it. Shares the save tickets, so
+  // Re-read every figure for the month and paint it. Shares the tickets, so
   // whichever of a save and a refresh was *sent* last is what stays on screen.
   async function refetchFigures() {
     const mine = ++ticket;
-    const url = `${FIGURES_URL}?month=${encodeURIComponent(forms[0].dataset.month)}`;
-    let payload;
     try {
-      const response = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-      if (!response.ok) return;
-      payload = await response.json();
+      paint(await fetchMonth(currentMonth()), mine);
     } catch {
-      return;
-    }
-    if (mine > painted) {
-      painted = mine;
-      paint(payload.cells);
+      // The next save or month change catches up.
     }
   }
 
@@ -256,34 +275,63 @@ function init() {
     toast(text);
   }
 
-  // -------------------------------------------------------------------------
-  // Painting the returned figures
-  // -------------------------------------------------------------------------
-
-  function paint(payload) {
-    if (!payload) return;
-    Object.entries(payload).forEach(([key, cell]) => {
-      const checkbox = checkboxes.get(key);
-      // Keeps the Auto-Assign "this will overwrite N amounts" count honest.
-      if (checkbox) checkbox.dataset.budgeted = cell.value;
-
-      const el = cells.get(key);
-      // A badge that only shows while there is something to count (a tab's
-      // "N overspent").
-      if (el && cell.hidden !== undefined) el.hidden = cell.hidden;
-      if (el && cell.width !== undefined) {
-        paintMeter(el, cell);
-        return;
-      }
-      if (!el || el.textContent.trim() === cell.value) return;
-      el.textContent = cell.value;
-      el.classList.toggle('text-error', cell.tone === 'neg');
-      el.classList.toggle('text-success', cell.tone === 'pos');
-      // Income budgeted but not received yet: neutral, not a shortfall (apps/budget/display.py).
-      el.classList.toggle('text-base-content/70', cell.tone === 'expected');
-      flash(el);
+  /** Every amount field to the budgets in `figures` (after a write that set many). */
+  function syncInputs(figures) {
+    const byId = rowsById(figures);
+    rows.forEach((row) => {
+      const data = byId.get(String(row.categoryId));
+      if (!data || row.inFlight || document.activeElement === row.input) return;
+      row.saved = data.budgeted;
+      row.input.value = Number(data.budgeted) ? data.budgeted : '';
     });
-    refreshCoverButtons();
+  }
+
+  // -------------------------------------------------------------------------
+  // Auto-Assign
+  // -------------------------------------------------------------------------
+
+  const AUTOFILL_DONE = {
+    assigned_last_month: "Budgets set to last month's assigned amounts.",
+    spent_last_month: "Budgets set to last month's spending.",
+    assign_zero: 'Budgets set to zero.',
+    reset_available_zero: 'Budgets adjusted so all available amounts are zero.',
+  };
+
+  async function runAutofill(form) {
+    const action = form.elements.action.value;
+    // The inline script marks an explicit selection with `filtered`; without it the
+    // action reaches the whole tab, as the plain form post does.
+    const filtered = Boolean(form.elements.filtered?.value);
+    const categoryIds = filtered
+      ? Array.from(form.querySelectorAll('input[name="category_ids"]')).map((input) => Number(input.value))
+      : null;
+    const buttons = form.querySelectorAll('button');
+    buttons.forEach((button) => {
+      button.disabled = true;
+    });
+    const mine = ++ticket;
+    try {
+      const result = await api.budgetAutofill({
+        ...params,
+        autofillRequest: {
+          action,
+          month: apiMonth(form.elements.month.value),
+          section: form.elements.section?.value || undefined,
+          categoryIds,
+        },
+      });
+      if (mine > painted) syncInputs(result.figures);
+      paint(result.figures, mine);
+      announce(t(AUTOFILL_DONE[action] || 'Budgets updated.'));
+    } catch (error) {
+      const message = await errorMessage(error, t('Could not apply Auto-Assign.'));
+      announce(message);
+      toast(message);
+    } finally {
+      buttons.forEach((button) => {
+        button.disabled = false;
+      });
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -295,30 +343,16 @@ function init() {
     return Number.isFinite(n) ? n : 0;
   }
 
-  function fmtMoney(n) {
-    const abs = Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return `${n < 0 ? '-' : ''}$${abs}`;
-  }
-
-  // The button only makes sense while the row is overspent, which a save can change.
-  function refreshCoverButtons() {
-    document.querySelectorAll('[data-cover]').forEach((btn) => {
-      const cell = cells.get(`row:${btn.dataset.categoryId}:available`);
-      if (cell) btn.hidden = parseMoney(cell.textContent) >= 0;
-    });
-  }
-
   function wireCover() {
     const dialog = document.querySelector('[data-cover-dialog]');
-    const url = document.querySelector('[data-cover-url]')?.dataset.coverUrl;
-    if (!dialog || !url) return;
-    const goalsEl = document.getElementById('cover-goals');
-    const goals = goalsEl ? JSON.parse(goalsEl.textContent) : [];
+    if (!dialog) return null;
     const form = dialog.querySelector('[data-cover-form]');
     const select = form.querySelector('select[name="goal_id"]');
+    const goalOption = form.querySelector('[data-cover-goal-option]');
     const goalRadio = form.querySelector('input[name="source"][value="goal"]');
     const unassignedRadio = form.querySelector('input[name="source"][value="unassigned"]');
     const amountInput = form.querySelector('input[name="amount"]');
+    const submit = form.querySelector('button[type="submit"]');
     const unassignedEl = dialog.querySelector('[data-cover-unassigned]');
     const unassignedLabelEl = dialog.querySelector('[data-unassigned-label-text]');
     const hint = dialog.querySelector('[data-cover-hint]');
@@ -326,23 +360,27 @@ function init() {
     const intro = dialog.querySelector('[data-cover-intro]');
     let current = null;
     let currentShortfall = 0;
+    let goals = [];
 
-    // The page's own figures, so the dialog can't disagree with the card beside it.
-    const unassignedNow = () => parseMoney(cells.get('networth:available')?.textContent ?? '0');
-    const source = () => (goalRadio?.checked ? 'goal' : 'unassigned');
+    // The page's own figures, so the dialog can't disagree with the table beside it.
+    const unassignedNow = () => Number(latest?.unassigned.amount ?? 0);
+    const unassignedLabel = () => latest?.unassigned.label || 'Unassigned';
+    const source = () => (goalRadio?.checked && !goalOption?.hidden ? 'goal' : 'unassigned');
     const selectedGoal = () => goals.find((g) => String(g.id) === select?.value);
 
     const fillGoals = () => {
+      goals = (latest?.coverGoals ?? []).map((goal) => ({ ...goal }));
+      if (goalOption) goalOption.hidden = !goals.length;
       if (!select) return;
       select.replaceChildren(
         ...goals.map((goal) => {
           const option = document.createElement('option');
           option.value = goal.id;
-          option.textContent = `${goal.name} · ${fmtMoney(parseFloat(goal.left))} left`;
+          option.textContent = `${goal.name} · ${formatMoney(goal.left)} left`;
           return option;
-        })
+        }),
       );
-      const richest = goals.reduce((a, b) => (parseFloat(b.left) > parseFloat(a.left) ? b : a), goals[0]);
+      const richest = goals.reduce((a, b) => (Number(b.left) > Number(a.left) ? b : a), goals[0]);
       if (richest) select.value = String(richest.id);
     };
 
@@ -354,7 +392,7 @@ function init() {
       const newClaim = Math.max(0, amount - currentShortfall);
       if (source() === 'unassigned') return -newClaim;
       const goal = selectedGoal();
-      const released = goal ? Math.min(amount, Math.max(0, parseFloat(goal.left))) : 0;
+      const released = goal ? Math.min(amount, Math.max(0, Number(goal.left))) : 0;
       return released - newClaim;
     };
 
@@ -363,19 +401,20 @@ function init() {
       const amount = parseAmount(amountInput.value) ?? 0;
       const messages = [];
       let warn = false;
-      if (amount > 0) {
+      if (amount > 0 && latest) {
         const before = unassignedNow();
         const after = before + unassignedChange(amount);
-        const label = cells.get('networth:label')?.textContent.trim() || 'Unassigned';
-        if (Math.abs(after - before) >= 0.005) messages.push(`${label}: ${fmtMoney(before)} → ${fmtMoney(after)}.`);
+        if (Math.abs(after - before) >= 0.005) {
+          messages.push(`${unassignedLabel()}: ${formatMoney(before)} → ${formatMoney(after)}.`);
+        }
         if (after < 0) {
-          messages.push(`This leaves you over-assigned by ${fmtMoney(-after)}.`);
+          messages.push(`This leaves you over-assigned by ${formatMoney(-after)}.`);
           warn = true;
         }
         const goal = source() === 'goal' ? selectedGoal() : null;
-        const goalAfter = goal ? parseFloat(goal.left) - amount : 0;
+        const goalAfter = goal ? Number(goal.left) - amount : 0;
         if (goal && goalAfter < 0) {
-          messages.push(`${goal.name} will go to ${fmtMoney(goalAfter)}.`);
+          messages.push(`${goal.name} will go to ${formatMoney(goalAfter)}.`);
           warn = true;
         }
       }
@@ -389,6 +428,18 @@ function init() {
       });
     };
 
+    // Unassigned and the goals as of now: from the last figures painted, else
+    // (nothing written yet on this page) loaded while the dialog says so.
+    const showSources = () => {
+      fillGoals();
+      const unassigned = unassignedNow();
+      unassignedEl.textContent = latest ? formatMoney(unassigned) : t('Loading…');
+      unassignedEl.classList.toggle('text-error', Boolean(latest) && unassigned < 0);
+      unassignedLabelEl.textContent = unassignedLabel();
+      submit.disabled = !latest;
+      refreshHint();
+    };
+
     form.addEventListener('change', refreshHint);
     amountInput.addEventListener('input', refreshHint);
     // Picking a goal means taking the money from a goal.
@@ -398,26 +449,32 @@ function init() {
     });
 
     document.querySelectorAll('[data-cover]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const cell = cells.get(`row:${btn.dataset.categoryId}:available`);
-        const shortfall = cell ? -parseMoney(cell.textContent) : 0;
+      btn.addEventListener('click', async () => {
+        const row = latest ? rowsById(latest).get(btn.dataset.categoryId) : null;
+        const cell = document.querySelector(`[data-budget-cell="row:${btn.dataset.categoryId}:available"]`);
+        const available = row ? Number(row.available) : parseMoney(cell?.textContent ?? '0');
+        const shortfall = Math.max(0, -available);
         current = btn;
-        currentShortfall = Math.max(0, shortfall);
-        fillGoals();
+        currentShortfall = shortfall;
         amountInput.value = shortfall > 0 ? shortfall.toFixed(2) : '';
-        intro.textContent = `${btn.dataset.categoryName} is ${fmtMoney(-shortfall)}.`;
-        const unassigned = unassignedNow();
-        unassignedEl.textContent = fmtMoney(unassigned);
-        unassignedEl.classList.toggle('text-error', unassigned < 0);
-        const label = cells.get('networth:label')?.textContent.trim();
-        if (label) unassignedLabelEl.textContent = label;
+        intro.textContent = `${btn.dataset.categoryName} is ${formatMoney(-shortfall)}.`;
         // Unassigned first: the overspending has already come out of it, so covering
         // from it costs nothing more.
         unassignedRadio.checked = true;
         error.hidden = true;
-        refreshHint();
+        showSources();
         dialog.showModal();
         amountInput.select();
+        if (!latest) {
+          const mine = ++ticket;
+          try {
+            paint(await fetchMonth(currentMonth()), mine);
+          } catch {
+            error.textContent = t('Could not load your goals and unassigned money.');
+            error.hidden = false;
+          }
+          if (dialog.open && current === btn) showSources();
+        }
       });
     });
     dialog.querySelector('[data-cover-cancel]').addEventListener('click', () => dialog.close());
@@ -426,59 +483,38 @@ function init() {
       event.preventDefault();
       if (!current) return;
       const from = source();
-      const body = {
-        category_id: Number(current.dataset.categoryId),
-        month: current.dataset.month,
-        amount: computeFormula(amountInput.value) ?? amountInput.value,
-        source: from,
-      };
-      if (from === 'goal') body.goal_id = Number(select.value);
-      let response;
-      let payload = {};
+      const target = current;
+      const mine = ++ticket;
+      let result;
       try {
-        response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': Cookies.get('csrftoken') || '' },
-          body: JSON.stringify(body),
+        result = await api.budgetCover({
+          ...params,
+          coverRequest: {
+            categoryId: Number(target.dataset.categoryId),
+            month: apiMonth(target.dataset.month),
+            amount: computeFormula(amountInput.value) ?? amountInput.value,
+            source: from,
+            ...(from === 'goal' ? { goalId: Number(select.value) } : {}),
+          },
         });
-        payload = await response.json().catch(() => ({}));
-      } catch {
-        response = null;
-      }
-      if (!response || !response.ok) {
-        error.textContent = payload.error || 'Could not cover that.';
+      } catch (failure) {
+        error.textContent = await errorMessage(failure, t('Could not cover that.'));
         error.hidden = false;
         return;
       }
       const goal = from === 'goal' ? selectedGoal() : null;
-      if (goal) goal.left = payload.goal_left;
       // The row's budget changed: show it, and keep the autosave baseline in step.
-      const row = rows.find((r) => String(r.categoryId) === current.dataset.categoryId);
+      const row = rows.find((r) => String(r.categoryId) === target.dataset.categoryId);
       if (row) {
-        row.saved = payload.amount;
-        row.input.value = payload.amount;
+        row.saved = result.amount;
+        row.input.value = result.amount;
       }
-      painted = ++ticket;
-      paint(payload.cells);
+      paint(result.figures, mine);
       dialog.close();
-      announce(`${current.dataset.categoryName} covered from ${goal ? goal.name : 'unassigned money'}.`);
+      announce(`${target.dataset.categoryName} covered from ${goal ? goal.name : 'unassigned money'}.`);
     });
-  }
 
-  // A row's progress bar: the fill's width animates in CSS, the label is its %.
-  function paintMeter(el, cell) {
-    const fill = el.querySelector('.budget-meter-fill');
-    const label = el.querySelector('.budget-meter-label');
-    if (fill) fill.style.width = `${cell.width}%`;
-    if (label) label.textContent = cell.value;
-    if (!el.classList.contains('is-income')) el.classList.toggle('is-over', cell.tone === 'neg');
-  }
-
-  function flash(el) {
-    el.classList.remove('budget-cell-flash');
-    // Restart the animation on a cell that is still mid-flash.
-    void el.offsetWidth;
-    el.classList.add('budget-cell-flash');
+    return { close: () => dialog.open && dialog.close() };
   }
 
   // -------------------------------------------------------------------------
