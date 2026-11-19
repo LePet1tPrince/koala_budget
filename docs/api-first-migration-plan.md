@@ -97,4 +97,4 @@ policy). Tracked separately.
 | WP7 | done (bank feed, transactions, reconciliation, rules) |
 | WP8 | done (books, teams, users, subscriptions) |
 | WP9 | done (enforcement tests in `apps/api/tests/test_api_surface.py`, schema warnings, dead code, full backend + E2E suites, browser QA) |
-| WP10 | pending |
+| WP10 | done (`docs/api-guide.md`, mobile plan status, `CLAUDE.md`; security review in `docs/security-log.md`: 7 fixed, 10 open for decisions) |

@@ -2,9 +2,142 @@
 
 ## Open Issues
 
-(none)
+From the API-first migration review (2026-11-19, entry below). Each needs a product or deployment
+decision, so none was changed.
+
+- **S-WP10-08 (Medium) — Team delete has no confirmation, and fails for a team with data.**
+  `DELETE /teams/api/teams/{id}/` (`TeamViewSet`, reachable since WP9 made it user-scoped; the Team
+  settings page calls `teamsDestroy`) deletes a team and every book in it for any team admin, with
+  no typed confirmation or re-authentication — unlike book delete (type the name) and account delete
+  (password). Today a team with any ledger data answers 500 (`ProtectedError`: the books' PROTECT
+  foreign keys; nothing is deleted), so only an empty team actually goes. Decide the confirmation
+  (team name and/or password), then delete through a service that empties each book with `wipe_book`
+  as `apps.users.services.delete_user_account` does.
+- **S-WP10-09 (Medium) — Changing the sign-in email needs no re-authentication.** The profile page
+  and `PATCH /users/api/profile/` send a confirmation link to the new address and switch to it once
+  followed. Whoever holds a session or a session token can therefore move the account to their own
+  address, then reset the password. Recommend allauth re-authentication (password or MFA) before an
+  email change, on both paths.
+- **S-WP10-10 (Medium) — The sign-in rate limit trusts `X-Forwarded-For`.**
+  `AuthRateLimitMiddleware._get_client_ip` keys on the first `X-Forwarded-For` value, which the
+  client chooses; rotating it defeats the 10-per-5-minutes limit on `/accounts/login/` and
+  `/_allauth/.../auth/login`. Fix needs the deployment's proxy layout: key on the address the
+  trusted proxy appends (the last hop it adds), or on `REMOTE_ADDR` when there is no proxy.
+- **S-WP10-11 (Medium) — What an API key may do.** A key acts as its user on every endpoint listing
+  `IsAuthenticatedOrHasUserAPIKey`: team rename/delete, invitations (create, edit, resend),
+  membership role change and removal, book create/archive/delete/settings, Stripe sessions. A leaked
+  key can invite an address its holder controls as an admin and so take over the team, though book
+  data endpoints refuse keys. `apps/users/api_views.py` already keeps keys off account-level actions;
+  decide whether team membership and destructive book/team actions should need the person too.
+- **S-WP10-12 (Medium, not in this diff) — Bank feed CSV/Excel upload has no size limit.**
+  `upload_parse`, `upload_preview` and `upload_validate_dates` (`apps/bank_feed/views.py`) read any
+  size of file, and an `.xlsx` is a zip, so a decompression bomb reaches openpyxl. Recommend a cap
+  (as YNAB/portability's 20 MB) and a decompressed-size check for Excel.
+- **S-WP10-13 (Low, known) — The web invitation page doesn't verify email ownership.**
+  `teams:accept_invitation` lets any signed-in user accept an invitation by its link; the API
+  (`InvitationAcceptView`) requires the invited address, verified, on the account. Product decision.
+- **S-WP10-14 (Low, known) — Web checkout allows any member.** `create_checkout_session`
+  (`@login_and_team_required`) lets any team member start a Stripe checkout; the API and the portal
+  are admin-only. Product decision.
+- **S-WP10-15 (Low) — The web account-delete page asks only for the email.** `users:delete_account`
+  deletes with the email typed out; the API also needs the password (or a recent re-authentication).
+  Product decision whether the page should ask for the password.
+- **S-WP10-16 (Low) — Members write list-shaped and create endpoints.** SEC-001 below (2026-09-23)
+  now covers every migrated area: `BookModelAccessPermissions` limits only edits of an existing row
+  to admins, so members can also create accounts/groups/payees, reorder the board, hide accounts and
+  run batch feed edits. Consistent with the web pages (`@login_and_book_required`); still one
+  decision for the role model.
+- **S-WP10-17 (Low) — Throttle and audit gaps for programmatic clients.** The DRF user throttle
+  (1000/hour) now counts every web page's data, since pages load through the API; a heavy session can
+  see 429s. API-key writes are not attributed in `AuditLog` (the key's user is set in the DRF
+  permission, after `AuditUserMiddleware`); the endpoints keys can reach log `AuditEvent`s from the
+  request, so the practical gap is small.
 
 ## Resolved Issues
+
+### 2026-11-19 — API-first migration (WP1–WP9, `git diff origin/develop...HEAD`)
+**Feature:** Every screen's data through DRF (`docs/api-first-migration-plan.md`): phone session-token
+auth, the API in the schema (227 operations), React islands on `api-client`, `json_script` data removed.
+**Reviewed by:** WP10 (docs + security review).
+**Verdict:** One Critical and one High, both pre-existing and fixed with regression tests; five
+smaller fixes; ten items open above.
+
+Fixed (commit, test):
+
+- **S-WP10-01 (Critical) — Join any team through an edited invitation.** `InvitationSerializer.team`
+  was writable on update and `InvitationViewSet` checked the team only on create. Anyone can create a
+  team (and is its admin), invite their own address, `PATCH` the invitation's `team` to another
+  team's id (sequential) with `role: admin`, then accept it (the web page or the new
+  `teams:invitation_api`) and join that team as an admin. `perform_update` now refuses a team other
+  than the URL's (400), and `is_accepted` is read-only. `36ec10f`; `InvitationEditTest`.
+- **S-WP10-02 (High) — HTTP Basic auth skipped MFA and every rate limit.** `BasicAuthentication` was
+  in `DEFAULT_AUTHENTICATION_CLASSES`: an email and password on any API request signed in without
+  the second factor, outside `AuthRateLimitMiddleware`, and a failed attempt raised before DRF's
+  throttles ran, so password guessing was unlimited. Removed (keys and session tokens remain);
+  api-client regenerated. `c39238a`; `BasicAuthRefusedTest`.
+- **S-WP10-03 (Medium) — Session tokens outlived a password change.** allauth's token lookup does not
+  check the session auth hash, so a token issued before a password change or reset kept working
+  while every cookie session ended. `apps.api.authentication.resolve_session_token` (middleware and
+  DRF) checks it and flushes a stale token. `0a8865c`; `test_a_password_change_ends_the_token`.
+- **S-WP10-04 (Medium) — allauth's `app` endpoints ignored a valid token.** `HijackUserMiddleware`
+  wraps a copy of the user resolved from the empty cookie session, so allauth's re-evaluation inside
+  `/_allauth/app/...` came back anonymous: the phone could not read its session, change its
+  password, re-authenticate (which delete-account needs for passwordless users) or manage MFA.
+  `HeadlessAppUserMiddleware`, after hijack. `0a8865c`;
+  `test_a_password_changed_through_the_token_hands_back_a_new_one`.
+- **S-WP10-05 (Medium) — Zip bomb in the data import.** `portability.services.read.read_archive` read
+  every member whole; a 20 MB upload could expand to gigabytes in the web worker (any user can be a
+  book admin of their own team). Refused above 300 MB declared uncompressed size (zipfile never reads
+  past the declared size). `b407f89`; `test_an_archive_that_decompresses_past_the_cap_is_refused`.
+- **S-WP10-06 (Low) — Delete-account as a password oracle.** `POST /users/api/delete-account/`
+  checks the password under the general 1000/hour throttle; now scoped `password_check`, 10/hour.
+  `c39238a`; `test_password_guesses_are_throttled`.
+- **S-WP10-07 (Low) — An edit could mark an invitation accepted.** Part of S-WP10-01's fix.
+
+Checked, and what the code does about it:
+
+- **Token middleware.** `SessionTokenMiddleware` sits right after `AuthenticationMiddleware`, before
+  `AuditUserMiddleware`, `TeamsMiddleware` and `BooksMiddleware`, so audit rows, membership and the
+  remembered book follow the token's user (tests: `test_token_writes_without_csrf_and_the_audit_row_names_the_user`,
+  `test_token_plain_form_post_skips_csrf_and_is_audited_as_the_user`). CSRF is waived
+  (`_dont_enforce_csrf_checks`) only after a header token resolved; a request already signed in by
+  cookie is returned untouched, and DRF's `SessionTokenAuthentication` defers to the cookie the same
+  way (`test_a_cookie_session_wins_over_a_token_and_keeps_csrf`, `test_a_session_post_without_csrf_is_still_refused`).
+  A bad token is a 401 on DRF and anonymous on pages. No `Set-Cookie` carries the token session.
+  `X-Session-Token` is not in `CORS_ALLOW_HEADERS`, so no other origin's page can send one.
+- **Book isolation.** `test_every_book_url_is_covered` passes: every book URL is in a table of
+  `apps/books/tests/test_isolation.py`. Every DRF view under `/a/{team}/{book}/` was enumerated
+  from the URLconf: each has `BookAccessPermissions`, `BookModelAccessPermissions`,
+  `BookAdminWritePermissions` or `BookAdminPermissions`. Ids taken from a body or query were traced
+  to a book filter: budget categories (`budgeted_categories(book)`), autofill `category_ids`
+  (intersected with the book's), cover `goal_id`, goal link rows (`Account.filter(book)`),
+  contribution lines and goal links (`filter(book=...)`), accounts' `BookRowField`s and board
+  reorder/set-hidden, reconciliation `?account=`, rules' `BookAccountField`, the journal
+  serializers' scoped querysets, Plaid account mapping (`Account.for_book`), YNAB/portability
+  import records (`record(book, id)`), recurring schedules, audit events (the book's, or the team's
+  own with no book).
+- **Team endpoints.** `TeamViewSet` (WP9) lists only the user's teams; object writes need an admin;
+  an outsider's team is a 404 (`TeamViewSetTest`). Memberships: admins change others' roles, nobody
+  their own, members may leave, the last admin can't be removed (`services/memberships.py`, shared
+  with the pages). The invitation-accept API requires the invited address, verified, on the
+  account, and refuses API keys.
+- **Destructive actions.** API account delete: the email typed out plus the password, or a recent
+  re-authentication for a passwordless account; signs out first. Book archive/delete: admins, the
+  book's name typed out, never the team's last open book. Team delete: S-WP10-08 (open).
+- **Uploads.** Avatar: image extension and 5 MB (`validate_profile_picture`; extension, not content,
+  is checked — accepted, Low: stored and served as a profile image only). YNAB: 20 MB a file, first
+  four parts, stdlib `csv`. Portability: 20 MB, now 300 MB uncompressed, book admins only.
+  Bank-feed CSV/Excel: S-WP10-12 (open).
+- **`celery-progress/` URLs removed (WP9).** They answered any task's state and result to anyone
+  holding its id, unauthenticated. Import progress is now the book-scoped `ynab_import:api_status` /
+  `portability:api_status`.
+- **Audit-log stored XSS (WP9).** The old inline template put user names and event metadata into
+  `innerHTML`; `assets/javascript/audit/audit-log.js` sets every value with `textContent`. Other new
+  `innerHTML` uses were checked: a static spinner, and the goal form's preview (numbers through
+  `escapeHtml`).
+- **Admin-only.** Book settings: `BookAdminPermissions` (non-admin 404). Book create/archive/restore/
+  delete: `TeamAdminWritePermissions` (member 403). Stripe checkout and portal:
+  `TeamAdminPermissions` (`apps/subscriptions/tests/test_api.py`). Data import: `BookAdminPermissions`.
 
 ### 2026-11-05 — Recurring transactions (`apps.bank_feed` `RecurringTransaction`)
 **Feature:** "Make recurring" on Add Transaction; occurrences written to the feed on their dates (nightly task, bank feed page open, and at creation); list + Stop page.
