@@ -209,45 +209,38 @@ class UnassignedInvariantTest(GoalsFixture):
 
 
 class AssignWithdrawTest(GoalsFixture):
-    def url(self, name):
-        return reverse(f"budget:{name}", args=[*self.book.url_args, self.car.pk])
+    """The goal API's assign and withdraw (`apps/budget/api/goals.py`) on a goal with spending."""
+
+    def call(self, name, body):
+        url = reverse(f"budget:{name}", args=[*self.book.url_args, self.car.pk])
+        return self.client.post(url, body, content_type="application/json")
 
     def test_withdraw_caps_at_left(self):
         self.spend_from_car(date(2026, 9, 5), "4500")
-        response = self.client.post(
-            self.url("goal_withdraw"), {"month": "2026-09-01", "amount": "600"}, content_type="application/json"
-        )
+        response = self.call("api_goal_withdraw", {"month": "2026-09", "amount": "600"})
         self.assertEqual(response.status_code, 400)
-        self.assertIn("$500.00 left", response.json()["error"])
+        self.assertIn("$500.00 left", response.json()["non_field_errors"][0])
 
     def test_withdraw_all_takes_left_and_reports_it(self):
         self.spend_from_car(date(2026, 9, 5), "4500")
-        response = self.client.post(self.url("goal_withdraw"), {"month": "2026-09-01"}, content_type="application/json")
+        response = self.call("api_goal_withdraw", {"month": "2026-09"})
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["withdrawn"], 500.0)
-        self.assertEqual(data["spent"], 4500.0)
-        self.assertEqual(data["left"], 0.0)
+        self.assertEqual(data["amount"], "500.00")
+        self.assertEqual(data["goal"]["spent"], "4500.00")
+        self.assertEqual(data["goal"]["left"], "0.00")
 
     def test_assign_reports_spent_and_left(self):
         self.spend_from_car(date(2026, 9, 5), "1000")
-        response = self.client.post(
-            self.url("goal_assign_available"), {"month": "2026-09-01", "amount": "100"}, content_type="application/json"
-        )
+        response = self.call("api_goal_assign", {"month": "2026-09", "amount": "100"})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["left"], 4100.0)
+        self.assertEqual(response.json()["goal"]["left"], "4100.00")
 
     def test_a_funded_goal_takes_an_explicit_amount_but_not_quick_assign(self):
         self.car.is_complete = True
         self.car.save()
-        quick = self.client.post(
-            self.url("goal_assign_available"), {"month": "2026-09-01"}, content_type="application/json"
-        )
-        self.assertEqual(quick.status_code, 400)
-        explicit = self.client.post(
-            self.url("goal_assign_available"), {"month": "2026-09-01", "amount": "50"}, content_type="application/json"
-        )
-        self.assertEqual(explicit.status_code, 200)
+        self.assertEqual(self.call("api_goal_assign", {"month": "2026-09"}).status_code, 400)
+        self.assertEqual(self.call("api_goal_assign", {"month": "2026-09", "amount": "50"}).status_code, 200)
 
     def test_dashboard_to_reach_all_goals_is_target_minus_allocated(self):
         self.spend_from_car(date(2026, 9, 5), "1000")

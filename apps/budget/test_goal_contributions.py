@@ -23,9 +23,9 @@ from apps.users.models import CustomUser
 from . import goal_links
 from . import ledger as budget_ledger
 from .forms import GoalForm
+from .goal_figures import card_progress
 from .models import Goal, GoalAccountLink
 from .services import PLAN_BEHIND, PLAN_ON_TRACK, GoalAllocationError, GoalService, goal_plan
-from .views import _goal_card_progress
 
 AUG = date(2026, 8, 1)
 SEPT = date(2026, 9, 1)
@@ -186,32 +186,32 @@ class OpenEndedGoalTest(Fixture):
 
     def test_card_progress_is_this_months_contribution(self):
         goal = self.open_goal("50")
-        self.assertEqual(_goal_card_progress(goal, goal.allocated, D("50")), (25.0, D("150")))
-        self.assertEqual(_goal_card_progress(goal, goal.allocated, D("300")), (100.0, D("0")))
+        self.assertEqual(card_progress(goal, goal.allocated, D("50")), (25.0, D("150")))
+        self.assertEqual(card_progress(goal, goal.allocated, D("300")), (100.0, D("0")))
 
     def test_quick_assign_tops_up_this_months_contribution(self):
         goal = self.open_goal("50")
         response = self.client.post(
-            reverse("budget:goal_assign_available", args=[*self.book.url_args, goal.pk]),
-            json.dumps({"month": "2026-09-01"}),
+            reverse("budget:api_goal_assign", args=[*self.book.url_args, goal.pk]),
+            json.dumps({"month": "2026-09"}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200, response.content)
         data = response.json()
-        self.assertEqual(data["assigned"], 150.0)
-        self.assertTrue(data["open_ended"])
-        self.assertEqual(data["new_pct"], 100.0)
+        self.assertEqual(data["amount"], "150.00")
+        self.assertFalse(data["goal"]["has_target"])
+        self.assertEqual(data["goal"]["pct"], 100.0)
         self.assertFalse(data["completed"])
 
     def test_quick_assign_past_the_plan_adds_what_is_available(self):
         goal = self.open_goal("200")
         response = self.client.post(
-            reverse("budget:goal_assign_available", args=[*self.book.url_args, goal.pk]),
-            json.dumps({"month": "2026-09-01"}),
+            reverse("budget:api_goal_assign", args=[*self.book.url_args, goal.pk]),
+            json.dumps({"month": "2026-09"}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertGreater(response.json()["assigned"], 0)
+        self.assertGreater(Decimal(response.json()["amount"]), 0)
 
     def test_pages_render(self):
         goal = self.open_goal("50")

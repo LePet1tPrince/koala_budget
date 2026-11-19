@@ -63,6 +63,7 @@ READS = {
     "budget:api_month": {"month": "2026-03"},
     "budget:api_grid": {"start": "2026-01"},
     "budget:goals_list": month_query(),
+    "budget:api_goals": {"month": "2026-03"},
     "reports:reports_home": {},
     "reports:spending": {"start_date": "2026-03-01", "end_date": "2026-03-31"},
     "reports:net_worth": {"start_month": "2026-01", "end_month": "2026-06"},
@@ -116,8 +117,6 @@ READS = {
     "accounts:payee_create": {},
     "accounts:institution_create": {},
     "budget:goal_create": {},
-    # Book B's goal is a 404; book B's account is refused like any unknown id.
-    "budget:goal_link_preview": lambda a, b: {"link_account": b.savings.id, "outflow": "withdraw"},
 }
 
 # Looked up by an id in the query string rather than the path: B's id is a 404.
@@ -161,12 +160,20 @@ OBJECTS = {
     "budget:goal_delete": ("goal", "pk", "post"),
     "budget:goal_destroy": ("goal", "pk", "post"),
     "budget:goal_allocate": ("goal", "pk", "post"),
-    "budget:goal_assign_available": ("goal", "pk", "post"),
-    "budget:goal_withdraw": ("goal", "pk", "post"),
     "budget:goal_complete": ("goal", "pk", "post"),
     "budget:goal_close": ("goal", "pk", "post"),
     "budget:goal_unlink": ("goal_link", "link_pk", "post"),
     "budget:goal_contribution_edit": ("goal_allocation", "line_pk", "post"),
+    "budget:api_goal": ("goal", "pk", "get"),
+    "budget:api_goal_activity": ("goal", "pk", "get"),
+    "budget:api_goal_allocate": ("goal", "pk", "post"),
+    "budget:api_goal_assign": ("goal", "pk", "post"),
+    "budget:api_goal_withdraw": ("goal", "pk", "post"),
+    "budget:api_goal_complete": ("goal", "pk", "post"),
+    "budget:api_goal_close": ("goal", "pk", "post"),
+    "budget:api_goal_archive": ("goal", "pk", "post"),
+    "budget:api_goal_unlink": ("goal_link", "link_pk", "post"),
+    "budget:api_goal_contribution": ("goal_allocation", "line_pk", "post"),
     "budget:category_visibility": ("account", "pk", "post"),
     "budget:api_category_visibility": ("account", "pk", "post"),
     "reports:export_account_activity": ("account", "account_id", "get"),
@@ -232,6 +239,8 @@ WRITES = {
         "source": "goal",
         "goal_id": b.goal.id,
     },
+    # Book B's account is refused like any unknown id (B's goal: GoalApiIsolationTest).
+    "budget:api_goal_link_preview": lambda a, b: {"links": [{"account_id": b.savings.id}], "outflow": "withdraw"},
     "monthly_review:api_step": lambda a, b: {"month": "2026-03-01", "step": 2},
     "monthly_review:api_complete": lambda a, b: {"month": "2026-03-01"},
     "monthly_review:api_dismiss": lambda a, b: {"month": "2026-03-01"},
@@ -378,6 +387,7 @@ class ReadIsolationTest(TwoBooksTestCase):
             "journal:transaction-list",
             "bank_feed:bank-feed-list",
             "budget:goals_list",
+            "budget:api_goals",
             "reports:spending",
             "reports:export_transactions",
             "portability:export",
@@ -483,6 +493,28 @@ class BudgetCoverIsolationTest(TwoBooksTestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(snapshot(self.b.book), before)
+
+
+class GoalApiIsolationTest(TwoBooksTestCase):
+    def post(self, name, body, **kwargs):
+        return self.client.post(self.url(name, **kwargs), data=json.dumps(body), content_type="application/json")
+
+    def test_a_goal_cannot_be_created_with_a_book_b_account(self):
+        before = snapshot(self.b.book)
+        response = self.post(
+            "budget:api_goals", {"name": "Sneaky", "target_amount": "10", "links": [{"account_id": self.b.savings.id}]}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(snapshot(self.b.book), before)
+
+    def test_a_book_b_goal_cannot_be_previewed_edited_or_deleted(self):
+        before = snapshot(self.b.book)
+        response = self.post("budget:api_goal_link_preview", {"goal_id": self.b.goal.id, "links": []})
+        self.assertEqual(response.status_code, 404)
+        url = self.url("budget:api_goal", pk=self.b.goal.id)
+        self.assertEqual(self.client.patch(url, {"name": "x"}, content_type="application/json").status_code, 404)
+        self.assertEqual(self.client.delete(url).status_code, 404)
         self.assertEqual(snapshot(self.b.book), before)
 
 
