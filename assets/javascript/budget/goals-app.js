@@ -1,18 +1,19 @@
 // Goals page: quick-assign buttons, count-up animations and celebrations.
-// Server-rendered cards carry data attributes; this module wires them up.
-import Cookies from 'js-cookie';
-import { parseAmount } from '../common/amount';
+// Server-rendered cards carry data attributes; this module wires them up and
+// moves money through the goal API (apps/budget/api/goals.py) via `api-client`.
+import { apiCall } from '../api';
+import { formatMoney, parseAmount } from '../common/amount';
 import { fireConfetti } from '../common/confetti';
+import { apiMonth, budget } from './budget-api';
 
-const props = JSON.parse(document.getElementById('goals-props')?.textContent || '{}');
 const root = document.querySelector('[data-goals-root]');
-let available = props.available || 0;
-const unassignedLabel = props.unassignedLabel || 'Unassigned';
-const overAssignedLabel = props.overAssignedLabel || 'Over-assigned';
-let totalSaved = props.totalSaved || 0;
+// Unassigned for the page's month and the goals' saved total: loaded from the
+// goals API on start (the quick-assign buttons wait for it), then kept from each answer.
+let available = null;
+let unassignedLabel = 'Unassigned';
+let totalSaved = 0;
 
-const fmt = (amount) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+const fmt = (amount) => formatMoney(amount);
 
 // ---------------------------------------------------------------------------
 // Number animation
@@ -66,13 +67,14 @@ function celebrate(card, data) {
 }
 
 function successMessage(data) {
+  const { goal } = data;
   if (data.completed) {
-    return `🎉 ${data.goal_name} is fully funded! You did it!`;
+    return `🎉 ${goal.name} is fully funded! You did it!`;
   }
-  if (data.open_ended) {
-    return `+${fmt(data.assigned)} — ${data.goal_name} is at ${Math.round(data.new_pct)}% of this month's contribution.`;
+  if (!goal.hasTarget) {
+    return `+${fmt(data.amount)} — ${goal.name} is at ${Math.round(goal.pct)}% of this month's contribution.`;
   }
-  return `+${fmt(data.assigned)} — ${data.goal_name} is now ${Math.round(data.new_pct)}% funded (was ${Math.round(data.old_pct)}%).`;
+  return `+${fmt(data.amount)} — ${goal.name} is now ${Math.round(goal.pct)}% funded (was ${Math.round(data.before.pct)}%).`;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +82,7 @@ function successMessage(data) {
 // ---------------------------------------------------------------------------
 
 function refreshAssignButtons() {
+  if (available === null) return; // still loading: the server-rendered state stands
   document.querySelectorAll('[data-goal-card]').forEach((card) => {
     const remaining = parseFloat(card.dataset.remaining || '0');
     // Withdrawals are capped at what the goal has left (allocated − spent).
@@ -111,9 +114,9 @@ function refreshAssignButtons() {
     el.classList.toggle('text-success', available > 0);
     el.classList.toggle('text-error', available < 0);
   });
-  // The figure's own name flips to "Over-assigned" below zero.
+  // The figure's own name flips to "Over-assigned" below zero (the API names it).
   document.querySelectorAll('[data-unassigned-label]').forEach((el) => {
-    el.textContent = available < 0 ? overAssignedLabel : unassignedLabel;
+    el.textContent = unassignedLabel;
   });
   document.querySelectorAll('[data-saved-display]').forEach((el) => {
     el.textContent = fmt(totalSaved);
@@ -138,44 +141,50 @@ function refreshCloseDialog(card, allocated, spent, left) {
   if (cover) cover.disabled = left >= 0;
 }
 
+// `data` is the API's answer to an assign or withdraw: the goal's card after
+// (`goal`) and its allocated total and bar before (`before`).
 function updateCard(card, data) {
-  card.dataset.remaining = String(data.remaining);
-  card.dataset.saved = String(data.new_saved);
+  const { goal } = data;
+  const oldSaved = Number(data.before.allocated);
+  const newSaved = Number(goal.allocated);
+  const remaining = Number(goal.remaining);
+  const left = Number(goal.left);
+  const thisMonth = Number(goal.thisMonth);
+  card.dataset.remaining = String(remaining);
+  card.dataset.saved = String(newSaved);
+  card.dataset.left = String(left);
 
   // Works in both directions: positive delta = assignment, negative = withdrawal
-  const delta = data.new_saved - data.old_saved;
+  const delta = newSaved - oldSaved;
 
   const allocatedEl = card.querySelector('[data-num="allocated"]');
-  if (allocatedEl) animateNumber(allocatedEl, data.old_saved, data.new_saved);
+  if (allocatedEl) animateNumber(allocatedEl, oldSaved, newSaved);
 
-  if (data.left != null) {
-    refreshCloseDialog(card, data.new_saved, data.spent, data.left);
-    card.dataset.left = String(data.left);
-    const leftEl = card.querySelector('[data-num="left"]');
-    if (leftEl) {
-      animateNumber(leftEl, data.left - delta, data.left);
-      leftEl.classList.toggle('text-error', data.left < 0);
-    }
-    card.querySelectorAll('[data-carried]').forEach((el) => {
-      el.hidden = data.left >= 0;
-    });
+  refreshCloseDialog(card, newSaved, Number(goal.spent), left);
+  const leftEl = card.querySelector('[data-num="left"]');
+  if (leftEl) {
+    animateNumber(leftEl, left - delta, left);
+    leftEl.classList.toggle('text-error', left < 0);
   }
+  card.querySelectorAll('[data-carried]').forEach((el) => {
+    el.hidden = left >= 0;
+  });
 
-  animateNumber(card.querySelector('[data-num="saved"]'), data.old_saved, data.new_saved);
-  animateNumber(card.querySelector('[data-num="pct"]'), data.old_pct, data.new_pct);
+  animateNumber(card.querySelector('[data-num="saved"]'), oldSaved, newSaved);
+  animateNumber(card.querySelector('[data-num="pct"]'), data.before.pct, goal.pct);
   const remainingEl = card.querySelector('[data-num="remaining"]');
   if (remainingEl) {
-    animateNumber(remainingEl, Math.max(data.remaining + delta, 0), data.remaining);
+    animateNumber(remainingEl, Math.max(remaining + delta, 0), remaining);
   }
   const thisMonthEl = card.querySelector('[data-num="this-month"]');
   if (thisMonthEl) {
-    animateNumber(thisMonthEl, data.this_month - delta, data.this_month);
+    animateNumber(thisMonthEl, thisMonth - delta, thisMonth);
   }
 
   const fill = card.querySelector('[data-fill]');
-  if (fill) fill.style.height = `${data.new_pct}%`;
+  if (fill) fill.style.height = `${goal.pct}%`;
 
-  const funded = data.completed != null ? data.completed : data.funded;
+  const funded = data.completed || goal.funded;
   card.classList.toggle('is-funded', !!funded);
   const fundedBadge = card.querySelector('[data-funded-badge]');
   if (fundedBadge) fundedBadge.hidden = !funded;
@@ -183,34 +192,27 @@ function updateCard(card, data) {
   if (savingPill) savingPill.hidden = !!funded;
 }
 
+function applyUnassigned(unassigned) {
+  available = Number(unassigned.amount);
+  unassignedLabel = unassigned.label;
+}
+
 // ---------------------------------------------------------------------------
 // Assign / withdraw flows
 // ---------------------------------------------------------------------------
 
-async function postMoney(card, url, amount, failMessage) {
+async function postMoney(card, withdrawing, amount, failMessage) {
   const buttons = card.querySelectorAll(
-    '[data-assign-all], [data-assign-custom], [data-withdraw-btn], [data-withdraw-all]'
+    '[data-assign-all], [data-assign-custom], [data-withdraw-btn], [data-withdraw-all]',
   );
   buttons.forEach((b) => b.classList.add('btn-disabled'));
   try {
-    const body = { month: root.dataset.month };
-    if (amount != null) body.amount = amount;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': Cookies.get('csrftoken'),
-      },
-      body: JSON.stringify(body),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      toast(data.error || failMessage, 'error');
-      return null;
-    }
-    return data;
+    const { api, params } = budget();
+    const goalFundsRequest = { month: apiMonth(root.dataset.month), amount: amount == null ? null : String(amount) };
+    const request = { ...params, id: Number(card.dataset.goalId), goalFundsRequest };
+    return await apiCall(withdrawing ? api.budgetGoalsWithdraw(request) : api.budgetGoalsAssign(request));
   } catch (e) {
-    toast(`${failMessage} Check your connection and try again.`, 'error');
+    toast(e.status ? e.message || failMessage : `${failMessage} Check your connection and try again.`, 'error');
     return null;
   } finally {
     buttons.forEach((b) => b.classList.remove('btn-disabled'));
@@ -218,10 +220,10 @@ async function postMoney(card, url, amount, failMessage) {
 }
 
 async function assign(card, amount) {
-  const data = await postMoney(card, card.dataset.assignUrl, amount, 'Could not assign funds.');
+  const data = await postMoney(card, false, amount, 'Could not assign funds.');
   if (!data) return;
-  available = data.new_available;
-  totalSaved += data.assigned;
+  applyUnassigned(data.unassigned);
+  totalSaved += Number(data.amount);
   updateCard(card, data);
   refreshAssignButtons();
   celebrate(card, data);
@@ -229,19 +231,19 @@ async function assign(card, amount) {
   const input = card.querySelector('[data-custom-input]');
   if (input) input.value = '';
   // Covered: the goal is no longer carried negative.
-  if (data.left != null && data.left >= 0) card.querySelector('[data-testid="goal-negative"]')?.remove();
+  if (Number(data.goal.left) >= 0) card.querySelector('[data-testid="goal-negative"]')?.remove();
   return data;
 }
 
 function withdrawMessage(data) {
-  return `−${fmt(data.withdrawn)} from ${data.goal_name} — ${fmt(data.new_available)} back in ${unassignedLabel}.`;
+  return `−${fmt(data.amount)} from ${data.goal.name} — ${fmt(data.unassigned.amount)} back in ${data.unassigned.label}.`;
 }
 
 async function withdraw(card, amount) {
-  const data = await postMoney(card, card.dataset.withdrawUrl, amount, 'Could not withdraw funds.');
+  const data = await postMoney(card, true, amount, 'Could not withdraw funds.');
   if (!data) return;
-  available = data.new_available;
-  totalSaved -= data.withdrawn;
+  applyUnassigned(data.unassigned);
+  totalSaved -= Number(data.amount);
   updateCard(card, data);
   refreshAssignButtons();
   card.classList.add('withdrawing');
@@ -251,9 +253,29 @@ async function withdraw(card, amount) {
   if (input) input.value = '';
 }
 
+// Unassigned and the saved total for the page's month. The quick-assign buttons
+// show what they would add, so they wait (busy) until it is in.
+async function loadFigures() {
+  const quick = document.querySelectorAll('[data-assign-all]');
+  root.setAttribute('aria-busy', 'true');
+  quick.forEach((b) => b.classList.add('btn-disabled'));
+  try {
+    const { api, params } = budget();
+    const page = await apiCall(api.budgetGoalsList({ ...params, month: apiMonth(root.dataset.month) }));
+    applyUnassigned(page.unassigned);
+    totalSaved = Number(page.summary.totalSaved);
+    refreshAssignButtons();
+  } catch {
+    // The page as the server rendered it still works; the first assign brings the figures.
+  } finally {
+    root.removeAttribute('aria-busy');
+    quick.forEach((b) => b.classList.remove('btn-disabled'));
+  }
+}
+
 function init() {
   if (!root) return;
-  refreshAssignButtons();
+  loadFigures();
 
   document.querySelectorAll('[data-goal-card]').forEach((card) => {
     card.querySelector('[data-assign-all]')?.addEventListener('click', () => assign(card, null));

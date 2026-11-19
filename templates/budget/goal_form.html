@@ -5,6 +5,7 @@
 {% load currency_tags %}
 
 {% block app %}
+  {{ request.book.base_url|json_script:'book-base' }}
 
   <div class="container mx-auto px-4 py-6 max-w-2xl">
     <h1 class="text-3xl font-bold mb-6">
@@ -17,9 +18,7 @@
       </p>
     {% endif %}
 
-    {{ form_props|json_script:'goal-form-props' }}
-
-    <form method="post" data-testid="goal-form" id="goal-form" class="space-y-6">
+    <form method="post" data-testid="goal-form" id="goal-form" class="space-y-6"{% if goal %} data-goal-id="{{ goal.pk }}"{% endif %}>
       {% csrf_token %}
 
       {% if form.non_field_errors %}

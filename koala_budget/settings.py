@@ -491,6 +491,11 @@ SPECTACULAR_SETTINGS = {
         "NetWorthSectionKeyEnum": "apps.reports.serializers.NET_WORTH_SECTION_KEYS",
         "WaterfallStepKeyEnum": "apps.reports.serializers.WATERFALL_KEYS",
         "ReviewBaselineEnum": "apps.monthly_review.serializers.BASELINE_IDS",
+        # The goal API's (apps/budget/api/goal_serializers.py).
+        "GoalStateEnum": "apps.budget.api.goal_serializers.GOAL_STATES",
+        "GoalOutflowEnum": "apps.budget.api.goal_serializers.GOAL_OUTFLOWS",
+        "GoalPlanStatusEnum": "apps.budget.api.goal_serializers.GOAL_PLAN_STATUSES",
+        "GoalActivityKindEnum": "apps.budget.api.goal_serializers.GOAL_ACTIVITY_KINDS",
     },
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}

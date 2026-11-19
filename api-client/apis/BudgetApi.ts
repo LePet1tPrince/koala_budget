@@ -22,9 +22,27 @@ import type {
   BudgetMonth,
   CoverRequest,
   CoverResponse,
+  GoalActivity,
+  GoalAllocateRequest,
+  GoalAllocateResponse,
+  GoalCard,
+  GoalCloseRequest,
+  GoalCloseResponse,
+  GoalContributionRequest,
+  GoalContributionResponse,
+  GoalDetail,
+  GoalFundsRequest,
+  GoalFundsResponse,
+  GoalLinkPreview,
+  GoalLinkPreviewRequest,
+  GoalList,
+  GoalMonthRequest,
+  GoalUnlinkResponse,
+  GoalWrite,
   Grid,
   GridSaveRequest,
   GridSaveResponse,
+  PatchedGoalWrite,
   Unassigned,
   VisibilityRequest,
   VisibilityResponse,
@@ -44,12 +62,48 @@ import {
     CoverRequestToJSON,
     CoverResponseFromJSON,
     CoverResponseToJSON,
+    GoalActivityFromJSON,
+    GoalActivityToJSON,
+    GoalAllocateRequestFromJSON,
+    GoalAllocateRequestToJSON,
+    GoalAllocateResponseFromJSON,
+    GoalAllocateResponseToJSON,
+    GoalCardFromJSON,
+    GoalCardToJSON,
+    GoalCloseRequestFromJSON,
+    GoalCloseRequestToJSON,
+    GoalCloseResponseFromJSON,
+    GoalCloseResponseToJSON,
+    GoalContributionRequestFromJSON,
+    GoalContributionRequestToJSON,
+    GoalContributionResponseFromJSON,
+    GoalContributionResponseToJSON,
+    GoalDetailFromJSON,
+    GoalDetailToJSON,
+    GoalFundsRequestFromJSON,
+    GoalFundsRequestToJSON,
+    GoalFundsResponseFromJSON,
+    GoalFundsResponseToJSON,
+    GoalLinkPreviewFromJSON,
+    GoalLinkPreviewToJSON,
+    GoalLinkPreviewRequestFromJSON,
+    GoalLinkPreviewRequestToJSON,
+    GoalListFromJSON,
+    GoalListToJSON,
+    GoalMonthRequestFromJSON,
+    GoalMonthRequestToJSON,
+    GoalUnlinkResponseFromJSON,
+    GoalUnlinkResponseToJSON,
+    GoalWriteFromJSON,
+    GoalWriteToJSON,
     GridFromJSON,
     GridToJSON,
     GridSaveRequestFromJSON,
     GridSaveRequestToJSON,
     GridSaveResponseFromJSON,
     GridSaveResponseToJSON,
+    PatchedGoalWriteFromJSON,
+    PatchedGoalWriteToJSON,
     UnassignedFromJSON,
     UnassignedToJSON,
     VisibilityRequestFromJSON,
@@ -81,6 +135,113 @@ export interface BudgetCoverRequest {
     bookSlug: string;
     teamSlug: string;
     coverRequest: CoverRequest;
+}
+
+export interface BudgetGoalContributionsUpdateRequest {
+    bookSlug: string;
+    linePk: number;
+    teamSlug: string;
+    goalContributionRequest?: GoalContributionRequest;
+}
+
+export interface BudgetGoalLinksUnlinkRequest {
+    bookSlug: string;
+    linkPk: number;
+    teamSlug: string;
+}
+
+export interface BudgetGoalsActivityRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+}
+
+export interface BudgetGoalsAllocateRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+    goalAllocateRequest: GoalAllocateRequest;
+}
+
+export interface BudgetGoalsArchiveRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+    goalMonthRequest?: GoalMonthRequest;
+}
+
+export interface BudgetGoalsAssignRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+    goalFundsRequest: GoalFundsRequest;
+}
+
+export interface BudgetGoalsCloseRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+    goalCloseRequest?: GoalCloseRequest;
+}
+
+export interface BudgetGoalsCompleteRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+    goalMonthRequest?: GoalMonthRequest;
+}
+
+export interface BudgetGoalsCreateRequest {
+    bookSlug: string;
+    teamSlug: string;
+    goalWrite: GoalWrite;
+}
+
+export interface BudgetGoalsDestroyRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+}
+
+export interface BudgetGoalsLinkPreviewRequest {
+    bookSlug: string;
+    teamSlug: string;
+    goalLinkPreviewRequest?: GoalLinkPreviewRequest;
+}
+
+export interface BudgetGoalsListRequest {
+    bookSlug: string;
+    teamSlug: string;
+    closed?: boolean;
+    month?: string;
+}
+
+export interface BudgetGoalsPartialUpdateRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+    patchedGoalWrite?: PatchedGoalWrite;
+}
+
+export interface BudgetGoalsRetrieveRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+    month?: string;
+}
+
+export interface BudgetGoalsUpdateRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+    goalWrite: GoalWrite;
+}
+
+export interface BudgetGoalsWithdrawRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+    goalFundsRequest: GoalFundsRequest;
 }
 
 export interface BudgetGridRetrieveRequest {
@@ -361,6 +522,992 @@ export class BudgetApi extends runtime.BaseAPI {
      */
     async budgetCover(requestParameters: BudgetCoverRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CoverResponse> {
         const response = await this.budgetCoverRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Change or undo a past month\'s manual contribution, named by its line on the month\'s budget entry (`line_id` in the goal\'s activity). Money from linked accounts follows its transactions and has no such line. Refused on a closed or archived goal, and when lowering it would take back money already spent.
+     */
+    async budgetGoalContributionsUpdateRaw(requestParameters: BudgetGoalContributionsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalContributionResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalContributionsUpdate().'
+            );
+        }
+
+        if (requestParameters['linePk'] == null) {
+            throw new runtime.RequiredError(
+                'linePk',
+                'Required parameter "linePk" was null or undefined when calling budgetGoalContributionsUpdate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalContributionsUpdate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/contributions/{line_pk}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"line_pk"}}`, encodeURIComponent(String(requestParameters['linePk']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GoalContributionRequestToJSON(requestParameters['goalContributionRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalContributionResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Change or undo a past month\'s manual contribution, named by its line on the month\'s budget entry (`line_id` in the goal\'s activity). Money from linked accounts follows its transactions and has no such line. Refused on a closed or archived goal, and when lowering it would take back money already spent.
+     */
+    async budgetGoalContributionsUpdate(requestParameters: BudgetGoalContributionsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalContributionResponse> {
+        const response = await this.budgetGoalContributionsUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Stop an account feeding its goal. What it already brought in stays.
+     */
+    async budgetGoalLinksUnlinkRaw(requestParameters: BudgetGoalLinksUnlinkRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalUnlinkResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalLinksUnlink().'
+            );
+        }
+
+        if (requestParameters['linkPk'] == null) {
+            throw new runtime.RequiredError(
+                'linkPk',
+                'Required parameter "linkPk" was null or undefined when calling budgetGoalLinksUnlink().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalLinksUnlink().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/links/{link_pk}/unlink/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"link_pk"}}`, encodeURIComponent(String(requestParameters['linkPk']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalUnlinkResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Stop an account feeding its goal. What it already brought in stays.
+     */
+    async budgetGoalLinksUnlink(requestParameters: BudgetGoalLinksUnlinkRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalUnlinkResponse> {
+        const response = await this.budgetGoalLinksUnlinkRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Everything that moved the goal, newest first: contributions, linked money, spending.
+     */
+    async budgetGoalsActivityRaw(requestParameters: BudgetGoalsActivityRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalActivity>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsActivity().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling budgetGoalsActivity().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsActivity().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/{id}/activity/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalActivityFromJSON(jsonValue));
+    }
+
+    /**
+     * Everything that moved the goal, newest first: contributions, linked money, spending.
+     */
+    async budgetGoalsActivity(requestParameters: BudgetGoalsActivityRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalActivity> {
+        const response = await this.budgetGoalsActivityRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Set the goal\'s allocation for a month (replacing it), as the no-JS \"Set month\" form does.
+     */
+    async budgetGoalsAllocateRaw(requestParameters: BudgetGoalsAllocateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalAllocateResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsAllocate().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling budgetGoalsAllocate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsAllocate().'
+            );
+        }
+
+        if (requestParameters['goalAllocateRequest'] == null) {
+            throw new runtime.RequiredError(
+                'goalAllocateRequest',
+                'Required parameter "goalAllocateRequest" was null or undefined when calling budgetGoalsAllocate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/{id}/allocate/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GoalAllocateRequestToJSON(requestParameters['goalAllocateRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalAllocateResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Set the goal\'s allocation for a month (replacing it), as the no-JS \"Set month\" form does.
+     */
+    async budgetGoalsAllocate(requestParameters: BudgetGoalsAllocateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalAllocateResponse> {
+        const response = await this.budgetGoalsAllocateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Archive the goal: it leaves every list. An open goal is closed first, releasing what it has left (refused, as closing is, while it is negative).
+     */
+    async budgetGoalsArchiveRaw(requestParameters: BudgetGoalsArchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalCloseResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsArchive().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling budgetGoalsArchive().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsArchive().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/{id}/archive/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GoalMonthRequestToJSON(requestParameters['goalMonthRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalCloseResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Archive the goal: it leaves every list. An open goal is closed first, releasing what it has left (refused, as closing is, while it is negative).
+     */
+    async budgetGoalsArchive(requestParameters: BudgetGoalsArchiveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalCloseResponse> {
+        const response = await this.budgetGoalsArchiveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Add money to the goal for a month (added to the month\'s allocation). Without an amount, everything Unassigned has, capped at what the goal still asks for.
+     */
+    async budgetGoalsAssignRaw(requestParameters: BudgetGoalsAssignRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalFundsResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsAssign().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling budgetGoalsAssign().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsAssign().'
+            );
+        }
+
+        if (requestParameters['goalFundsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'goalFundsRequest',
+                'Required parameter "goalFundsRequest" was null or undefined when calling budgetGoalsAssign().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/{id}/assign/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GoalFundsRequestToJSON(requestParameters['goalFundsRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalFundsResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Add money to the goal for a month (added to the month\'s allocation). Without an amount, everything Unassigned has, capped at what the goal still asks for.
+     */
+    async budgetGoalsAssign(requestParameters: BudgetGoalsAssignRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalFundsResponse> {
+        const response = await this.budgetGoalsAssignRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Close the goal: anything left goes back to Unassigned this month. A negative goal is refused unless `cover` (which tops it back up to zero first -- free, since the overspending already came out of Unassigned). An archived goal is a 404.
+     */
+    async budgetGoalsCloseRaw(requestParameters: BudgetGoalsCloseRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalCloseResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsClose().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling budgetGoalsClose().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsClose().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/{id}/close/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GoalCloseRequestToJSON(requestParameters['goalCloseRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalCloseResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Close the goal: anything left goes back to Unassigned this month. A negative goal is refused unless `cover` (which tops it back up to zero first -- free, since the overspending already came out of Unassigned). An archived goal is a 404.
+     */
+    async budgetGoalsClose(requestParameters: BudgetGoalsCloseRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalCloseResponse> {
+        const response = await this.budgetGoalsCloseRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Mark the goal funded: it stops asking for money but keeps what it holds.
+     */
+    async budgetGoalsCompleteRaw(requestParameters: BudgetGoalsCompleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalCard>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsComplete().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling budgetGoalsComplete().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsComplete().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/{id}/complete/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GoalMonthRequestToJSON(requestParameters['goalMonthRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalCardFromJSON(jsonValue));
+    }
+
+    /**
+     * Mark the goal funded: it stops asking for money but keeps what it holds.
+     */
+    async budgetGoalsComplete(requestParameters: BudgetGoalsCompleteRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalCard> {
+        const response = await this.budgetGoalsCompleteRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Create a goal, with the accounts its money lives in (validated as the goal form is).
+     */
+    async budgetGoalsCreateRaw(requestParameters: BudgetGoalsCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalDetail>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsCreate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsCreate().'
+            );
+        }
+
+        if (requestParameters['goalWrite'] == null) {
+            throw new runtime.RequiredError(
+                'goalWrite',
+                'Required parameter "goalWrite" was null or undefined when calling budgetGoalsCreate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GoalWriteToJSON(requestParameters['goalWrite']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalDetailFromJSON(jsonValue));
+    }
+
+    /**
+     * Create a goal, with the accounts its money lives in (validated as the goal form is).
+     */
+    async budgetGoalsCreate(requestParameters: BudgetGoalsCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalDetail> {
+        const response = await this.budgetGoalsCreateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Delete a goal for good -- open, closed or archived -- with its contributions and account links, freeing its name and its accounts\' history. Whatever it had left goes back to Unassigned. Refused (400) while transactions are categorized to it.
+     */
+    async budgetGoalsDestroyRaw(requestParameters: BudgetGoalsDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsDestroy().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling budgetGoalsDestroy().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsDestroy().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Delete a goal for good -- open, closed or archived -- with its contributions and account links, freeing its name and its accounts\' history. Whatever it had left goes back to Unassigned. Refused (400) while transactions are categorized to it.
+     */
+    async budgetGoalsDestroy(requestParameters: BudgetGoalsDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.budgetGoalsDestroyRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * What saving the goal form\'s linked accounts and outflow setting would do -- to the goal and to Unassigned -- without writing anything. Refused (400) exactly as saving would be.
+     */
+    async budgetGoalsLinkPreviewRaw(requestParameters: BudgetGoalsLinkPreviewRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalLinkPreview>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsLinkPreview().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsLinkPreview().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/link-preview/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GoalLinkPreviewRequestToJSON(requestParameters['goalLinkPreviewRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalLinkPreviewFromJSON(jsonValue));
+    }
+
+    /**
+     * What saving the goal form\'s linked accounts and outflow setting would do -- to the goal and to Unassigned -- without writing anything. Refused (400) exactly as saving would be.
+     */
+    async budgetGoalsLinkPreview(requestParameters: BudgetGoalsLinkPreviewRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalLinkPreview> {
+        const response = await this.budgetGoalsLinkPreviewRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * The goals page for a month: each goal\'s card, their totals and Unassigned.
+     */
+    async budgetGoalsListRaw(requestParameters: BudgetGoalsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalList>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsList().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsList().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['closed'] != null) {
+            queryParameters['closed'] = requestParameters['closed'];
+        }
+
+        if (requestParameters['month'] != null) {
+            queryParameters['month'] = requestParameters['month'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalListFromJSON(jsonValue));
+    }
+
+    /**
+     * The goals page for a month: each goal\'s card, their totals and Unassigned.
+     */
+    async budgetGoalsList(requestParameters: BudgetGoalsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalList> {
+        const response = await this.budgetGoalsListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Change some of a goal\'s settings; the rest stay.
+     */
+    async budgetGoalsPartialUpdateRaw(requestParameters: BudgetGoalsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalDetail>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsPartialUpdate().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling budgetGoalsPartialUpdate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsPartialUpdate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchedGoalWriteToJSON(requestParameters['patchedGoalWrite']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalDetailFromJSON(jsonValue));
+    }
+
+    /**
+     * Change some of a goal\'s settings; the rest stay.
+     */
+    async budgetGoalsPartialUpdate(requestParameters: BudgetGoalsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalDetail> {
+        const response = await this.budgetGoalsPartialUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * The goal page for a month: the card, linked accounts, spending and drift.
+     */
+    async budgetGoalsRetrieveRaw(requestParameters: BudgetGoalsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalDetail>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsRetrieve().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling budgetGoalsRetrieve().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['month'] != null) {
+            queryParameters['month'] = requestParameters['month'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalDetailFromJSON(jsonValue));
+    }
+
+    /**
+     * The goal page for a month: the card, linked accounts, spending and drift.
+     */
+    async budgetGoalsRetrieve(requestParameters: BudgetGoalsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalDetail> {
+        const response = await this.budgetGoalsRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Change a goal\'s settings and (with `links`) its linked accounts.
+     */
+    async budgetGoalsUpdateRaw(requestParameters: BudgetGoalsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalDetail>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsUpdate().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling budgetGoalsUpdate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsUpdate().'
+            );
+        }
+
+        if (requestParameters['goalWrite'] == null) {
+            throw new runtime.RequiredError(
+                'goalWrite',
+                'Required parameter "goalWrite" was null or undefined when calling budgetGoalsUpdate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'PUT',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GoalWriteToJSON(requestParameters['goalWrite']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalDetailFromJSON(jsonValue));
+    }
+
+    /**
+     * Change a goal\'s settings and (with `links`) its linked accounts.
+     */
+    async budgetGoalsUpdate(requestParameters: BudgetGoalsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalDetail> {
+        const response = await this.budgetGoalsUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Take money back out of the goal, recorded against the month (whose allocation may go negative; past months stay as they were). Without an amount, everything left. Money already spent can\'t be withdrawn.
+     */
+    async budgetGoalsWithdrawRaw(requestParameters: BudgetGoalsWithdrawRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<GoalFundsResponse>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling budgetGoalsWithdraw().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling budgetGoalsWithdraw().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling budgetGoalsWithdraw().'
+            );
+        }
+
+        if (requestParameters['goalFundsRequest'] == null) {
+            throw new runtime.RequiredError(
+                'goalFundsRequest',
+                'Required parameter "goalFundsRequest" was null or undefined when calling budgetGoalsWithdraw().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/budget/api/goals/{id}/withdraw/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: GoalFundsRequestToJSON(requestParameters['goalFundsRequest']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => GoalFundsResponseFromJSON(jsonValue));
+    }
+
+    /**
+     * Take money back out of the goal, recorded against the month (whose allocation may go negative; past months stay as they were). Without an amount, everything left. Money already spent can\'t be withdrawn.
+     */
+    async budgetGoalsWithdraw(requestParameters: BudgetGoalsWithdrawRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<GoalFundsResponse> {
+        const response = await this.budgetGoalsWithdrawRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

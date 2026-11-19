@@ -297,6 +297,30 @@ def parse_link_rows(book, data, today=None):
     return rows
 
 
+def link_rows(book, items, today=None):
+    """
+    `LinkRow`s from structured rows (the goal API's): each a dict with `account_id`,
+    `start_date` (a date; None for today) and `include_starting_balance`. Raises
+    `LinkError` on an account that isn't the book's, as `parse_link_rows` does.
+    """
+    today = today or timezone.localdate()
+    ids = [item["account_id"] for item in items]
+    accounts = {a.pk: a for a in Account.objects.filter(book=book, pk__in=ids).select_related("account_group")}
+    rows = []
+    for item in items:
+        account = accounts.get(item["account_id"])
+        if account is None:
+            raise LinkError(_("That account isn't in this set of books."))
+        rows.append(
+            LinkRow(
+                account=account,
+                start_date=item.get("start_date") or today,
+                include_starting_balance=item.get("include_starting_balance", True),
+            )
+        )
+    return rows
+
+
 def link_options(book, goal=None, data=None, today=None):
     """
     The accounts the goal form offers, each a dict: account, balance, checked,
