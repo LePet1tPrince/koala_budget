@@ -9,11 +9,7 @@
     </div>
   </div>
 
-  {{ all_accounts|json_script:'all-accounts' }}
-  {{ all_account_groups|json_script:'all-account-groups' }}
-  {{ all_payees|json_script:'all-payees' }}
   {{ request.book.base_url|json_script:'book-base' }}
-  {{ back_url|json_script:'back-url' }}
 {% endblock %}
 
 {% block page_js %}

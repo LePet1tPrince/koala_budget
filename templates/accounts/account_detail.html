@@ -125,8 +125,6 @@
   {% include "reports/components/account_activity_section.html" %}
   <div id="account-activity-editor"></div>
   {{ request.book.base_url|json_script:'book-base' }}
-  {{ all_accounts|json_script:'all-accounts' }}
-  {{ all_payees|json_script:'all-payees' }}
 </section>
 {% endblock %}
 {% block dialogs %}

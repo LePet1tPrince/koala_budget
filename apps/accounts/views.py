@@ -470,10 +470,8 @@ class AccountDetailView(AccountViewMixin, DetailView):
 
         context["feeds_goal"] = GoalAccountLink.objects.open().filter(account=account).select_related("goal").first()
 
-        # Activity rows open the Transactions page's edit modal.
-        from apps.journal.views import transaction_editor_pickers
-
-        context.update(transaction_editor_pickers())
+        # Activity rows open the Transactions page's edit modal, which loads its
+        # pickers from `journal:transaction-pickers`.
 
         return_to = get_return_to(self.request)
         context["back"] = back_link(
