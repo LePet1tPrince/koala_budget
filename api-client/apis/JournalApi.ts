@@ -15,8 +15,8 @@
 
 import * as runtime from '../runtime';
 import type {
+  AuditLog,
   JournalEntry,
-  PaginatedAuditLogList,
   PaginatedJournalEntryList,
   PaginatedSimpleLineList,
   PaginatedTransactionRowList,
@@ -29,15 +29,16 @@ import type {
   TransactionDetail,
   TransactionIds,
   TransactionPickers,
+  TransactionRows,
   TransactionStatusRequest,
   TransactionsBatchDelete200Response,
   TransactionsFacets200Response,
 } from '../models/index';
 import {
+    AuditLogFromJSON,
+    AuditLogToJSON,
     JournalEntryFromJSON,
     JournalEntryToJSON,
-    PaginatedAuditLogListFromJSON,
-    PaginatedAuditLogListToJSON,
     PaginatedJournalEntryListFromJSON,
     PaginatedJournalEntryListToJSON,
     PaginatedSimpleLineListFromJSON,
@@ -62,6 +63,8 @@ import {
     TransactionIdsToJSON,
     TransactionPickersFromJSON,
     TransactionPickersToJSON,
+    TransactionRowsFromJSON,
+    TransactionRowsToJSON,
     TransactionStatusRequestFromJSON,
     TransactionStatusRequestToJSON,
     TransactionsBatchDelete200ResponseFromJSON,
@@ -74,7 +77,6 @@ export interface JournalEntriesAuditRequest {
     bookSlug: string;
     id: number;
     teamSlug: string;
-    page?: number;
 }
 
 export interface JournalEntriesCreateRequest {
@@ -172,13 +174,11 @@ export interface TransactionsBatchStatusRequest {
     bookSlug: string;
     teamSlug: string;
     transactionStatusRequest: TransactionStatusRequest;
-    page?: number;
 }
 
 export interface TransactionsEditRequest {
     bookSlug: string;
     teamSlug: string;
-    page?: number;
     patchedTransactionEditRequest?: PatchedTransactionEditRequest;
 }
 
@@ -240,7 +240,7 @@ export class JournalApi extends runtime.BaseAPI {
     /**
      * Return the row-level audit history for this journal entry and its lines.
      */
-    async journalEntriesAuditRaw(requestParameters: JournalEntriesAuditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedAuditLogList>> {
+    async journalEntriesAuditRaw(requestParameters: JournalEntriesAuditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AuditLog>>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
@@ -264,10 +264,6 @@ export class JournalApi extends runtime.BaseAPI {
 
         const queryParameters: any = {};
 
-        if (requestParameters['page'] != null) {
-            queryParameters['page'] = requestParameters['page'];
-        }
-
         const headerParameters: runtime.HTTPHeaders = {};
 
         if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
@@ -288,13 +284,13 @@ export class JournalApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedAuditLogListFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(AuditLogFromJSON));
     }
 
     /**
      * Return the row-level audit history for this journal entry and its lines.
      */
-    async journalEntriesAudit(requestParameters: JournalEntriesAuditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedAuditLogList> {
+    async journalEntriesAudit(requestParameters: JournalEntriesAuditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AuditLog>> {
         const response = await this.journalEntriesAuditRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -1152,7 +1148,7 @@ export class JournalApi extends runtime.BaseAPI {
     /**
      * Void transactions so they drop out of every balance, or restore them.
      */
-    async transactionsBatchStatusRaw(requestParameters: TransactionsBatchStatusRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedTransactionRowList>> {
+    async transactionsBatchStatusRaw(requestParameters: TransactionsBatchStatusRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TransactionRows>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
@@ -1175,10 +1171,6 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const queryParameters: any = {};
-
-        if (requestParameters['page'] != null) {
-            queryParameters['page'] = requestParameters['page'];
-        }
 
         const headerParameters: runtime.HTTPHeaders = {};
 
@@ -1203,13 +1195,13 @@ export class JournalApi extends runtime.BaseAPI {
             body: TransactionStatusRequestToJSON(requestParameters['transactionStatusRequest']),
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedTransactionRowListFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => TransactionRowsFromJSON(jsonValue));
     }
 
     /**
      * Void transactions so they drop out of every balance, or restore them.
      */
-    async transactionsBatchStatus(requestParameters: TransactionsBatchStatusRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedTransactionRowList> {
+    async transactionsBatchStatus(requestParameters: TransactionsBatchStatusRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TransactionRows> {
         const response = await this.transactionsBatchStatusRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -1217,7 +1209,7 @@ export class JournalApi extends runtime.BaseAPI {
     /**
      * Apply one partial edit to one or more transactions.  Omitted fields are left alone, so the same payload serves a single row\'s full edit and a one-field change across a selection.  Nothing is written unless every transaction in the list can take the edit.
      */
-    async transactionsEditRaw(requestParameters: TransactionsEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedTransactionRowList>> {
+    async transactionsEditRaw(requestParameters: TransactionsEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TransactionRows>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
@@ -1233,10 +1225,6 @@ export class JournalApi extends runtime.BaseAPI {
         }
 
         const queryParameters: any = {};
-
-        if (requestParameters['page'] != null) {
-            queryParameters['page'] = requestParameters['page'];
-        }
 
         const headerParameters: runtime.HTTPHeaders = {};
 
@@ -1261,13 +1249,13 @@ export class JournalApi extends runtime.BaseAPI {
             body: PatchedTransactionEditRequestToJSON(requestParameters['patchedTransactionEditRequest']),
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedTransactionRowListFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => TransactionRowsFromJSON(jsonValue));
     }
 
     /**
      * Apply one partial edit to one or more transactions.  Omitted fields are left alone, so the same payload serves a single row\'s full edit and a one-field change across a selection.  Nothing is written unless every transaction in the list can take the edit.
      */
-    async transactionsEdit(requestParameters: TransactionsEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedTransactionRowList> {
+    async transactionsEdit(requestParameters: TransactionsEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TransactionRows> {
         const response = await this.transactionsEditRaw(requestParameters, initOverrides);
         return await response.value();
     }

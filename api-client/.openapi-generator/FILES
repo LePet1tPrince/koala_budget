@@ -176,7 +176,6 @@ models/OpeningBalancesRequest.ts
 models/OpeningBalancesResult.ts
 models/OriginEnum.ts
 models/PaginatedAuditEventList.ts
-models/PaginatedAuditLogList.ts
 models/PaginatedBankFeedRowList.ts
 models/PaginatedInvitationList.ts
 models/PaginatedJournalEntryList.ts
@@ -276,6 +275,7 @@ models/TransactionLegInput.ts
 models/TransactionPickers.ts
 models/TransactionRow.ts
 models/TransactionRowLeg.ts
+models/TransactionRows.ts
 models/TransactionStatusRequest.ts
 models/TransactionStatusRequestStatusEnum.ts
 models/TransactionToCreate.ts
