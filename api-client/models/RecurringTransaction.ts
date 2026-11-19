@@ -22,7 +22,7 @@ import {
 } from './SimpleAccount';
 
 /**
- * A recurring schedule as the bank feed's "scheduled transactions" panel shows it: its next occurrence.
+ * A recurring schedule: what repeats, how often, when next (the feed's panel and the Recurring page).
  * @export
  * @interface RecurringTransaction
  */
@@ -76,11 +76,17 @@ export interface RecurringTransaction {
      */
     outflow: string;
     /**
-     * The next occurrence's date
+     * The next occurrence's date (null once finished)
      * @type {Date}
      * @memberof RecurringTransaction
      */
-    nextDate: Date;
+    nextDate: Date | null;
+    /**
+     * The first occurrence's date
+     * @type {Date}
+     * @memberof RecurringTransaction
+     */
+    startDate: Date;
     /**
      * 
      * @type {Date}
@@ -93,6 +99,12 @@ export interface RecurringTransaction {
      * @memberof RecurringTransaction
      */
     schedule: string;
+    /**
+     * How many transactions the schedule has added so far
+     * @type {number}
+     * @memberof RecurringTransaction
+     */
+    occurrenceCount: number;
 }
 
 /**
@@ -108,8 +120,10 @@ export function instanceOfRecurringTransaction(value: object): value is Recurrin
     if (!('inflow' in value) || value['inflow'] === undefined) return false;
     if (!('outflow' in value) || value['outflow'] === undefined) return false;
     if (!('nextDate' in value) || value['nextDate'] === undefined) return false;
+    if (!('startDate' in value) || value['startDate'] === undefined) return false;
     if (!('endDate' in value) || value['endDate'] === undefined) return false;
     if (!('schedule' in value) || value['schedule'] === undefined) return false;
+    if (!('occurrenceCount' in value) || value['occurrenceCount'] === undefined) return false;
     return true;
 }
 
@@ -131,9 +145,11 @@ export function RecurringTransactionFromJSONTyped(json: any, ignoreDiscriminator
         'description': json['description'],
         'inflow': json['inflow'],
         'outflow': json['outflow'],
-        'nextDate': (new Date(json['next_date'])),
+        'nextDate': (json['next_date'] == null ? null : new Date(json['next_date'])),
+        'startDate': (new Date(json['start_date'])),
         'endDate': (json['end_date'] == null ? null : new Date(json['end_date'])),
         'schedule': json['schedule'],
+        'occurrenceCount': json['occurrence_count'],
     };
 }
 
@@ -156,9 +172,11 @@ export function RecurringTransactionFromJSONTyped(json: any, ignoreDiscriminator
         'description': value['description'],
         'inflow': value['inflow'],
         'outflow': value['outflow'],
-        'next_date': ((value['nextDate']).toISOString().substring(0,10)),
+        'next_date': (value['nextDate'] == null ? null : (value['nextDate'] as any).toISOString().substring(0,10)),
+        'start_date': ((value['startDate']).toISOString().substring(0,10)),
         'end_date': (value['endDate'] == null ? null : (value['endDate'] as any).toISOString().substring(0,10)),
         'schedule': value['schedule'],
+        'occurrence_count': value['occurrenceCount'],
     };
 }
 

@@ -12,7 +12,8 @@ from django.db.models import F
 from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext as _
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -83,6 +84,14 @@ def _draft_rule(book, data):
 
 
 @extend_schema(tags=["rules"])
+@extend_schema_view(
+    list=extend_schema(operation_id="rules_list"),
+    create=extend_schema(operation_id="rules_create"),
+    retrieve=extend_schema(operation_id="rules_retrieve"),
+    update=extend_schema(operation_id="rules_update"),
+    partial_update=extend_schema(operation_id="rules_partial_update"),
+    destroy=extend_schema(operation_id="rules_destroy"),
+)
 class RuleViewSet(viewsets.ModelViewSet):
     """The book's rules, in priority order (lower wins)."""
 
@@ -301,7 +310,7 @@ class RuleViewSet(viewsets.ModelViewSet):
             rule.save(update_fields=["graduation_declined_at", "updated_at"])
         return Response(self.get_serializer(rule).data)
 
-    @extend_schema(operation_id="rules_apply", tags=["rules"])
+    @extend_schema(operation_id="rules_apply", tags=["rules"], request=None)
     @action(detail=True, methods=["post"])
     def apply(self, request, pk=None, team_slug=None, book_slug=None):
         """ "Save and apply to N existing transactions": post this auto-post rule's current matches."""
@@ -320,6 +329,7 @@ def _match_for(request, transaction_id):
     )
 
 
+@extend_schema(parameters=[OpenApiParameter("transaction_id", OpenApiTypes.INT, OpenApiParameter.PATH)])
 class RuleMatchViewSet(viewsets.GenericViewSet):
     """A rule's suggestion or auto-post on one feed row, acted on by any member."""
 
@@ -378,6 +388,7 @@ class RuleMatchViewSet(viewsets.GenericViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@extend_schema_view(list=extend_schema(operation_id="rules_proposals_list", tags=["rules"]))
 class RuleProposalViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """Rules the book's history proposes (`services.learning`)."""
 

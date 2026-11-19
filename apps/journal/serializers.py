@@ -489,6 +489,14 @@ class SimpleLineSerializer(serializers.Serializer):
         }
 
 
+class TransactionRowLegSerializer(serializers.Serializer):
+    """One line of a split row, for the table's disclosure."""
+
+    account = serializers.CharField()
+    debit = serializers.DecimalField(max_digits=15, decimal_places=2)
+    credit = serializers.DecimalField(max_digits=15, decimal_places=2)
+
+
 class TransactionRowSerializer(serializers.Serializer):
     """
     Read-only serializer that flattens a JournalEntry with its lines into a
@@ -531,10 +539,10 @@ class TransactionRowSerializer(serializers.Serializer):
         """Return the prefetched lines list (already loaded by the view)."""
         return list(entry.lines.all())
 
-    def get_payee_id(self, entry):
+    def get_payee_id(self, entry) -> int | None:
         return entry.payee_id
 
-    def get_payee_name(self, entry):
+    def get_payee_name(self, entry) -> str | None:
         return entry.payee.name if entry.payee else None
 
     def _sides(self, entry):
@@ -570,16 +578,17 @@ class TransactionRowSerializer(serializers.Serializer):
             return None
         return self.SPLIT_LABEL % {"count": len(lines)}
 
-    def get_debit_account(self, entry):
+    def get_debit_account(self, entry) -> str | None:
         """The account name of the line that carries the debit, or `Split (N)`."""
         debits, _ = self._sides(entry)
         return self._side_label(debits)
 
-    def get_credit_account(self, entry):
+    def get_credit_account(self, entry) -> str | None:
         """The account name of the line that carries the credit, or `Split (N)`."""
         _, credits = self._sides(entry)
         return self._side_label(credits)
 
+    @extend_schema_field(serializers.DecimalField(max_digits=15, decimal_places=2))
     def get_amount(self, entry):
         """Return total debits (== total credits for a balanced entry)."""
         return str(sum(line.dr_amount for line in self._get_lines(entry)))
@@ -590,6 +599,7 @@ class TransactionRowSerializer(serializers.Serializer):
     def get_is_split(self, entry) -> bool:
         return len(self._get_lines(entry)) > 2
 
+    @extend_schema_field(TransactionRowLegSerializer(many=True))
     def get_legs(self, entry):
         """Every line, for the table's split disclosure. Empty for a plain entry."""
         lines = self._get_lines(entry)

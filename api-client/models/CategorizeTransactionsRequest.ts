@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { TransactionRow } from './TransactionRow';
+import type { CategorizeTransactionRow } from './CategorizeTransactionRow';
 import {
-    TransactionRowFromJSON,
-    TransactionRowFromJSONTyped,
-    TransactionRowToJSON,
-    TransactionRowToJSONTyped,
-} from './TransactionRow';
+    CategorizeTransactionRowFromJSON,
+    CategorizeTransactionRowFromJSONTyped,
+    CategorizeTransactionRowToJSON,
+    CategorizeTransactionRowToJSONTyped,
+} from './CategorizeTransactionRow';
 
 /**
  * Serializer for categorize transactions request body.
@@ -29,10 +29,10 @@ import {
 export interface CategorizeTransactionsRequest {
     /**
      * List of transactions to categorize
-     * @type {Array<TransactionRow>}
+     * @type {Array<CategorizeTransactionRow>}
      * @memberof CategorizeTransactionsRequest
      */
-    rows: Array<TransactionRow>;
+    rows: Array<CategorizeTransactionRow>;
     /**
      * ID of the category account
      * @type {number}
@@ -60,7 +60,7 @@ export function CategorizeTransactionsRequestFromJSONTyped(json: any, ignoreDisc
     }
     return {
         
-        'rows': ((json['rows'] as Array<any>).map(TransactionRowFromJSON)),
+        'rows': ((json['rows'] as Array<any>).map(CategorizeTransactionRowFromJSON)),
         'categoryId': json['category_id'],
     };
 }
@@ -76,7 +76,7 @@ export function CategorizeTransactionsRequestFromJSONTyped(json: any, ignoreDisc
 
     return {
         
-        'rows': ((value['rows'] as Array<any>).map(TransactionRowToJSON)),
+        'rows': ((value['rows'] as Array<any>).map(CategorizeTransactionRowToJSON)),
         'category_id': value['categoryId'],
     };
 }

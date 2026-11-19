@@ -28,6 +28,7 @@ import type {
   SimpleLinesRecategorizeRequest,
   TransactionDetail,
   TransactionIds,
+  TransactionPickers,
   TransactionStatusRequest,
   TransactionsBatchDelete200Response,
   TransactionsFacets200Response,
@@ -59,6 +60,8 @@ import {
     TransactionDetailToJSON,
     TransactionIdsFromJSON,
     TransactionIdsToJSON,
+    TransactionPickersFromJSON,
+    TransactionPickersToJSON,
     TransactionStatusRequestFromJSON,
     TransactionStatusRequestToJSON,
     TransactionsBatchDelete200ResponseFromJSON,
@@ -185,7 +188,14 @@ export interface TransactionsFacetsRequest {
     teamSlug: string;
     dir?: string;
     endDate?: string;
-    fColumn?: string;
+    fAmount?: Array<string>;
+    fCreditAccount?: Array<string>;
+    fDate?: Array<string>;
+    fDebitAccount?: Array<string>;
+    fDescription?: Array<string>;
+    fPayee?: Array<string>;
+    fSource?: Array<string>;
+    fStatus?: Array<string>;
     q?: string;
     search?: string;
     sort?: string;
@@ -197,16 +207,28 @@ export interface TransactionsListRequest {
     teamSlug: string;
     dir?: string;
     endDate?: string;
-    fColumn?: string;
+    fAmount?: Array<string>;
+    fCreditAccount?: Array<string>;
+    fDate?: Array<string>;
+    fDebitAccount?: Array<string>;
+    fDescription?: Array<string>;
+    fPayee?: Array<string>;
+    fSource?: Array<string>;
+    fStatus?: Array<string>;
     page?: number;
     search?: string;
     sort?: string;
     startDate?: string;
 }
 
+export interface TransactionsPickersRequest {
+    bookSlug: string;
+    teamSlug: string;
+}
+
 export interface TransactionsRetrieveRequest {
     bookSlug: string;
-    id: string;
+    id: number;
     teamSlug: string;
 }
 
@@ -1289,8 +1311,36 @@ export class JournalApi extends runtime.BaseAPI {
             queryParameters['end_date'] = requestParameters['endDate'];
         }
 
-        if (requestParameters['fColumn'] != null) {
-            queryParameters['f_{column}'] = requestParameters['fColumn'];
+        if (requestParameters['fAmount'] != null) {
+            queryParameters['f_amount'] = requestParameters['fAmount'];
+        }
+
+        if (requestParameters['fCreditAccount'] != null) {
+            queryParameters['f_credit_account'] = requestParameters['fCreditAccount'];
+        }
+
+        if (requestParameters['fDate'] != null) {
+            queryParameters['f_date'] = requestParameters['fDate'];
+        }
+
+        if (requestParameters['fDebitAccount'] != null) {
+            queryParameters['f_debit_account'] = requestParameters['fDebitAccount'];
+        }
+
+        if (requestParameters['fDescription'] != null) {
+            queryParameters['f_description'] = requestParameters['fDescription'];
+        }
+
+        if (requestParameters['fPayee'] != null) {
+            queryParameters['f_payee'] = requestParameters['fPayee'];
+        }
+
+        if (requestParameters['fSource'] != null) {
+            queryParameters['f_source'] = requestParameters['fSource'];
+        }
+
+        if (requestParameters['fStatus'] != null) {
+            queryParameters['f_status'] = requestParameters['fStatus'];
         }
 
         if (requestParameters['q'] != null) {
@@ -1368,8 +1418,36 @@ export class JournalApi extends runtime.BaseAPI {
             queryParameters['end_date'] = requestParameters['endDate'];
         }
 
-        if (requestParameters['fColumn'] != null) {
-            queryParameters['f_{column}'] = requestParameters['fColumn'];
+        if (requestParameters['fAmount'] != null) {
+            queryParameters['f_amount'] = requestParameters['fAmount'];
+        }
+
+        if (requestParameters['fCreditAccount'] != null) {
+            queryParameters['f_credit_account'] = requestParameters['fCreditAccount'];
+        }
+
+        if (requestParameters['fDate'] != null) {
+            queryParameters['f_date'] = requestParameters['fDate'];
+        }
+
+        if (requestParameters['fDebitAccount'] != null) {
+            queryParameters['f_debit_account'] = requestParameters['fDebitAccount'];
+        }
+
+        if (requestParameters['fDescription'] != null) {
+            queryParameters['f_description'] = requestParameters['fDescription'];
+        }
+
+        if (requestParameters['fPayee'] != null) {
+            queryParameters['f_payee'] = requestParameters['fPayee'];
+        }
+
+        if (requestParameters['fSource'] != null) {
+            queryParameters['f_source'] = requestParameters['fSource'];
+        }
+
+        if (requestParameters['fStatus'] != null) {
+            queryParameters['f_status'] = requestParameters['fStatus'];
         }
 
         if (requestParameters['page'] != null) {
@@ -1416,6 +1494,57 @@ export class JournalApi extends runtime.BaseAPI {
      */
     async transactionsList(requestParameters: TransactionsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedTransactionRowList> {
         const response = await this.transactionsListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * The edit modal\'s account and payee pickers, for any page that hosts it (Transactions, an account\'s activity). Loaded once when the page opens, so the first row click does not wait on a list that rarely changes.
+     */
+    async transactionsPickersRaw(requestParameters: TransactionsPickersRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TransactionPickers>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling transactionsPickers().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling transactionsPickers().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/journal/api/transactions/pickers/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TransactionPickersFromJSON(jsonValue));
+    }
+
+    /**
+     * The edit modal\'s account and payee pickers, for any page that hosts it (Transactions, an account\'s activity). Loaded once when the page opens, so the first row click does not wait on a list that rarely changes.
+     */
+    async transactionsPickers(requestParameters: TransactionsPickersRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TransactionPickers> {
+        const response = await this.transactionsPickersRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

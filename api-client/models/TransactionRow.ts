@@ -13,18 +13,110 @@
  */
 
 import { mapValues } from '../runtime';
+import type { TransactionRowLeg } from './TransactionRowLeg';
+import {
+    TransactionRowLegFromJSON,
+    TransactionRowLegFromJSONTyped,
+    TransactionRowLegToJSON,
+    TransactionRowLegToJSONTyped,
+} from './TransactionRowLeg';
+
 /**
- * Serializer for a transaction row in categorize request.
+ * Read-only serializer that flattens a JournalEntry with its lines into a
+ * single transaction row.
+ * 
+ * A **split** -- an entry apportioned across several categories -- always has
+ * one line on one side and several on the other, which is what makes a single
+ * row possible: the one-line side names its account, and the many-line side
+ * reads ``Split (N)``.  The legs themselves come through ``legs`` so the table
+ * can disclose them, and ``is_split`` drives the "Split" marker shown beside
+ * the description.
+ * 
+ * Fields exposed:
+ *     id, date, payee_id, payee_name, description, source, status,
+ *     debit_account, credit_account, amount, line_count, is_split, legs
  * @export
  * @interface TransactionRow
  */
 export interface TransactionRow {
     /**
-     * Transaction ID
+     * 
      * @type {number}
      * @memberof TransactionRow
      */
     id: number;
+    /**
+     * 
+     * @type {Date}
+     * @memberof TransactionRow
+     */
+    date: Date;
+    /**
+     * 
+     * @type {number}
+     * @memberof TransactionRow
+     */
+    readonly payeeId: number | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TransactionRow
+     */
+    readonly payeeName: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TransactionRow
+     */
+    description: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TransactionRow
+     */
+    source: string;
+    /**
+     * 
+     * @type {string}
+     * @memberof TransactionRow
+     */
+    status: string;
+    /**
+     * The account name of the line that carries the debit, or `Split (N)`.
+     * @type {string}
+     * @memberof TransactionRow
+     */
+    readonly debitAccount: string | null;
+    /**
+     * The account name of the line that carries the credit, or `Split (N)`.
+     * @type {string}
+     * @memberof TransactionRow
+     */
+    readonly creditAccount: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof TransactionRow
+     */
+    readonly amount: string;
+    /**
+     * 
+     * @type {number}
+     * @memberof TransactionRow
+     */
+    readonly lineCount: number;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof TransactionRow
+     */
+    readonly isSplit: boolean;
+    /**
+     * 
+     * @type {Array<TransactionRowLeg>}
+     * @memberof TransactionRow
+     */
+    readonly legs: Array<TransactionRowLeg>;
 }
 
 /**
@@ -32,6 +124,18 @@ export interface TransactionRow {
  */
 export function instanceOfTransactionRow(value: object): value is TransactionRow {
     if (!('id' in value) || value['id'] === undefined) return false;
+    if (!('date' in value) || value['date'] === undefined) return false;
+    if (!('payeeId' in value) || value['payeeId'] === undefined) return false;
+    if (!('payeeName' in value) || value['payeeName'] === undefined) return false;
+    if (!('description' in value) || value['description'] === undefined) return false;
+    if (!('source' in value) || value['source'] === undefined) return false;
+    if (!('status' in value) || value['status'] === undefined) return false;
+    if (!('debitAccount' in value) || value['debitAccount'] === undefined) return false;
+    if (!('creditAccount' in value) || value['creditAccount'] === undefined) return false;
+    if (!('amount' in value) || value['amount'] === undefined) return false;
+    if (!('lineCount' in value) || value['lineCount'] === undefined) return false;
+    if (!('isSplit' in value) || value['isSplit'] === undefined) return false;
+    if (!('legs' in value) || value['legs'] === undefined) return false;
     return true;
 }
 
@@ -46,6 +150,18 @@ export function TransactionRowFromJSONTyped(json: any, ignoreDiscriminator: bool
     return {
         
         'id': json['id'],
+        'date': (new Date(json['date'])),
+        'payeeId': json['payee_id'],
+        'payeeName': json['payee_name'],
+        'description': json['description'],
+        'source': json['source'],
+        'status': json['status'],
+        'debitAccount': json['debit_account'],
+        'creditAccount': json['credit_account'],
+        'amount': json['amount'],
+        'lineCount': json['line_count'],
+        'isSplit': json['is_split'],
+        'legs': ((json['legs'] as Array<any>).map(TransactionRowLegFromJSON)),
     };
 }
 
@@ -53,7 +169,7 @@ export function TransactionRowFromJSONTyped(json: any, ignoreDiscriminator: bool
       return TransactionRowToJSONTyped(json, false);
   }
 
-  export function TransactionRowToJSONTyped(value?: TransactionRow | null, ignoreDiscriminator: boolean = false): any {
+  export function TransactionRowToJSONTyped(value?: Omit<TransactionRow, 'payee_id'|'payee_name'|'debit_account'|'credit_account'|'amount'|'line_count'|'is_split'|'legs'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -61,6 +177,10 @@ export function TransactionRowFromJSONTyped(json: any, ignoreDiscriminator: bool
     return {
         
         'id': value['id'],
+        'date': ((value['date']).toISOString().substring(0,10)),
+        'description': value['description'],
+        'source': value['source'],
+        'status': value['status'],
     };
 }
 
