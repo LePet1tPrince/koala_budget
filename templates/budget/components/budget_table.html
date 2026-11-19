@@ -71,9 +71,7 @@
   without it they are simply shown, Unhide buttons and all.
 {% endcomment %}
 <noscript><style>#budget-table-card tr[data-hidden-row][hidden] { display: table-row; }</style></noscript>
-<div class="bg-base-100 rounded-lg shadow" id="budget-table-card" data-testid="budget-table"
-     data-budget-save-url="{{ save_amount_url }}" data-budget-figures-url="{{ figures_url }}" data-cover-url="{{ cover_url }}">
-  {{ cover_goals|json_script:'cover-goals' }}
+<div class="bg-base-100 rounded-lg shadow" id="budget-table-card" data-testid="budget-table">
   <dialog class="modal" data-cover-dialog data-testid="cover-dialog">
     <div class="modal-box max-w-md">
       <h3 class="font-bold text-lg">{% translate "Cover overspending" %}</h3>
@@ -90,8 +88,9 @@
             </span>
             <span class="font-mono text-sm" data-cover-unassigned></span>
           </label>
-          {% if cover_goals %}
-          <label class="flex items-center gap-3 rounded-box border border-base-300 p-3 cursor-pointer has-[input:checked]:border-primary has-[input:checked]:bg-primary/5">
+          {% comment %}The goals themselves come from the budget API when the dialog opens.{% endcomment %}
+          <label class="flex items-center gap-3 rounded-box border border-base-300 p-3 cursor-pointer has-[input:checked]:border-primary has-[input:checked]:bg-primary/5"
+                 data-cover-goal-option {% if not has_cover_goals %}hidden{% endif %}>
             <input type="radio" name="source" value="goal" class="radio radio-sm radio-primary"
                    data-testid="cover-source-goal">
             <span class="flex-1 min-w-0">
@@ -99,7 +98,6 @@
               <select class="select select-bordered select-sm w-full mt-1" name="goal_id" data-testid="cover-goal-select"></select>
             </span>
           </label>
-          {% endif %}
         </fieldset>
         <label class="form-control w-full">
           <span class="label-text mb-1">{% translate "Amount" %}</span>
@@ -202,15 +200,15 @@
                     {{ counter }} hidden categories
                   {% endblocktranslate %}
                 </button>
-                {% if group.overspent %}
-                <span class="badge badge-error badge-xs whitespace-nowrap" data-testid="budget-hidden-overspent">
+                <span class="badge badge-error badge-xs whitespace-nowrap" data-testid="budget-hidden-overspent"
+                      data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:overspent"
+                      {% if not group.overspent %}hidden{% endif %}>
                   {% blocktranslate trimmed count counter=group.overspent %}
                     {{ counter }} overspent
                   {% plural %}
                     {{ counter }} overspent
                   {% endblocktranslate %}
                 </span>
-                {% endif %}
               </div>
             </td>
             <td></td>
@@ -218,7 +216,7 @@
               <span class="font-mono text-base-content/70" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:budgeted">{{ group.subtotals.budgeted|currency }}</span>
             </td>
             <td class="text-right">
-              <span class="font-mono text-base-content/70">{{ group.subtotals.actual|currency }}</span>
+              <span class="font-mono text-base-content/70" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:actual">{{ group.subtotals.actual|currency }}</span>
             </td>
             <td class="text-right">
               <span class="font-mono {{ group.subtotals.available|available_class:section.income }}"
@@ -238,7 +236,7 @@
               <span class="font-mono" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:budgeted">{{ group.subtotals.budgeted|currency }}</span>
             </td>
             <td class="text-right">
-              <span class="font-mono">{{ group.subtotals.actual|currency }}</span>
+              <span class="font-mono" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:actual">{{ group.subtotals.actual|currency }}</span>
             </td>
             <td class="text-right">
               <span class="font-mono {{ group.subtotals.available|available_class:section.income }}"
@@ -373,7 +371,7 @@
             <span class="font-mono" data-budget-cell="section:{{ section.key }}:budgeted">{{ section.totals.budgeted|currency }}</span>
           </td>
           <td class="text-right">
-            <span class="font-mono">{{ section.totals.actual|currency }}</span>
+            <span class="font-mono" data-budget-cell="section:{{ section.key }}:actual">{{ section.totals.actual|currency }}</span>
           </td>
           <td class="text-right">
             <span class="font-mono" data-budget-cell="section:{{ section.key }}:available">{{ section.totals.available|available_text:section.income }}</span>

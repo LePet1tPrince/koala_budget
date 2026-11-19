@@ -204,12 +204,12 @@ class BulkPathsTest(LedgerFixture):
 
     def test_grid_save_rewrites_every_month_it_touched(self):
         response = self.client.post(
-            self.url("budget:budget_grid_save"),
+            self.url("budget:api_grid_save"),
             json.dumps(
                 {
                     "changes": [
-                        {"category_id": self.fun.pk, "month": "2026-09-01", "amount": "60"},
-                        {"category_id": self.fun.pk, "month": "2026-10-01", "amount": "70"},
+                        {"category_id": self.fun.pk, "month": "2026-09", "amount": "60"},
+                        {"category_id": self.fun.pk, "month": "2026-10", "amount": "70"},
                     ]
                 }
             ),

@@ -1,24 +1,20 @@
-{% load currency_tags %}
 {% comment %}
-  Everything that changes when the month changes lives inside #budget-swap, so
-  switching months can replace just this and leave the header, the scroll
-  position and the page itself alone. See budget/month-swap.js. Hiding or
-  unhiding a category answers with this same partial (budget_category_visibility),
-  so the page and that response cannot render the region two different ways.
+  Everything that changes when the month changes lives inside #budget-swap. The
+  page's script (budget/month-swap.js) changes month by loading the month's figures
+  from the budget API and painting them into this markup in place: every figure
+  carries a `data-budget-cell` key, every month a `data-month` / `data-budget-month-name`.
+  When the structure itself has changed (a category hidden or added), it redraws
+  the region from this same template instead, fetched as the page.
 {% endcomment %}
 <!-- Main Content: Budget Table + Sidebar (beside it from lg up, below it on a phone) -->
-<div class="flex flex-col lg:flex-row gap-6 lg:items-start" id="budget-swap">
+<div class="flex flex-col lg:flex-row gap-6 lg:items-start" id="budget-swap"
+     data-budget-month="{{ month|date:'Y-m-d' }}" data-budget-end="{{ end_date|date:'Y-m-d' }}">
   <!-- Budget Table (left, takes remaining space) -->
   <div class="flex-1 min-w-0">
     {% comment %}
       No summary card here: Unassigned is in the sidebar pill and the breakdown is the
-      Budget & Goals report. The cover dialog still reads the figure and its name, so
-      autosave keeps these two cells current.
+      Budget & Goals report. The cover dialog reads it from the budget API.
     {% endcomment %}
-    <div hidden>
-      <span data-budget-cell="networth:label">{{ net_worth_card.label }}</span>
-      <span data-budget-cell="networth:available">{{ net_worth_card.available|currency }}</span>
-    </div>
     {% include "budget/components/budget_table.html" %}
   </div>
 
