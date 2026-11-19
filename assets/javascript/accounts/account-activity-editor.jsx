@@ -8,12 +8,6 @@ import { getTransactionsApi } from '../transactions/transactionsApi';
 import Toast from '../common/Toast';
 import { readBook } from '../common/book';
 
-/** Read a json_script tag, tolerating a page that doesn't render it. */
-const readJson = (id, fallback) => {
-  const node = document.getElementById(id);
-  return node ? JSON.parse(node.textContent) : fallback;
-};
-
 /**
  * The Transactions page's edit modal, on an account's server-rendered activity
  * table (`reports/components/account_activity_section.html`).
@@ -26,22 +20,35 @@ const readJson = (id, fallback) => {
 const AccountActivityEditor = ({ table }) => {
   const book = useMemo(() => readBook(), []);
   const api = useMemo(() => getTransactionsApi(book.base), [book.base]);
-  const [allAccounts, setAllAccounts] = useState(() => readJson('all-accounts', []));
-  const allPayees = useMemo(() => readJson('all-payees', []), []);
+  // The modal's pickers (`journal:transaction-pickers`), asked for once when the
+  // page opens; the first row click waits for them only if they are still in flight.
+  const pickers = useMemo(() => api.pickers(), [api]);
+  const [allAccounts, setAllAccounts] = useState([]);
+  const [allPayees, setAllPayees] = useState([]);
   const [editing, setEditing] = useState([]);
   const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    pickers
+      .then((loaded) => {
+        setAllAccounts(loaded.accounts);
+        setAllPayees(loaded.payees);
+      })
+      .catch(() => {});
+  }, [pickers]);
 
   const openEditor = useCallback(
     async (entryId) => {
       try {
         // The table row is a display projection; the detail fetch carries the
         // ids, split legs and capabilities the modal opens on.
-        setEditing([await api.fetchDetail(entryId)]);
+        const [detail] = await Promise.all([api.fetchDetail(entryId), pickers]);
+        setEditing([detail]);
       } catch (err) {
         setToast({ message: err.message, severity: 'error' });
       }
     },
-    [api],
+    [api, pickers],
   );
 
   useEffect(() => {

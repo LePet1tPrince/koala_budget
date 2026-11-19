@@ -42,6 +42,7 @@ from .serializers import (
     TransactionIdsSerializer,
     TransactionPickersSerializer,
     TransactionRowSerializer,
+    TransactionRowsSerializer,
     TransactionStatusRequestSerializer,
 )
 from .services import period_lock, voiding
@@ -161,7 +162,7 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @extend_schema(operation_id="journal_entries_audit", tags=["journal"], responses=AuditLogSerializer(many=True))
-    @action(detail=True, methods=["get"], url_path="audit")
+    @action(detail=True, methods=["get"], url_path="audit", pagination_class=None)
     def audit(self, request, team_slug=None, book_slug=None, pk=None):
         """Return the row-level audit history for this journal entry and its lines."""
         entry = self.get_object()
@@ -576,9 +577,9 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         operation_id="transactions_edit",
         tags=["journal"],
         request=TransactionEditRequestSerializer,
-        responses={200: TransactionRowSerializer(many=True)},
+        responses={200: TransactionRowsSerializer},
     )
-    @action(detail=False, methods=["patch"], url_path="edit")
+    @action(detail=False, methods=["patch"], url_path="edit", pagination_class=None)
     def edit(self, request, team_slug=None, book_slug=None):
         """
         Apply one partial edit to one or more transactions.
@@ -670,9 +671,9 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         operation_id="transactions_batch_status",
         tags=["journal"],
         request=TransactionStatusRequestSerializer,
-        responses={200: TransactionRowSerializer(many=True)},
+        responses={200: TransactionRowsSerializer},
     )
-    @action(detail=False, methods=["post"], url_path="batch_status")
+    @action(detail=False, methods=["post"], url_path="batch_status", pagination_class=None)
     def batch_status(self, request, team_slug=None, book_slug=None):
         """Void transactions so they drop out of every balance, or restore them."""
         serializer = TransactionStatusRequestSerializer(data=request.data)

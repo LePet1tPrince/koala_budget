@@ -1,6 +1,16 @@
-import {BankFeedApi, PlaidApi, JournalApi} from "api-client";
-import {getApiConfiguration, getApiHeaders} from "../api";
-import {formatDateForInput} from "./utils";
+import { BankFeedApi, PlaidApi, JournalApi } from 'api-client';
+import { apiDate, apiJson, getApiConfiguration } from '../api';
+import { bookFromBase } from '../common/book';
+
+/**
+ * The bank feed's API helpers, over the generated api-client (`apps/bank_feed/views.py`).
+ *
+ * Every helper answers the server's JSON as sent (snake_case, decimal strings) --
+ * what the feed's components read -- via `api.js::apiJson`, and fails with its
+ * `Error` (`message` is the server's reason; `status` and `payload` for callers
+ * that branch on a refusal, e.g. a 409 carrying a fresh transfer proposal).
+ * Requests go through the generated request models, which take camelCase keys.
+ */
 
 export function getBankFeedApiClient(serverBaseUrl) {
   return new BankFeedApi(getApiConfiguration(serverBaseUrl));
@@ -14,316 +24,214 @@ export function getJournalApiClient(serverBaseUrl) {
   return new JournalApi(getApiConfiguration(serverBaseUrl));
 }
 
-/**
- * Upload API helpers for CSV/Excel file uploads.
- * These use fetch with FormData since the generated api-client
- * doesn't handle multipart/form-data well.
- */
+// The generated paths are absolute, so the page's own origin is the base.
+const feedClient = () => getBankFeedApiClient(window.location.origin);
+
+/** The feed accounts and the pickers the Inbox and Categorize mode open on. */
+export function getFeedPageApi(bookBase) {
+  const { params } = bookFromBase(bookBase);
+  return {
+    /** `{accounts, payees, account_groups}`: categories (goal accounts with what is left), payees, groups. */
+    pickers: () => apiJson(feedClient().bankFeedPickersRaw(params)),
+    /** Feed accounts with up-to-date balances and review counts. */
+    feedAccounts: () => apiJson(feedClient().bankFeedFeedAccountsRaw(params)),
+    /** Every uncategorized row in `scope` ({accounts, startDate, endDate}), walking every page. */
+    uncategorized: async (scope) => {
+      let rows = [];
+      for (let page = 1; ; page += 1) {
+        const data = await apiJson(
+          feedClient().bankFeedFeedListRaw({
+            ...params,
+            uncategorized: true,
+            account: scope.accounts.length ? scope.accounts.join(',') : undefined,
+            startDate: apiDate(scope.startDate),
+            endDate: apiDate(scope.endDate),
+            page,
+          }),
+        );
+        rows = rows.concat(data.results || []);
+        if (!data.next) return rows;
+      }
+    },
+    /** The categories used on transactions similar to each of `ids`. */
+    similarCategories: (ids) => apiJson(feedClient().bankFeedSimilarCategoriesRaw({ ...params, ids: ids.join(',') })),
+    /** File these feed rows (BankTransaction ids) under one category. */
+    categorize: (ids, categoryId) =>
+      apiJson(
+        feedClient().bankFeedTransactionsCategorizeRaw({
+          ...params,
+          categorizeTransactionsRequest: { rows: ids.map((id) => ({ id })), categoryId },
+        }),
+      ),
+  };
+}
+
+/** The CSV/Excel upload wizard's endpoints, and creating a category from a picker. */
 export function getUploadApiHelpers(bookBase) {
-  const headers = getApiHeaders();
+  const { params } = bookFromBase(bookBase);
 
   return {
     /**
      * A sample bank statement, for users who want to try the import before they
      * have a statement of their own. Downloading it creates nothing -- the file
      * goes through this same wizard, so the rows the user ends up with are ones
-     * they chose to import.
+     * they chose to import. A link (a file download), not a fetch.
      */
     sampleCsvUrl: `${bookBase}bankfeed/api/feed/sample_csv/`,
 
-    /**
-     * Parse an uploaded file and return headers + sample rows
-     */
-    uploadParse: async (file) => {
-      const formData = new FormData();
-      formData.append('file', file);
+    /** Parse an uploaded file and return headers + sample rows. */
+    uploadParse: (file) => apiJson(feedClient().bankFeedUploadParseRaw({ ...params, file })),
 
-      const response = await fetch(`${bookBase}bankfeed/api/feed/upload_parse/`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-        headers: {
-          'X-CSRFToken': headers['X-CSRFToken'],
-        },
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || 'Failed to parse file');
-      }
-
-      return response.json();
-    },
-
-    /**
-     * Preview parsed transactions with column mapping
-     */
-    uploadPreview: async (file, accountId, columnMapping, categoryMappings = [], dateFormat = null) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('account_id', accountId);
-      formData.append('column_mapping', JSON.stringify(columnMapping));
-      formData.append('category_mappings', JSON.stringify(categoryMappings));
-      if (dateFormat) formData.append('date_format', dateFormat);
-
-      const response = await fetch(`${bookBase}bankfeed/api/feed/upload_preview/`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-        headers: {
-          'X-CSRFToken': headers['X-CSRFToken'],
-        },
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || 'Failed to preview transactions');
-      }
-
-      return response.json();
-    },
+    /** Preview parsed transactions with column mapping. */
+    uploadPreview: (file, accountId, columnMapping, categoryMappings = [], dateFormat = null) =>
+      apiJson(
+        feedClient().bankFeedUploadPreviewRaw({
+          ...params,
+          file,
+          accountId,
+          columnMapping: JSON.stringify(columnMapping),
+          categoryMappings: JSON.stringify(categoryMappings),
+          dateFormat: dateFormat || undefined,
+        }),
+      ),
 
     /**
      * Check every row's date cell against a chosen date format.
      * Returns { total_rows, invalid_count, invalid_samples, suggested_format, error }.
      */
-    uploadValidateDates: async (file, dateColumn, dateFormat, hasHeaders = true) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('date_column', dateColumn);
-      formData.append('date_format', dateFormat);
-      formData.append('has_headers', hasHeaders ? 'true' : 'false');
+    uploadValidateDates: (file, dateColumn, dateFormat, hasHeaders = true) =>
+      apiJson(feedClient().bankFeedUploadValidateDatesRaw({ ...params, file, dateColumn, dateFormat, hasHeaders })),
 
-      const response = await fetch(`${bookBase}bankfeed/api/feed/upload_validate_dates/`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-        headers: {
-          'X-CSRFToken': headers['X-CSRFToken'],
-        },
-      });
+    /** The book's account groups (not budget buckets), for the create-account form. */
+    getAccountGroups: () => apiJson(feedClient().bankFeedAccountGroupsRaw(params)),
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || 'Failed to validate dates');
-      }
-
-      return response.json();
-    },
-
-    /**
-     * The book's account groups (not budget buckets), for the create-account form
-     */
-    getAccountGroups: async () => {
-      const response = await fetch(`${bookBase}bankfeed/api/feed/account_groups/`, {
-        credentials: 'include',
-        headers: { 'X-CSRFToken': headers['X-CSRFToken'] },
-      });
-      if (!response.ok) throw new Error('Failed to load account groups');
-      return response.json();
-    },
-
-    /**
-     * Create a new account (for use during category mapping)
-     */
-    createAccount: async (name, accountGroupId) => {
-      const response = await fetch(`${bookBase}bankfeed/api/feed/create_account/`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': headers['X-CSRFToken'],
-        },
-        body: JSON.stringify({ name, account_group_id: accountGroupId }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || 'Failed to create account');
-      }
-
-      return response.json();
-    },
-
-    /**
-     * Confirm and create transactions
-     */
-    uploadConfirm: async (accountId, transactions, skipDuplicates = true) => {
-      const response = await fetch(`${bookBase}bankfeed/api/feed/upload_confirm/`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': headers['X-CSRFToken'],
-        },
-        body: JSON.stringify({
-          account_id: accountId,
-          transactions: transactions,
-          skip_duplicates: skipDuplicates,
+    /** Create a new account (a category picker's "Create …"). */
+    createAccount: (name, accountGroupId) =>
+      apiJson(
+        feedClient().bankFeedCreateAccountRaw({
+          ...params,
+          createFeedAccountRequest: { name, accountGroupId: Number(accountGroupId) },
         }),
-      });
+      ),
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || 'Failed to import transactions');
-      }
-
-      return response.json();
-    },
+    /** Confirm and create transactions. */
+    uploadConfirm: (accountId, transactions, skipDuplicates = true) =>
+      apiJson(
+        feedClient().bankFeedUploadConfirmRaw({
+          ...params,
+          uploadConfirmRequest: {
+            accountId,
+            skipDuplicates,
+            transactions: transactions.map((tx) => ({
+              date: apiDate(tx.date),
+              description: tx.description,
+              payee: tx.payee,
+              amount: tx.amount,
+              categoryId: tx.category_id,
+              skip: tx.skip,
+            })),
+          },
+        }),
+      ),
   };
 }
 
-/**
- * Transaction API helpers for creating and updating transactions.
- * Uses fetch with JSON body.
- */
-/** The first message in a DRF validation error body (`{field: [msg]}` / `{non_field_errors: [msg]}`), or null. */
-function firstFieldError(body) {
-  const first = Object.values(body || {})[0];
-  if (Array.isArray(first)) return typeof first[0] === 'string' ? first[0] : firstFieldError(first[0]);
-  if (first && typeof first === 'object') return firstFieldError(first);
-  return typeof first === 'string' ? first : null;
+/** A manual transaction's body as the generated `ManualTransaction` model takes it. */
+function manualTransaction(data) {
+  return {
+    date: apiDate(data.date),
+    category: data.category?.id || data.category || null,
+    inflow: data.inflow || '0',
+    outflow: data.outflow || '0',
+    payee: data.payee || '',
+    description: data.description || '',
+    account: data.account,
+    // Split legs, when the transaction is apportioned across categories.
+    // Null (the common case) leaves the single-category path untouched.
+    splits: data.splits ?? null,
+    removeSplit: data.remove_split ?? false,
+  };
 }
 
+/** Creating and updating manual feed transactions. */
 export function getTransactionApi(bookBase) {
-  const headers = getApiHeaders();
-  const baseUrl = `${bookBase}bankfeed/api/feed`;
+  const { params } = bookFromBase(bookBase);
 
   return {
-    /**
-     * Create a new manual transaction with associated journal entry
-     */
-    createTransaction: async (data) => {
-      // Format date as YYYY-MM-DD string (timezone-safe; toISOString would
-      // shift local-midnight dates to the previous day east of UTC)
-      const dateStr = formatDateForInput(data.date);
-
-      const response = await fetch(`${baseUrl}/`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': headers['X-CSRFToken'],
-        },
-        body: JSON.stringify({
-          date: dateStr,
-          category: data.category?.id || data.category,
-          inflow: data.inflow || '0',
-          outflow: data.outflow || '0',
-          payee: data.payee || '',
-          description: data.description || '',
-          account: data.account,
-          // Split legs, when the transaction is apportioned across categories.
-          // Null (the common case) leaves the single-category path untouched.
-          splits: data.splits ?? null,
-          remove_split: data.remove_split ?? false,
+    /** Create a new manual transaction with associated journal entry. */
+    createTransaction: (data) =>
+      apiJson(
+        feedClient().bankFeedFeedCreateRaw({
+          ...params,
           // How the transaction repeats ("Make recurring"), or null for a one-off.
-          recurrence: data.recurrence ?? null,
+          manualTransaction: { ...manualTransaction(data), recurrence: recurrence(data.recurrence) },
         }),
-      });
+      ),
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || firstFieldError(error) || 'Failed to create transaction');
-      }
-
-      return response.json();
-    },
-
-    /**
-     * Update an existing transaction and its associated journal entry
-     */
-    updateTransaction: async (id, data) => {
-      // Format date as YYYY-MM-DD string (timezone-safe)
-      const dateStr = formatDateForInput(data.date);
-
-      const response = await fetch(`${baseUrl}/${id}/`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': headers['X-CSRFToken'],
-        },
-        body: JSON.stringify({
-          date: dateStr,
-          category: data.category?.id || data.category,
-          inflow: data.inflow || '0',
-          outflow: data.outflow || '0',
-          payee: data.payee || '',
-          description: data.description || '',
-          account: data.account,
-          // Split legs, when the transaction is apportioned across categories.
-          // Null (the common case) leaves the single-category path untouched.
-          splits: data.splits ?? null,
-          remove_split: data.remove_split ?? false,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || 'Failed to update transaction');
-      }
-
-      return response.json();
-    },
+    /** Update an existing transaction and its associated journal entry. */
+    updateTransaction: (id, data) =>
+      apiJson(feedClient().bankFeedFeedUpdateRaw({ ...params, id, manualTransaction: manualTransaction(data) })),
   };
 }
 
-/**
- * Batch operations API helpers for bulk transaction operations.
- * Uses fetch with JSON body for batch endpoints.
- */
-export function getBatchOperationsApi(bookBase) {
-  const headers = getApiHeaders();
-  const baseUrl = `${bookBase}bankfeed/api/feed`;
-
-  const fetchJson = async (endpoint, body, method = 'POST') => {
-    const response = await fetch(`${baseUrl}/${endpoint}/`, {
-      method,
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': headers['X-CSRFToken'],
-      },
-      // GET requests must not carry a body.
-      ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      const error = new Error(data.error || 'Operation failed');
-      // Callers that act on a specific refusal (a 409 carrying the current
-      // transfer-match proposal) read the status and body from the error.
-      error.status = response.status;
-      error.data = data;
-      throw error;
-    }
-    return response.status === 204 ? null : response.json();
+function recurrence(value) {
+  if (!value) return null;
+  return {
+    frequency: value.frequency,
+    interval: value.interval,
+    weekday: value.weekday ?? null,
+    dayOfMonth: value.day_of_month ?? null,
+    endDate: apiDate(value.end_date),
   };
+}
+
+/** The keys of a `batch_edit` update the caller set (null included: it means "clear"). */
+function batchEditRequest(ids, updates) {
+  const request = { ids };
+  if ('category_id' in updates) request.categoryId = updates.category_id;
+  if ('account_id' in updates) request.accountId = updates.account_id;
+  if ('payee' in updates) request.payee = updates.payee;
+  if ('description' in updates) request.description = updates.description;
+  if ('date' in updates) request.date = apiDate(updates.date) ?? null;
+  return request;
+}
+
+/** Batch operations on feed rows, transfer matching, and the feed accounts' balances. */
+export function getBatchOperationsApi(bookBase) {
+  const { params } = bookFromBase(bookBase);
+  const batch = (method, ids) => apiJson(feedClient()[method]({ ...params, batchIds: { ids } }));
 
   return {
     /**
-     * Bulk edit transactions. Only provided (non-null) fields are updated.
+     * Bulk edit transactions. Only provided fields are updated.
      * @param {number[]} ids - Transaction IDs
      * @param {Object} updates - Fields to update (category_id, account_id, payee, description, date)
      */
-    batchEdit: (ids, updates) => fetchJson('batch_edit', { ids, ...updates }, 'PATCH'),
-    batchVoid: (ids) => fetchJson('batch_void', { ids }),
-    batchRestore: (ids) => fetchJson('batch_restore', { ids }),
-    batchDelete: (ids) => fetchJson('batch_delete', { ids }),
-    batchDuplicate: (ids) => fetchJson('batch_duplicate', { ids }),
+    batchEdit: (ids, updates) =>
+      apiJson(
+        feedClient().bankFeedBatchEditRaw({ ...params, patchedBatchEditRequest: batchEditRequest(ids, updates) }),
+      ),
+    batchVoid: (ids) => batch('bankFeedBatchVoidRaw', ids),
+    batchRestore: (ids) => batch('bankFeedBatchRestoreRaw', ids),
+    batchDelete: (ids) => batch('bankFeedBatchDeleteRaw', ids),
+    batchDuplicate: (ids) => batch('bankFeedBatchDuplicateRaw', ids),
 
     // Transfer matching: list suggested pairs (each with the server's proposal),
     // match one (the server picks the leg to archive; `expectedArchiveId` is the
     // one the user was shown, refused with 409 if it no longer holds), or dismiss.
-    transferSuggestions: () => fetchJson('transfers', null, 'GET'),
+    transferSuggestions: () => apiJson(feedClient().bankFeedTransferSuggestionsRaw(params)),
     transferMatch: (transactionA, transactionB, expectedArchiveId) =>
-      fetchJson('transfers/match', {
-        transaction_a: transactionA,
-        transaction_b: transactionB,
-        expected_archive_id: expectedArchiveId,
-      }),
-    transferDismiss: (transactionA, transactionB) => fetchJson('transfers/dismiss', { transaction_a: transactionA, transaction_b: transactionB }),
+      apiJson(
+        feedClient().bankFeedTransferMatchRaw({
+          ...params,
+          transferMatchRequest: { transactionA, transactionB, expectedArchiveId },
+        }),
+      ),
+    transferDismiss: (transactionA, transactionB) =>
+      apiJson(
+        feedClient().bankFeedTransferDismissRaw({ ...params, transferDismissRequest: { transactionA, transactionB } }),
+      ),
 
-    fetchFeedAccounts: () => fetchJson('feed_accounts', null, 'GET'),
+    fetchFeedAccounts: () => apiJson(feedClient().bankFeedFeedAccountsRaw(params)),
   };
 }

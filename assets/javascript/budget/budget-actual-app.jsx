@@ -4,11 +4,21 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import ActualTooltip from './react/ActualTooltip';
 import { readBook } from '../common/book';
+import { getFeedPageApi } from '../bank_feed/bank_feed';
 
-// The "Move to..." picker's accounts. Not budget data: every account but the
-// budget buckets, as the bank feed's and the rules' pickers list them.
-const allAccounts = JSON.parse(document.getElementById('all-accounts').textContent);
 const book = readBook();
+
+// The "Move to..." picker's accounts: every account but the budget buckets, as
+// the bank feed's pickers list them (`bank_feed:bank-feed-pickers`). Empty until
+// they load; the tooltips render again once they have.
+let allAccounts = [];
+getFeedPageApi(book.base)
+  .pickers()
+  .then((pickers) => {
+    allAccounts = pickers.accounts;
+    roots.forEach(render);
+  })
+  .catch((err) => console.error('Failed to load the account picker:', err));
 
 // Every root we have mounted, with its element, so they can be torn down again.
 // A redraw replaces the table (month-swap.js), and a root whose container has

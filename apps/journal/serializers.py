@@ -854,3 +854,9 @@ class TransactionPickersSerializer(serializers.Serializer):
 
     accounts = SimpleAccountSerializer(many=True, help_text="Every account but budget buckets, by name")
     payees = PayeeSerializer(many=True, help_text="The book's payees, by name")
+
+
+class TransactionRowsSerializer(serializers.Serializer):
+    """The rows a write changed, re-serialized so the table can patch itself in place."""
+
+    results = TransactionRowSerializer(many=True)

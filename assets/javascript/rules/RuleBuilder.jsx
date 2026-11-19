@@ -5,7 +5,6 @@ import Icon from '../common/Icon';
 import Modal from '../common/Modal';
 import { buildCategoryOptions } from '../common/categoryOptions';
 import { formatMoney } from '../common/amount';
-import { getJson } from '../common/http';
 import { conditionText } from './summary';
 import RuleSentence from './RuleSentence';
 
@@ -203,17 +202,18 @@ function Conflicts({ conflicts }) {
   );
 }
 
-function ExplainPanel({ api, bookBase, rule }) {
+function ExplainPanel({ api, rule }) {
   const [rows, setRows] = useState(null);
   const [picked, setPicked] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    getJson(`${bookBase}bankfeed/api/feed/?view=active&page_size=200`)
+    api
+      .recentFeedRows()
       .then((data) => setRows(data.results || []))
       .catch((e) => setError(e.message));
-  }, [bookBase]);
+  }, [api]);
 
   const options = useMemo(
     () =>
@@ -556,7 +556,7 @@ export default function RuleBuilder({
           {testOpen && (
             <div className="space-y-4 px-3 pb-3">
               <TestPanel result={test.result} loading={test.loading} error={test.error} />
-              <ExplainPanel api={api} bookBase={bookBase} rule={rule} />
+              <ExplainPanel api={api} rule={rule} />
             </div>
           )}
         </details>
