@@ -572,8 +572,11 @@ class AccountViewTest(TestCase):
             [(row["entry_id"], row["editable"]) for row in bucket_rows], [(budget_line.journal_entry_id, False)]
         )
         self.assertContains(response, 'id="account-activity-editor"')
-        self.assertIn("Edit Rent", [a["name"] for a in response.context["all_accounts"]])
         self.assertIn("csrftoken", response.cookies)
+        # The modal's pickers load from the API, not the page.
+        self.assertNotContains(response, 'id="all-accounts"')
+        pickers = self.client.get(reverse("journal:transaction-pickers", args=self.book.url_args)).json()
+        self.assertIn("Edit Rent", [a["name"] for a in pickers["accounts"]])
 
     def test_account_detail_view_expense_budget_chart(self):
         """Expense account detail embeds the budget-vs-actual chart instead of the balance chart."""
@@ -1292,7 +1295,12 @@ class ManagementPagesTest(TestCase):
     def test_transactions_page_opens_filtered_by_payee(self):
         url = reverse("journal:transactions_home", args=self.book.url_args)
         response = self.client.get(url, {"f_payee": ["Metro", "Unknown"]})
-        self.assertEqual(response.context["initial_filters"], {"payee": [{"value": "Metro", "label": "Metro"}]})
+        # The app reads `?f_payee=` itself and keeps only the book's payees, from its pickers.
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "initial-filters")
+        pickers = self.client.get(reverse("journal:transaction-pickers", args=self.book.url_args)).json()
+        self.assertIn("Metro", [payee["name"] for payee in pickers["payees"]])
+        self.assertNotIn("Unknown", [payee["name"] for payee in pickers["payees"]])
 
     def test_liability_balance_reads_as_owed(self):
         response = self.client.get(self.card.get_absolute_url())

@@ -38,7 +38,7 @@ from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name
-from apps.books.permissions import BookModelAccessPermissions
+from apps.books.permissions import BookAccessPermissions, BookModelAccessPermissions
 from apps.budget.services import picker_accounts_data
 from apps.journal.models import JournalEntry
 from apps.journal.services import period_lock, voiding
@@ -1890,6 +1890,13 @@ class RecurringTransactionViewSet(mixins.ListModelMixin, mixins.DestroyModelMixi
     serializer_class = RecurringTransactionSerializer
     pagination_class = None
     queryset = RecurringTransaction.objects.none()  # for drf-spectacular schema generation
+
+    def get_permissions(self):
+        if self.action == "destroy":
+            # Any member may stop a schedule (members start them); the queryset is
+            # the URL's book, so another book's schedule is a 404.
+            return [BookAccessPermissions()]
+        return super().get_permissions()
 
     @property
     def include_finished(self):
