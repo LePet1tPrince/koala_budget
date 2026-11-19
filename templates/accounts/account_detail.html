@@ -141,6 +141,7 @@
 {% vite_asset 'assets/javascript/reports/ReportsDateRangePicker.jsx' %}
 {% vite_asset 'assets/javascript/accounts/account-activity-editor.jsx' %}
 {% if has_balance_chart or budget_chart_kind %}
+{{ charts_json|json_script:'account-charts-data' }}
 {% vite_asset 'assets/javascript/accounts/account-charts.js' %}
 {% endif %}
 {% endblock %}

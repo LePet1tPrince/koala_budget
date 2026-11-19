@@ -20,6 +20,7 @@ from apps.web.templatetags.currency_tags import currency
 
 from . import goal_actions, goal_links
 from . import ledger as budget_ledger
+from .api.goal_serializers import GoalListSerializer
 from .autofill import apply_autofill
 from .figures import budget_tab_keys, budgeted_categories, month_figures
 from .forms import BudgetAmountForm, GoalForm
@@ -279,6 +280,8 @@ def goals_list_view(request, team_slug, book_slug):
             "next_month": month + relativedelta(months=1),
             "show_closed": show_closed,
             "closed_count": page["closed_count"],
+            # The page script's Unassigned and saved total: the `GET …/budget/api/goals/` body, embedded.
+            "goals_json": GoalListSerializer(page).data,
         },
     )
 

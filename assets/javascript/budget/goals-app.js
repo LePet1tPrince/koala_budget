@@ -1,14 +1,16 @@
 // Goals page: quick-assign buttons, count-up animations and celebrations.
 // Server-rendered cards carry data attributes; this module wires them up and
 // moves money through the goal API (apps/budget/api/goals.py) via `api-client`.
-import { apiCall } from '../api';
+import { GoalListFromJSON } from 'api-client';
+
+import { apiCall, pageData } from '../api';
 import { formatMoney, parseAmount } from '../common/amount';
 import { fireConfetti } from '../common/confetti';
 import { apiMonth, budget } from './budget-api';
 
 const root = document.querySelector('[data-goals-root]');
-// Unassigned for the page's month and the goals' saved total: loaded from the
-// goals API on start (the quick-assign buttons wait for it), then kept from each answer.
+// Unassigned for the page's month and the goals' saved total: from the goals-list
+// body the page embeds (`#goals-data`), then kept from each answer.
 let available = null;
 let unassignedLabel = 'Unassigned';
 let totalSaved = 0;
@@ -253,24 +255,14 @@ async function withdraw(card, amount) {
   if (input) input.value = '';
 }
 
-// Unassigned and the saved total for the page's month. The quick-assign buttons
-// show what they would add, so they wait (busy) until it is in.
-async function loadFigures() {
-  const quick = document.querySelectorAll('[data-assign-all]');
-  root.setAttribute('aria-busy', 'true');
-  quick.forEach((b) => b.classList.add('btn-disabled'));
-  try {
-    const { api, params } = budget();
-    const page = await apiCall(api.budgetGoalsList({ ...params, month: apiMonth(root.dataset.month) }));
-    applyUnassigned(page.unassigned);
-    totalSaved = Number(page.summary.totalSaved);
-    refreshAssignButtons();
-  } catch {
-    // The page as the server rendered it still works; the first assign brings the figures.
-  } finally {
-    root.removeAttribute('aria-busy');
-    quick.forEach((b) => b.classList.remove('btn-disabled'));
-  }
+// Unassigned and the saved total for the page's month, from the `GET …/budget/api/goals/`
+// body the page embeds for that month.
+function loadFigures() {
+  const page = pageData('goals-data', GoalListFromJSON);
+  if (!page) return;
+  applyUnassigned(page.unassigned);
+  totalSaved = Number(page.summary.totalSaved);
+  refreshAssignButtons();
 }
 
 function init() {

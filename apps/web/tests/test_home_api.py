@@ -62,11 +62,11 @@ class BookHomeApiTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["onboarding_finished"])
 
-    def test_the_page_draws_its_chart_from_the_api(self):
+    def test_the_page_embeds_the_api_body_for_its_chart(self):
+        """The dashboard's chart reads the `GET …/api/home/` body the page embeds (test_embedded_bodies.py)."""
         response = self.client.get(reverse("web_book:home", args=self.a.book.url_args))
         self.assertContains(response, 'id="home-net-worth-chart"')
-        self.assertContains(response, 'id="book-base"')
-        self.assertNotContains(response, "home-net-worth-data")
+        self.assertContains(response, '<script id="home-data" type="application/json">')
 
     def test_non_member_is_refused(self):
         self.client.force_login(CustomUser.objects.create_user(username="outsider-home@example.com", password="p"))

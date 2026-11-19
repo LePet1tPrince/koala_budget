@@ -247,5 +247,6 @@
 {% block page_js %}
 {% comment %}The waterfall loads from `GET …/reports/api/budget-and-goals/` (budget-goals-report.js).{% endcomment %}
 {{ request.book.base_url|json_script:'book-base' }}
+{{ report_json|json_script:'budget-goals-report-data' }}
 {% vite_asset 'assets/javascript/reports/budget-goals-report.js' %}
 {% endblock %}

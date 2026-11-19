@@ -14,6 +14,7 @@ from django.utils.translation import gettext_lazy as _
 from apps.books.decorators import login_and_book_required
 from apps.utils.months import add_months
 
+from .api import budget_goals_payload, net_worth_payload, spending_payload
 from .consolidated import (
     COLUMN_LABELS,
     bucket_for,
@@ -120,6 +121,9 @@ def spending(request, team_slug, book_slug):
         )
 
     report = spending_report(request.book, start_date, end_date, period=chosen)
+    # The charts draw from what `GET …/reports/api/spending/` would return for this
+    # range; the page embeds it rather than have them fetch the report a second time.
+    report_json = spending_payload(report, start_date, end_date, chosen, offered)
     if by_period:
         _attach_period_drill(report, start_date, end_date)
     return render(
@@ -130,6 +134,7 @@ def spending(request, team_slug, book_slug):
             "active_report": "spending",
             "page_title": _("Income & Spending"),
             **report,
+            "report_json": report_json,
             "by_period": by_period,
             "column_options": column_options,
             "export_qs": _drill_qs(start_date, end_date),
@@ -157,6 +162,8 @@ def net_worth(request, team_slug, book_slug):
             "active_report": "net_worth",
             "page_title": _("Net Worth"),
             **report,
+            # The charts draw from the `GET …/reports/api/net-worth/` body for this range, embedded.
+            "report_json": net_worth_payload(report, start_date, end_date),
             "drill_qs": _drill_qs(start_date, end_date),
             "export_qs": urlencode({"as_of_date": end_date.isoformat()}),
             "start_date": start_date,
@@ -182,6 +189,8 @@ def budget_goals(request, team_slug, book_slug):
             "active_report": "budget_goals",
             "page_title": _("Budget & Goals"),
             **report,
+            # The waterfall draws from the `GET …/reports/api/budget-and-goals/` body, embedded.
+            "report_json": budget_goals_payload(report, month),
             "month": month,
             "prev_month": add_months(month, -1),
             "next_month": add_months(month, 1),

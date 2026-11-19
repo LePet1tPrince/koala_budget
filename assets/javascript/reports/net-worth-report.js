@@ -1,10 +1,13 @@
+import { NetWorthReportFromJSON } from 'api-client';
+
 import { drawCompositionChart } from './net-worth-composition-chart';
 import { drawNetWorthChart } from './net-worth-chart';
-import { bookParams, getReportsApi, isoDate, loadChart, numbers, onReady } from './report-data';
+
+import { isoDate, numbers, onReady, pageData } from './report-data';
 
 /**
- * The Net Worth page's charts, from `GET …/reports/api/net-worth/` on the months
- * the page itself resolved (`#net-worth-report`'s data attributes).
+ * The Net Worth page's charts, from the `GET …/reports/api/net-worth/` body the page
+ * embeds for its own months (`#net-worth-report-data`).
  */
 const trendData = (report) => ({
   labels: report.trend.map((point) => isoDate(point.date)),
@@ -20,25 +23,10 @@ const compositionData = (report) => ({
 });
 
 onReady(() => {
-  const page = document.getElementById('net-worth-report');
   const totals = document.getElementById('net-worth-chart');
   const composition = document.getElementById('net-worth-composition-chart');
-  if (!page || (!totals && !composition)) return;
-
-  const { startMonth, endMonth } = page.dataset;
-  // One request for both charts.
-  const request = getReportsApi().reportsNetWorthRetrieve({ ...bookParams(), startMonth, endMonth });
-  if (totals)
-    loadChart(
-      totals,
-      () => request,
-      (report) => drawNetWorthChart(totals, trendData(report)),
-    );
-  if (composition) {
-    loadChart(
-      composition,
-      () => request,
-      (report) => report.composition && drawCompositionChart(composition, compositionData(report)),
-    );
-  }
+  const report = pageData('net-worth-report-data', NetWorthReportFromJSON);
+  if (!report) return;
+  if (totals) drawNetWorthChart(totals, trendData(report));
+  if (composition && report.composition) drawCompositionChart(composition, compositionData(report));
 });

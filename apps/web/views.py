@@ -13,6 +13,7 @@ from apps.teams.decorators import login_and_team_required
 from apps.teams.helpers import get_open_invitations_for_user
 from apps.utils.months import format_month
 
+from .api import book_home_payload
 from .services import home as home_service
 
 
@@ -63,8 +64,9 @@ def book_home(request, team_slug, book_slug):
             "team": request.team,
             "active_tab": "dashboard",
             "page_title": _("{name} Home").format(name=book_display_name(book)),
-            # The chart is drawn from `GET …/api/home/`; the page only needs to know there is one.
             "has_net_worth_trend": bool(summary["net_worth_trend"]),
+            # The chart draws from the `GET …/api/home/` body, embedded rather than fetched again.
+            "home_json": book_home_payload(summary),
             "ynab_url": reverse("ynab_import:home", args=book.url_args) if summary["ynab_import"]["offered"] else "",
             "ynab_state": summary["ynab_import"]["state"],
             "show_monthly_review_nudge": review_month is not None,

@@ -58,7 +58,7 @@ deploy/            # Docker Compose and DigitalOcean configs
 - Functional components with hooks
 - Auto-generated API client from OpenAPI schema — never hand-write fetch calls
 - Components self-mount via `document.getElementById('id').render(<Component />)`
-- React islands load and write through `api-client` (with a loading state), not `json_script` data; `json_script` carries only config ids (`book-base`)
+- React islands load and write through `api-client` (with a loading state), not `json_script` data; `json_script` carries only config ids (`book-base`) — except a server-rendered page's scripts read the API body their own view already built, embedded (`EMBEDDED_API_BODIES` in `test_api_surface.py`, read with `api.js::pageData`), never re-fetched
 
 **Django templates:**
 - 2-space indent

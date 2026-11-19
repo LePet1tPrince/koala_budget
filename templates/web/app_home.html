@@ -42,7 +42,7 @@
       <a href="{% url 'reports:net_worth' request.team.slug request.book.slug %}" class="link text-sm">{% translate "See more reports" %}</a>
     </div>
     {% if has_net_worth_trend %}
-      {# Drawn from `GET …/api/home/` (home-net-worth-chart.js), with a spinner until it lands. #}
+      {# Drawn from the embedded `GET …/api/home/` body (home-net-worth-chart.js). #}
       <div class="w-full" style="height: 220px;">
         <canvas id="home-net-worth-chart" class="w-full h-full"></canvas>
       </div>
@@ -173,7 +173,7 @@
   {% if show_resume %}{% vite_asset 'assets/javascript/onboarding/resume.js' %}{% endif %}
   {% if show_monthly_review_nudge %}{% vite_asset 'assets/javascript/monthly_review/resume.js' %}{% endif %}
 {% if has_net_worth_trend %}
-{{ request.book.base_url|json_script:'book-base' }}
+{{ home_json|json_script:'home-data' }}
 {% vite_asset 'assets/javascript/dashboard/home-net-worth-chart.js' %}
 {% endif %}
 {% endblock %}

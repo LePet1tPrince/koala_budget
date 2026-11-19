@@ -1,10 +1,13 @@
+import { SpendingReportFromJSON } from 'api-client';
+
 import { drawCashFlowChart } from './cash-flow-chart';
 import { drawSankey } from './income-statement-sankey';
-import { apiDate, bookParams, getReportsApi, loadChart, numbers, onReady } from './report-data';
+
+import { numbers, onReady, pageData } from './report-data';
 
 /**
- * The Income & Spending page's charts, from `GET …/reports/api/spending/` on the
- * range and columns the page itself resolved (`#spending-report`'s data attributes).
+ * The Income & Spending page's charts, from the `GET …/reports/api/spending/` body the
+ * page embeds for its own range and columns (`#spending-report-data`).
  */
 const cashFlowData = (report) => ({
   labels: report.periods.map((period) => period.label),
@@ -31,29 +34,10 @@ const sankeyData = (report) => ({
 });
 
 onReady(() => {
-  const page = document.getElementById('spending-report');
   const cashFlow = document.getElementById('cash-flow-chart');
   const flow = document.getElementById('sankey-chart');
-  if (!page || (!cashFlow && !flow)) return;
-
-  const { startDate, endDate, columns } = page.dataset;
-  // One request for both charts.
-  const request = getReportsApi().reportsSpendingRetrieve({
-    ...bookParams(),
-    startDate: apiDate(startDate),
-    endDate: apiDate(endDate),
-    columns: columns || undefined,
-  });
-  if (cashFlow)
-    loadChart(
-      cashFlow,
-      () => request,
-      (report) => drawCashFlowChart(cashFlow, cashFlowData(report)),
-    );
-  if (flow)
-    loadChart(
-      flow,
-      () => request,
-      (report) => drawSankey(flow, sankeyData(report)),
-    );
+  const report = pageData('spending-report-data', SpendingReportFromJSON);
+  if (!report) return;
+  if (cashFlow) drawCashFlowChart(cashFlow, cashFlowData(report));
+  if (flow) drawSankey(flow, sankeyData(report));
 });

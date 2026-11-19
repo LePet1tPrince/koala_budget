@@ -236,9 +236,10 @@ class ApiSurfaceTest(SimpleTestCase):
 
 class TemplateDataPropsTest(SimpleTestCase):
     """
-    Templates hand pages configuration, never data: a page loads its data through
+    Templates hand pages configuration, not data: a page loads its data through
     `api-client`, so the phone app can load the same thing. `json_script` may carry
-    only the config ids below (anything else is a payload the API should serve).
+    the config ids below, and, on a server-rendered page, the exact body of an API
+    endpoint its own view already built (`EMBEDDED_API_BODIES`).
     """
 
     CONFIG_IDS = {
@@ -246,7 +247,21 @@ class TemplateDataPropsTest(SimpleTestCase):
         "team-id": "the team a team page asks the API for",
         "api-urls": "page-link URL templates (teams pages), not data",
     }
-    # (template, id) pairs allowed to carry data, with the reason.
+    # Server-rendered pages (until they become React routes, Phase 5) whose view
+    # embeds the body its own API endpoint returns for the page's parameters, built by
+    # the same function from figures the view already computed for its HTML, so the
+    # page's scripts don't make the server compute them twice. `EmbeddedApiBodiesTest`
+    # (test_embedded_bodies.py) proves each one equals the endpoint's answer.
+    # (template, id) -> the endpoint.
+    EMBEDDED_API_BODIES = {
+        ("web/app_home.html", "home-data"): "book_api:home",
+        ("reports/spending.html", "spending-report-data"): "reports:api_spending",
+        ("reports/net_worth.html", "net-worth-report-data"): "reports:api_net_worth",
+        ("reports/budget_goals.html", "budget-goals-report-data"): "reports:api_budget_goals",
+        ("budget/goals_list.html", "goals-data"): "budget:api_goals",
+        ("accounts/account_detail.html", "account-charts-data"): "accounts:account-charts",
+    }
+    # (template, id) pairs allowed to carry other data, with the reason.
     DATA_ALLOWED = {
         # The superuser-only signups dashboard (`apps.dashboard`): an internal staff
         # page outside the user app (no team, no book), with no phone counterpart.
@@ -263,15 +278,18 @@ class TemplateDataPropsTest(SimpleTestCase):
             for lineno, line in enumerate(path.read_text().splitlines(), start=1):
                 for match in self.JSON_SCRIPT.finditer(line):
                     element_id = match.group("id")
-                    if element_id in self.CONFIG_IDS or (relative, element_id) in self.DATA_ALLOWED:
+                    key = (relative, element_id)
+                    if element_id in self.CONFIG_IDS or key in self.DATA_ALLOWED or key in self.EMBEDDED_API_BODIES:
                         continue
                     offenders.append(f"{relative}:{lineno}  {line.strip()}")
         self.assertEqual(
             offenders,
             [],
             "These templates pass data via `json_script`. Serve it from a DRF endpoint and load it "
-            "through api-client (with a loading state), or, if it is pure config, add the id to "
-            "CONFIG_IDS with the reason:\n" + "\n".join(offenders),
+            "through api-client (with a loading state); if the view already builds that endpoint's "
+            "body for its own HTML, list it in EMBEDDED_API_BODIES (with a case in "
+            "test_embedded_bodies.py); if it is pure config, add the id to CONFIG_IDS with the "
+            "reason:\n" + "\n".join(offenders),
         )
 
     def test_the_scan_finds_json_scripts(self):

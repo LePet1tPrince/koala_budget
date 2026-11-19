@@ -27,7 +27,10 @@ class BookHomeView(BookAPIView):
 
     @extend_schema(operation_id="book_home_retrieve", tags=["dashboard"], responses=BookHomeSerializer)
     def get(self, request, team_slug, book_slug):
-        summary = home.book_home_summary(self.book, request.user)
-        month = summary["monthly_review_month"]
-        summary["monthly_review_nudge"] = {"month": month} if month else None
-        return Response(BookHomeSerializer(summary).data)
+        return Response(book_home_payload(home.book_home_summary(self.book, request.user)))
+
+
+def book_home_payload(summary):
+    """The `GET …/api/home/` body for a `book_home_summary`; the dashboard page embeds the same for its chart."""
+    month = summary["monthly_review_month"]
+    return BookHomeSerializer({**summary, "monthly_review_nudge": {"month": month} if month else None}).data

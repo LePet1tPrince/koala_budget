@@ -85,48 +85,55 @@ class SpendingReportView(BookAPIView):
         end_date = query.validated_data.get("end_date")
         if start_date is None:
             start_date, end_date = default_range(self.book, (date(today.year, 1, 1), today))
-        return Response(SpendingReportSerializer(spending_payload(self.book, start_date, end_date, query)).data)
+        offered = column_periods(start_date, end_date)
+        requested = query.validated_data.get("columns")
+        chosen = requested if requested in offered else None
+        report = spending_report(self.book, start_date, end_date, period=chosen)
+        return Response(spending_payload(report, start_date, end_date, chosen, offered))
 
 
-def spending_payload(book, start_date, end_date, query):
-    offered = column_periods(start_date, end_date)
-    requested = query.validated_data.get("columns")
-    chosen = requested if requested in offered else None
-    report = spending_report(book, start_date, end_date, period=chosen)
+def spending_payload(report, start_date, end_date, chosen, offered):
+    """
+    The `GET …/reports/api/spending/` body for a `spending_report` already built with
+    column period `chosen` (None: Total) out of `offered`. The Income & Spending page
+    embeds the same body for its charts rather than having them fetch it again.
+    """
     data = report["data"]
     goal_spending = data["goal_spending"]
     bounds = period_bounds(data["periods"], report["period"], start_date, end_date)
-    return {
-        "start_date": start_date,
-        "end_date": end_date,
-        "period": report["period"],
-        "columns": {
-            "selected": chosen or "total",
-            "options": [{"key": "total", "label": _("Total")}]
-            + [{"key": key, "label": COLUMN_LABELS[key]} for key in offered],
-        },
-        "periods": [
-            {"start_date": first, "end_date": last, "label": label}
-            for (first, last), label in zip(bounds, data["period_labels"], strict=True)
-        ],
-        "has_activity": report["chart_data"] is not None,
-        "stats": report["stats"],
-        "income": {
-            "total": data["total_income"],
-            "per_period": data["total_income_per_period"],
-            "groups": data["income_groups"],
-        },
-        "expenses": {
-            "total": data["total_expenses"],
-            "per_period": data["total_expenses_per_period"],
-            "groups": data["expense_groups"],
-        },
-        "net": data["net_profit"],
-        "net_per_period": data["net_profit_per_period"],
-        "goal_spending": goal_spending,
-        "net_after_goal_spending": data["net_after_goal_spending"],
-        "net_after_goal_spending_per_period": data["net_after_goal_spending_per_period"],
-    }
+    return SpendingReportSerializer(
+        {
+            "start_date": start_date,
+            "end_date": end_date,
+            "period": report["period"],
+            "columns": {
+                "selected": chosen or "total",
+                "options": [{"key": "total", "label": _("Total")}]
+                + [{"key": key, "label": COLUMN_LABELS[key]} for key in offered],
+            },
+            "periods": [
+                {"start_date": first, "end_date": last, "label": label}
+                for (first, last), label in zip(bounds, data["period_labels"], strict=True)
+            ],
+            "has_activity": report["chart_data"] is not None,
+            "stats": report["stats"],
+            "income": {
+                "total": data["total_income"],
+                "per_period": data["total_income_per_period"],
+                "groups": data["income_groups"],
+            },
+            "expenses": {
+                "total": data["total_expenses"],
+                "per_period": data["total_expenses_per_period"],
+                "groups": data["expense_groups"],
+            },
+            "net": data["net_profit"],
+            "net_per_period": data["net_profit_per_period"],
+            "goal_spending": goal_spending,
+            "net_after_goal_spending": data["net_after_goal_spending"],
+            "net_after_goal_spending_per_period": data["net_after_goal_spending_per_period"],
+        }
+    ).data
 
 
 NET_WORTH_PARAMETERS = [
@@ -163,9 +170,12 @@ class NetWorthReportView(BookAPIView):
         if start_date > end_date:
             start_date = end_date.replace(day=1)
 
-        report = net_worth_report(self.book, start_date, end_date)
-        report.update(start_date=start_date, end_date=end_date)
-        return Response(NetWorthReportSerializer(report).data)
+        return Response(net_worth_payload(net_worth_report(self.book, start_date, end_date), start_date, end_date))
+
+
+def net_worth_payload(report, start_date, end_date):
+    """The `GET …/reports/api/net-worth/` body for a `net_worth_report`; the Net Worth page embeds the same."""
+    return NetWorthReportSerializer({**report, "start_date": start_date, "end_date": end_date}).data
 
 
 class BudgetGoalsReportView(BookAPIView):
@@ -183,10 +193,13 @@ class BudgetGoalsReportView(BookAPIView):
     )
     def get(self, request, team_slug, book_slug):
         month = month_query_param(request, default=lambda: date.today().replace(day=1))
-        report = budget_goals_report(self.book, month)
-        report["month"] = month
-        report["goal_rows"] = [{**row, "goal": _goal_payload(row["goal"])} for row in report["goal_rows"]]
-        return Response(BudgetGoalsReportSerializer(report).data)
+        return Response(budget_goals_payload(budget_goals_report(self.book, month), month))
+
+
+def budget_goals_payload(report, month):
+    """The `GET …/reports/api/budget-and-goals/` body for a `budget_goals_report`; the page embeds the same."""
+    goal_rows = [{**row, "goal": _goal_payload(row["goal"])} for row in report["goal_rows"]]
+    return BudgetGoalsReportSerializer({**report, "month": month, "goal_rows": goal_rows}).data
 
 
 def _goal_payload(goal):

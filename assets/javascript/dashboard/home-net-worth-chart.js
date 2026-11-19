@@ -1,21 +1,18 @@
 'use strict';
 import Chart from 'chart.js/auto';
 import {MONEY, GRID, getInk, getSurface, currency, monthLabel, observeTheme} from '../reports/chart-theme';
-import {bookParams, getDashboardApi, isoDate, loadChart, onReady} from '../reports/report-data';
+import {BookHomeFromJSON} from 'api-client';
+import {isoDate, onReady, pageData} from '../reports/report-data';
 
-// The dashboard's net-worth trend, from `GET …/api/home/` (apps/web/api.py).
+// The dashboard's net-worth trend, from the `GET …/api/home/` body (apps/web/api.py) the page embeds.
 onReady(() => {
   const canvas = document.getElementById('home-net-worth-chart');
-  if (!canvas) return;
-  loadChart(
-    canvas,
-    () => getDashboardApi().bookHomeRetrieve({...bookParams()}),
-    (home) =>
-      draw(canvas, {
-        labels: home.netWorthTrend.map((point) => isoDate(point.date)),
-        net_worth: home.netWorthTrend.map((point) => Number(point.netWorth)),
-      }),
-  );
+  const home = pageData('home-data', BookHomeFromJSON);
+  if (!canvas || !home) return;
+  draw(canvas, {
+    labels: home.netWorthTrend.map((point) => isoDate(point.date)),
+    net_worth: home.netWorthTrend.map((point) => Number(point.netWorth)),
+  });
 });
 
 function draw(canvas, data) {

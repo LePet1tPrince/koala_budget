@@ -307,9 +307,20 @@ class AccountViewSet(viewsets.ModelViewSet):
         start_date, end_date = _date_range(request, request.book)
         service = ReportService(request.book)
         activity = service.get_account_activity(account, start_date, end_date)
-        balance = ReportService.build_balance_chart_data(activity, start_date, end_date)
-        budget_chart = service.get_budget_vs_actual_chart_data(account, start_date, end_date)
-        return Response(AccountChartsSerializer({"balance": balance, "budget": budget_chart}).data)
+        return Response(account_charts_payload(service, account, activity, start_date, end_date))
+
+
+def account_charts_payload(service, account, activity, start_date, end_date):
+    """
+    The `GET …/accounts/api/accounts/{id}/charts/` body, from the account's
+    `get_account_activity` over the range. The account page builds that activity for
+    its own table and embeds this body, so its charts don't fetch it again.
+    """
+    from apps.reports.services import ReportService
+
+    balance = ReportService.build_balance_chart_data(activity, start_date, end_date)
+    budget_chart = service.get_budget_vs_actual_chart_data(account, start_date, end_date)
+    return AccountChartsSerializer({"balance": balance, "budget": budget_chart}).data
 
 
 # =============================================================================

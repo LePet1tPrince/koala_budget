@@ -79,3 +79,15 @@ export function apiDate(value) {
   if (value instanceof Date) return new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
   return new Date(`${String(value).slice(0, 10)}T00:00:00Z`);
 }
+
+/**
+ * An API body the server embedded in the page (`<script id="{id}" type="application/json">`,
+ * from `json_script`) instead of having the page fetch it, as the generated `…FromJSON`
+ * types it -- the same object the matching api-client call returns. Null without one.
+ * A server-rendered page does this only for a body its own view already built (see
+ * `EMBEDDED_API_BODIES` in `apps/api/tests/test_api_surface.py`).
+ */
+export function pageData(id, fromJSON) {
+  const element = document.getElementById(id);
+  return element ? fromJSON(JSON.parse(element.textContent)) : null;
+}

@@ -455,10 +455,14 @@ class AccountDetailView(AccountViewMixin, DetailView):
         service = ReportService(book)
         report_data = service.get_account_activity(account, start_date, end_date)
         context["report_data"] = report_data
-        # The charts load from the charts API (`AccountViewSet.charts`) for the same
-        # range; the page only decides which panels to draw.
         context["has_balance_chart"] = report_data["is_balance_account"]
         context["budget_chart_kind"] = service.budget_chart_kind(account)
+        if context["has_balance_chart"] or context["budget_chart_kind"]:
+            # The charts draw from the `AccountViewSet.charts` body for this range, built
+            # from the activity above and embedded rather than fetched again.
+            from .api import account_charts_payload
+
+            context["charts_json"] = account_charts_payload(service, account, report_data, start_date, end_date)
         context["start_date"] = start_date
         context["end_date"] = end_date
         # Statement history for accounts a statement can confirm (assets and liabilities).

@@ -211,6 +211,7 @@
 {% if chart_data %}
 {% comment %}Both charts load from `GET …/reports/api/net-worth/` on this page's months (net-worth-report.js).{% endcomment %}
 {{ request.book.base_url|json_script:'book-base' }}
+{{ report_json|json_script:'net-worth-report-data' }}
 {% vite_asset 'assets/javascript/reports/net-worth-report.js' %}
 {% endif %}
 {% endblock %}
