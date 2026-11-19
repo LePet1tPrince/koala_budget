@@ -90,6 +90,7 @@ class SessionTokenMiddleware:
     sent by a browser on its own, so the forgery CSRF guards against cannot carry
     one. An unknown or expired token authenticates nothing; DRF answers it 401
     (`apps.api.authentication.SessionTokenAuthentication`), a page redirects to login.
+    So does a token from before the user's password changed (`resolve_session_token`).
     """
 
     def __init__(self, get_response):
@@ -100,9 +101,9 @@ class SessionTokenMiddleware:
         if not token or request.path_info.startswith(HEADLESS_PATH_PREFIX) or request.user.is_authenticated:
             return self.get_response(request)
 
-        from allauth.headless.internal.sessionkit import authenticate_by_x_session_token
+        from .authentication import resolve_session_token
 
-        resolved = authenticate_by_x_session_token(token)
+        resolved = resolve_session_token(token)
         if resolved is None:
             return self.get_response(request)
 
@@ -125,3 +126,32 @@ class SessionTokenMiddleware:
             if token_session.modified and not token_session.is_empty():
                 token_session.save()
             request.session = cookie_session
+
+
+HEADLESS_APP_PATH_PREFIX = "/_allauth/app/"
+
+
+class HeadlessAppUserMiddleware:
+    """
+    Let allauth's `app` endpoints (`/_allauth/app/v1/...`) see the token's user.
+
+    allauth swaps in the token's session inside the view and re-evaluates the lazy
+    `request.user` (`authkit.authentication_context`). `HijackUserMiddleware` wraps
+    `request.user` around a copy of the user already resolved from the (empty) cookie
+    session, so that re-evaluation came back anonymous: every signed-in `app` call
+    -- session status, password change, re-authentication, MFA -- answered 401.
+    Placed after `HijackUserMiddleware`, this gives those paths a `request.user` that
+    reads whatever session the request holds when it is evaluated. Hijacking is a
+    staff feature of the web app; the phone's auth endpoints never carry it.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.path_info.startswith(HEADLESS_APP_PATH_PREFIX):
+            from django.contrib import auth
+            from django.utils.functional import SimpleLazyObject
+
+            request.user = SimpleLazyObject(lambda: auth.get_user(request))
+        return self.get_response(request)

@@ -133,6 +133,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "hijack.middleware.HijackUserMiddleware",
+    # After hijack: allauth's `app` endpoints must re-read the user from the token's session.
+    "apps.api.middleware.HeadlessAppUserMiddleware",
     "waffle.middleware.WaffleMiddleware",
 ]
 

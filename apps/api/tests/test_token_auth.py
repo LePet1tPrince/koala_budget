@@ -203,6 +203,40 @@ class TokenRefusedTest(TokenAuthTestCase):
         response = self.client.get(self.book_url("journal:journal-entry-list"), headers={"X-Session-Token": token})
         self.assertEqual(response.status_code, 401)
 
+    def test_a_password_change_ends_the_token(self):
+        # As it ends every other cookie session (Django's session auth hash): a token
+        # taken before the change must not outlive it (security log, WP10).
+        token = self.login()
+        self.user.set_password("a brand new password")
+        self.user.save()
+        response = self.client.get(self.book_url("journal:journal-entry-list"), headers={"X-Session-Token": token})
+        self.assertEqual(response.status_code, 401)
+        page = self.client.get(self.book_url("web_book:home"), headers={"X-Session-Token": token})
+        self.assertEqual(page.status_code, 302)
+        from allauth.headless.internal.sessionkit import lookup_session
+
+        self.assertIsNone(lookup_session(token))
+
+    def test_a_password_changed_through_the_token_hands_back_a_new_one(self):
+        # allauth's app endpoints see the token's user (`HeadlessAppUserMiddleware`), and
+        # its change-password flow moves the session to a new key: the new token works,
+        # the old one does not.
+        token = self.login()
+        session = self.client.get("/_allauth/app/v1/auth/session", headers={"X-Session-Token": token})
+        self.assertEqual(session.status_code, 200, session.content)
+        response = self.client.post(
+            "/_allauth/app/v1/account/password/change",
+            data=json.dumps({"current_password": PASSWORD, "new_password": "a brand new password 2"}),
+            content_type="application/json",
+            headers={"X-Session-Token": token},
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        new_token = response.json()["meta"]["session_token"]
+        self.assertNotEqual(new_token, token)
+        url = self.book_url("journal:journal-entry-list")
+        self.assertEqual(self.client.get(url, headers={"X-Session-Token": new_token}).status_code, 200)
+        self.assertEqual(self.client.get(url, headers={"X-Session-Token": token}).status_code, 401)
+
     def test_anonymous_without_a_token_is_still_a_403(self):
         response = self.client.get(self.book_url("journal:journal-entry-list"))
         self.assertEqual(response.status_code, 403)
