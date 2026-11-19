@@ -486,6 +486,11 @@ SPECTACULAR_SETTINGS = {
         "BudgetAutofillActionEnum": "apps.budget.figures.AUTOFILL_ACTIONS",
         "BudgetCoverSourceEnum": "apps.budget.api.serializers.COVER_SOURCES",
         "BudgetGridActualModeEnum": "apps.budget.grid.GRID_ACTUAL_MODES",
+        # The goal API's (apps/budget/api/goal_serializers.py).
+        "GoalStateEnum": "apps.budget.api.goal_serializers.GOAL_STATES",
+        "GoalOutflowEnum": "apps.budget.api.goal_serializers.GOAL_OUTFLOWS",
+        "GoalPlanStatusEnum": "apps.budget.api.goal_serializers.GOAL_PLAN_STATUSES",
+        "GoalActivityKindEnum": "apps.budget.api.goal_serializers.GOAL_ACTIVITY_KINDS",
     },
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}
