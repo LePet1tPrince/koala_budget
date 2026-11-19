@@ -15,23 +15,35 @@
 
 import * as runtime from '../runtime';
 import type {
+  AcceptedInvitation,
   Invitation,
+  InvitationDetail,
+  Membership,
   PaginatedInvitationList,
   PaginatedTeamList,
   PatchedInvitation,
+  PatchedMembership,
   PatchedTeam,
   Team,
   UserInvitationsResponse,
 } from '../models/index';
 import {
+    AcceptedInvitationFromJSON,
+    AcceptedInvitationToJSON,
     InvitationFromJSON,
     InvitationToJSON,
+    InvitationDetailFromJSON,
+    InvitationDetailToJSON,
+    MembershipFromJSON,
+    MembershipToJSON,
     PaginatedInvitationListFromJSON,
     PaginatedInvitationListToJSON,
     PaginatedTeamListFromJSON,
     PaginatedTeamListToJSON,
     PatchedInvitationFromJSON,
     PatchedInvitationToJSON,
+    PatchedMembershipFromJSON,
+    PatchedMembershipToJSON,
     PatchedTeamFromJSON,
     PatchedTeamToJSON,
     TeamFromJSON,
@@ -39,6 +51,14 @@ import {
     UserInvitationsResponseFromJSON,
     UserInvitationsResponseToJSON,
 } from '../models/index';
+
+export interface InvitationAcceptRequest {
+    invitationId: string;
+}
+
+export interface InvitationDetailsRetrieveRequest {
+    invitationId: string;
+}
 
 export interface InvitationsCreateRequest {
     teamSlug: string;
@@ -61,6 +81,11 @@ export interface InvitationsPartialUpdateRequest {
     patchedInvitation?: Omit<PatchedInvitation, 'id'|'invited_by'>;
 }
 
+export interface InvitationsResendRequest {
+    id: string;
+    teamSlug: string;
+}
+
 export interface InvitationsRetrieveRequest {
     id: string;
     teamSlug: string;
@@ -70,6 +95,26 @@ export interface InvitationsUpdateRequest {
     id: string;
     teamSlug: string;
     invitation: Omit<Invitation, 'id'|'invited_by'>;
+}
+
+export interface MembershipsDestroyRequest {
+    id: number;
+    teamSlug: string;
+}
+
+export interface MembershipsListRequest {
+    teamSlug: string;
+}
+
+export interface MembershipsPartialUpdateRequest {
+    id: number;
+    teamSlug: string;
+    patchedMembership?: Omit<PatchedMembership, 'id'|'user_id'|'first_name'|'last_name'|'display_name'>;
+}
+
+export interface MembershipsRetrieveRequest {
+    id: number;
+    teamSlug: string;
 }
 
 export interface TeamsCreateRequest {
@@ -102,6 +147,94 @@ export interface TeamsUpdateRequest {
  * 
  */
 export class TeamsApi extends runtime.BaseAPI {
+
+    /**
+     * Join the invitation\'s team. Already a member: nothing changes and `joined` is false. Refused (400) for an accepted invitation or one sent to an address the user hasn\'t verified.
+     */
+    async invitationAcceptRaw(requestParameters: InvitationAcceptRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<AcceptedInvitation>> {
+        if (requestParameters['invitationId'] == null) {
+            throw new runtime.RequiredError(
+                'invitationId',
+                'Required parameter "invitationId" was null or undefined when calling invitationAccept().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/teams/api/invitations/{invitation_id}/`.replace(`{${"invitation_id"}}`, encodeURIComponent(String(requestParameters['invitationId']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => AcceptedInvitationFromJSON(jsonValue));
+    }
+
+    /**
+     * Join the invitation\'s team. Already a member: nothing changes and `joined` is false. Refused (400) for an accepted invitation or one sent to an address the user hasn\'t verified.
+     */
+    async invitationAccept(requestParameters: InvitationAcceptRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<AcceptedInvitation> {
+        const response = await this.invitationAcceptRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * A team invitation, for the person it was sent to: `GET` describes it, `POST` accepts it. The API form of the invitation page (`teams:accept_invitation`), which keeps the invitation in the session across sign-in; here the client holds the id (from the emailed link) and calls this once signed in.  Accepting needs the invitation\'s email address on the user\'s account and verified, as the page requires before it offers the button.
+     */
+    async invitationDetailsRetrieveRaw(requestParameters: InvitationDetailsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<InvitationDetail>> {
+        if (requestParameters['invitationId'] == null) {
+            throw new runtime.RequiredError(
+                'invitationId',
+                'Required parameter "invitationId" was null or undefined when calling invitationDetailsRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/teams/api/invitations/{invitation_id}/`.replace(`{${"invitation_id"}}`, encodeURIComponent(String(requestParameters['invitationId']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => InvitationDetailFromJSON(jsonValue));
+    }
+
+    /**
+     * A team invitation, for the person it was sent to: `GET` describes it, `POST` accepts it. The API form of the invitation page (`teams:accept_invitation`), which keeps the invitation in the session across sign-in; here the client holds the id (from the emailed link) and calls this once signed in.  Accepting needs the invitation\'s email address on the user\'s account and verified, as the page requires before it offers the button.
+     */
+    async invitationDetailsRetrieve(requestParameters: InvitationDetailsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<InvitationDetail> {
+        const response = await this.invitationDetailsRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
 
     /**
      */
@@ -302,6 +435,57 @@ export class TeamsApi extends runtime.BaseAPI {
     }
 
     /**
+     * Email the invitation again (admins).
+     */
+    async invitationsResendRaw(requestParameters: InvitationsResendRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Invitation>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling invitationsResend().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling invitationsResend().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/team/api/invitations/{id}/resend/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => InvitationFromJSON(jsonValue));
+    }
+
+    /**
+     * Email the invitation again (admins).
+     */
+    async invitationsResend(requestParameters: InvitationsResendRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Invitation> {
+        const response = await this.invitationsResendRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      */
     async invitationsRetrieveRaw(requestParameters: InvitationsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Invitation>> {
         if (requestParameters['id'] == null) {
@@ -406,6 +590,203 @@ export class TeamsApi extends runtime.BaseAPI {
      */
     async invitationsUpdate(requestParameters: InvitationsUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Invitation> {
         const response = await this.invitationsUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Remove a member (admins), or leave the team (anyone, their own membership). The team\'s only admin can\'t be removed.
+     */
+    async membershipsDestroyRaw(requestParameters: MembershipsDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling membershipsDestroy().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling membershipsDestroy().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/team/api/memberships/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Remove a member (admins), or leave the team (anyone, their own membership). The team\'s only admin can\'t be removed.
+     */
+    async membershipsDestroy(requestParameters: MembershipsDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.membershipsDestroyRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * The team\'s members, by email.
+     */
+    async membershipsListRaw(requestParameters: MembershipsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Membership>>> {
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling membershipsList().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/team/api/memberships/`.replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(MembershipFromJSON));
+    }
+
+    /**
+     * The team\'s members, by email.
+     */
+    async membershipsList(requestParameters: MembershipsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Membership>> {
+        const response = await this.membershipsListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Change a member\'s role (admins; never your own).
+     */
+    async membershipsPartialUpdateRaw(requestParameters: MembershipsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Membership>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling membershipsPartialUpdate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling membershipsPartialUpdate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/team/api/memberships/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchedMembershipToJSON(requestParameters['patchedMembership']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => MembershipFromJSON(jsonValue));
+    }
+
+    /**
+     * Change a member\'s role (admins; never your own).
+     */
+    async membershipsPartialUpdate(requestParameters: MembershipsPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Membership> {
+        const response = await this.membershipsPartialUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     */
+    async membershipsRetrieveRaw(requestParameters: MembershipsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Membership>> {
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling membershipsRetrieve().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling membershipsRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/team/api/memberships/{id}/`.replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => MembershipFromJSON(jsonValue));
+    }
+
+    /**
+     */
+    async membershipsRetrieve(requestParameters: MembershipsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Membership> {
+        const response = await this.membershipsRetrieveRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
