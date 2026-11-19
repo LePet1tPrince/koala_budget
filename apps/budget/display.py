@@ -1,5 +1,5 @@
 """How the budget page words and colours an Available figure. The templates (via
-`budget_tags`) and the auto-save response (`views._budget_cells`) both read it, so a
+`budget_tags`) read it; the page script (budget-api.js `availableDisplay`) mirrors it, so a
 repaint can't show a figure differently from the first render."""
 
 from decimal import Decimal

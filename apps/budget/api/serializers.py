@@ -6,7 +6,7 @@ by id. Responses are the structure `apps.budget.figures.month_figures` and
 `apps.budget.grid.grid_data` build -- never DOM keys or rendered text.
 """
 
-from decimal import ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.types import OpenApiTypes
@@ -43,6 +43,12 @@ class BudgetAmountField(serializers.CharField):
         kwargs.setdefault("allow_blank", True)
         kwargs.setdefault("trim_whitespace", True)
         super().__init__(**kwargs)
+
+    def run_validation(self, data=serializers.empty):
+        # CharField answers a blank value itself, before `to_internal_value`.
+        if self.allow_blank and isinstance(data, str) and not data.strip():
+            return parse_budget_amount("")
+        return super().run_validation(data)
 
     def to_internal_value(self, data):
         if isinstance(data, (int, float)) and not isinstance(data, bool):
@@ -317,15 +323,18 @@ class GridSerializer(serializers.Serializer):
     groups = GridGroupSerializer(many=True, help_text="Income groups first; hidden categories are left out.")
 
 
+class CentsDecimalField(serializers.DecimalField):
+    """A decimal amount rounded half-up to cents, rather than refused for its extra places."""
+
+    def validate_precision(self, value):
+        return super().validate_precision(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
 class GridChangeSerializer(serializers.Serializer):
     category_id = serializers.IntegerField()
     month = MonthField()
-    amount = serializers.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        rounding=ROUND_HALF_UP,
-        min_value=-MAX_BUDGET_AMOUNT,
-        max_value=MAX_BUDGET_AMOUNT,
+    amount = CentsDecimalField(
+        max_digits=15, decimal_places=2, min_value=-MAX_BUDGET_AMOUNT, max_value=MAX_BUDGET_AMOUNT
     )
 
 
