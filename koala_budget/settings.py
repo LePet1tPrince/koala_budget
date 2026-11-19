@@ -481,6 +481,11 @@ SPECTACULAR_SETTINGS = {
         # Every type the model stores (budget buckets included), and the ones a user may pick.
         "AccountTypeEnum": "apps.accounts.models.ALL_ACCOUNT_TYPE_CHOICES",
         "PickableAccountTypeEnum": "apps.accounts.models.ACCOUNT_TYPE_CHOICES",
+        # The budget API's choice sets (apps/budget/api/serializers.py).
+        "BudgetSectionEnum": "apps.budget.api.serializers.SECTION_KEYS",
+        "BudgetAutofillActionEnum": "apps.budget.figures.AUTOFILL_ACTIONS",
+        "BudgetCoverSourceEnum": "apps.budget.api.serializers.COVER_SOURCES",
+        "BudgetGridActualModeEnum": "apps.budget.grid.GRID_ACTUAL_MODES",
     },
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}

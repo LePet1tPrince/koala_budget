@@ -530,13 +530,22 @@ class CoverOverspendingTest(GoalsFixture):
             "category_id": self.groceries.pk,
             "source": "goal",
             "goal_id": self.car.pk,
-            "month": "2026-09-01",
+            "month": "2026-09",
             "amount": "150",
             **overrides,
         }
         return self.client.post(
-            reverse("budget:budget_cover", args=self.book.url_args), body, content_type="application/json"
+            reverse("budget:api_cover", args=self.book.url_args), body, content_type="application/json"
         )
+
+    def groceries_available(self, response):
+        rows = {
+            row["category_id"]: row
+            for section in response.json()["figures"]["sections"]
+            for group in section["groups"]
+            for row in group["rows"]
+        }
+        return rows[self.groceries.pk]["available"]
 
     def groceries_budget(self):
         return budget_amount(self.book, self.groceries, SEPT)
@@ -550,7 +559,8 @@ class CoverOverspendingTest(GoalsFixture):
         self.assertEqual(self.numbers()["allocated"], Decimal("4850"))
         # The 150 overspent already came out of Unassigned; the goal gives it back.
         self.assertEqual(self.unassigned(), before + Decimal("150"))
-        self.assertEqual(response.json()["cells"][f"row:{self.groceries.pk}:available"]["value"], "$0.00")
+        self.assertEqual(self.groceries_available(response), "0.00")
+        self.assertEqual(response.json()["goal_id"], self.car.pk)
         self.assertTrue(AuditEvent.objects.filter(event_type=AuditEvent.GOAL_COVERED_BUDGET).exists())
 
     def test_from_unassigned_filling_the_hole_leaves_unassigned_alone(self):
@@ -564,7 +574,7 @@ class CoverOverspendingTest(GoalsFixture):
         self.assertEqual(self.groceries_budget(), Decimal("550"))
         self.assertEqual(self.numbers()["allocated"], Decimal("5000"))  # the goal is untouched
         self.assertEqual(self.unassigned(), before)
-        self.assertEqual(data["cells"][f"row:{self.groceries.pk}:available"]["value"], "$0.00")
+        self.assertEqual(self.groceries_available(response), "0.00")
 
     def test_from_unassigned_sets_a_budget_when_there_is_none(self):
         set_budget(self.book, self.groceries, SEPT, Decimal("0"))
@@ -604,7 +614,8 @@ class CoverOverspendingTest(GoalsFixture):
         page = self.client.get(reverse("budget:budget_home", args=self.book.url_args) + "?month=2026-09-01")
         self.assertContains(page, 'data-testid="cover-btn"')
         self.assertContains(page, 'data-testid="cover-source-unassigned"')
-        self.assertNotContains(page, 'data-testid="cover-source-goal"')
+        # The goal choice is there for the script to offer once a month has goals, but hidden.
+        self.assertContains(page, "data-cover-goal-option hidden>")
 
 
 # ---------------------------------------------------------------------------
