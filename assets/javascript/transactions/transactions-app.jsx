@@ -5,18 +5,37 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client';
 import TransactionsTable from './TransactionsTable';
 import TransactionEditModal from './TransactionEditModal';
-import { getTransactionsApi } from './transactionsApi';
+import { getTransactionsApi, transactionQuery } from './transactionsApi';
 import Toast from '../common/Toast';
 import { readBook } from '../common/book';
-import { getApiHeaders } from '../api';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-/** Read a json_script tag, tolerating a page that doesn't render it. */
-const readJson = (id, fallback) => {
-  const node = document.getElementById(id);
-  return node ? JSON.parse(node.textContent) : fallback;
-};
+/**
+ * The column filters a link opened the page with: `?f_debit_account=a:12` /
+ * `?f_credit_account=a:12` (a goal's "see its spending") and `?f_payee=<name>`
+ * (a payee's page), labelled from the pickers. Only single-account tokens are
+ * read, and only the book's own accounts and payees -- anything else is dropped.
+ */
+function initialFiltersFromUrl(accounts, payees) {
+  const params = new URLSearchParams(window.location.search);
+  const accountNames = new Map(accounts.map((account) => [`a:${account.id}`, account.name]));
+  const payeeNames = new Set(payees.map((payee) => payee.name));
+  const filters = {};
+  ['debit_account', 'credit_account'].forEach((column) => {
+    const entries = params
+      .getAll(`f_${column}`)
+      .filter((value) => accountNames.has(value))
+      .map((value) => ({ value, label: accountNames.get(value) }));
+    if (entries.length) filters[column] = entries;
+  });
+  const payeeEntries = params
+    .getAll('f_payee')
+    .filter((name) => payeeNames.has(name))
+    .map((name) => ({ value: name, label: name }));
+  if (payeeEntries.length) filters.payee = payeeEntries;
+  return filters;
+}
 
 /**
  * Which filters an edit could have moved a row out of.
@@ -37,9 +56,10 @@ const FILTER_KEYS_FOR = {
   outflow: ['amount', 'debit_account', 'credit_account'],
 };
 
-const TransactionsApp = () => {
+const TransactionsApp = ({ book, api, pickers }) => {
   const [transactions, setTransactions] = useState([]);
-  const [nextUrl, setNextUrl] = useState(null);
+  // The page `Load more` reads next, or null when the last one is in.
+  const [nextPage, setNextPage] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refetching, setRefetching] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -53,11 +73,8 @@ const TransactionsApp = () => {
   // The label rides along because a hierarchical column's value is a branch
   // token (`2025-03`, `g:12`) that nothing on the client could turn back into
   // "Mar 2025" or "Employment Income".
-  const [columnFilters, setColumnFilters] = useState(() => {
-    // A link can open the page already filtered (a goal's "see its spending").
-    const el = document.getElementById('initial-filters');
-    return el ? JSON.parse(el.textContent) : {};
-  });
+  // A link can open the page already filtered (a goal's "see its spending").
+  const [columnFilters, setColumnFilters] = useState(() => initialFiltersFromUrl(pickers.accounts, pickers.payees));
   // { key, dir } or null for the API's default newest-first ordering.
   const [sort, setSort] = useState(null);
 
@@ -67,14 +84,9 @@ const TransactionsApp = () => {
   const [editing, setEditing] = useState([]);
   const [toast, setToast] = useState(null);
 
-  const apiUrls = JSON.parse(document.getElementById('api-urls').textContent);
-  // Every book URL the modal builds starts from this, so the URL shape lives in
-  // one place (`common/book.js`) rather than in each fetch.
-  const book = useMemo(() => readBook(), []);
   // Grows when an account is created from the edit modal's category picker
-  const [allAccounts, setAllAccounts] = useState(() => readJson('all-accounts', []));
-  const allPayees = useMemo(() => readJson('all-payees', []), []);
-  const api = useMemo(() => getTransactionsApi(book.base), [book.base]);
+  const [allAccounts, setAllAccounts] = useState(pickers.accounts);
+  const allPayees = pickers.payees;
 
   // Bumped to force the list effect to re-run when an edit moved a row out of
   // the filters currently applied — the params themselves have not changed, so
@@ -89,16 +101,10 @@ const TransactionsApp = () => {
 
   // Every filter runs server-side against the whole ledger, so the params are
   // built once here and shared by the row fetch and the column value lists.
-  const filterParams = useMemo(() => {
-    const params = new URLSearchParams();
-    if (search) params.set('search', search);
-    if (startDate) params.set('start_date', startDate);
-    if (endDate) params.set('end_date', endDate);
-    Object.entries(columnFilters).forEach(([key, entries]) => {
-      entries.forEach((entry) => params.append(`f_${key}`, entry.value));
-    });
-    return params;
-  }, [search, startDate, endDate, columnFilters]);
+  const filterParams = useMemo(
+    () => transactionQuery({ search, startDate, endDate, columnFilters }),
+    [search, startDate, endDate, columnFilters],
+  );
 
   // Any change to the filters or the ordering re-fetches from page 1 rather
   // than re-arranging the rows already loaded, which would only sort the pages
@@ -110,23 +116,11 @@ const TransactionsApp = () => {
       setRefetching(true);
       setError(null);
       try {
-        const params = new URLSearchParams(filterParams);
-        if (sort) {
-          params.set('sort', sort.key);
-          params.set('dir', sort.dir);
-        }
-        const qs = params.toString();
-        const url = qs ? `${apiUrls.transactions_list}?${qs}` : apiUrls.transactions_list;
-
-        const response = await fetch(url, { headers: getApiHeaders() });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await api.list({ ...filterParams, ...transactionQuery({ sort }) }, 1);
         if (cancelled) return;
 
         setTransactions(data.results || []);
-        setNextUrl(data.next || null);
+        setNextPage(data.next ? 2 : null);
       } catch (err) {
         if (!cancelled) setError(err.message);
       } finally {
@@ -145,22 +139,18 @@ const TransactionsApp = () => {
   }, [filterParams, sort, reloadToken]);
 
   const handleLoadMore = useCallback(async () => {
-    if (!nextUrl || loadingMore) return;
+    if (!nextPage || loadingMore) return;
     setLoadingMore(true);
     try {
-      const response = await fetch(nextUrl, { headers: getApiHeaders() });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const data = await response.json();
+      const data = await api.list({ ...filterParams, ...transactionQuery({ sort }) }, nextPage);
       setTransactions((prev) => [...prev, ...(data.results || [])]);
-      setNextUrl(data.next || null);
+      setNextPage(data.next ? nextPage + 1 : null);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoadingMore(false);
     }
-  }, [nextUrl, loadingMore]);
+  }, [api, filterParams, sort, nextPage, loadingMore]);
 
   const handleDateApply = useCallback((start, end) => {
     setStartDate(start);
@@ -187,20 +177,8 @@ const TransactionsApp = () => {
    * counts.
    */
   const fetchFacets = useCallback(
-    async (columnKey, query) => {
-      const params = new URLSearchParams(filterParams);
-      params.set('column', columnKey);
-      if (query) params.set('q', query);
-      const response = await fetch(`${apiUrls.transactions_facets}?${params.toString()}`, {
-        headers: getApiHeaders(),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      return response.json();
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filterParams]
+    (columnKey, query) => api.facets(filterParams, columnKey, query),
+    [api, filterParams],
   );
 
   // --- editing ---------------------------------------------------------
@@ -217,7 +195,7 @@ const TransactionsApp = () => {
         setToast({ message: err.message, severity: 'error' });
       }
     },
-    [api]
+    [api],
   );
 
   /**
@@ -242,7 +220,7 @@ const TransactionsApp = () => {
       const byId = new Map(rows.map((row) => [row.id, row]));
       setTransactions((prev) => prev.map((row) => byId.get(row.id) ?? row));
     },
-    [columnFilters, sort, startDate, endDate]
+    [columnFilters, sort, startDate, endDate],
   );
 
   const handleSave = useCallback(
@@ -254,7 +232,7 @@ const TransactionsApp = () => {
         severity: 'success',
       });
     },
-    [api, absorb]
+    [api, absorb],
   );
 
   const handleDelete = useCallback(
@@ -264,7 +242,7 @@ const TransactionsApp = () => {
       setTransactions((prev) => prev.filter((row) => !gone.has(row.id)));
       setToast({ message: gettext('Transaction deleted'), severity: 'success' });
     },
-    [api]
+    [api],
   );
 
   const handleSetStatus = useCallback(
@@ -276,23 +254,15 @@ const TransactionsApp = () => {
         severity: 'success',
       });
     },
-    [api, absorb]
+    [api, absorb],
   );
 
   if (initialLoading) {
-    return (
-      <div className="text-center py-12 text-base-content/70">
-        Loading transactions...
-      </div>
-    );
+    return <div className="text-center py-12 text-base-content/70">Loading transactions...</div>;
   }
 
   if (error && transactions.length === 0) {
-    return (
-      <div className="text-center py-12 text-red-500">
-        Error loading transactions: {error}
-      </div>
-    );
+    return <div className="text-center py-12 text-red-500">Error loading transactions: {error}</div>;
   }
 
   return (
@@ -311,7 +281,7 @@ const TransactionsApp = () => {
         onSortChange={setSort}
         fetchFacets={fetchFacets}
         onLoadMore={handleLoadMore}
-        hasMore={Boolean(nextUrl)}
+        hasMore={Boolean(nextPage)}
         loadingMore={loadingMore}
         refetching={refetching}
         error={transactions.length > 0 ? error : null}
@@ -344,9 +314,21 @@ const TransactionsApp = () => {
   );
 };
 
-// Mount the React app
+// Mount the React app once the edit modal's pickers are in (they also label the
+// filters a link opened the page with); until then the page's skeleton shows.
 const domContainer = document.querySelector('#transactions-app');
 if (domContainer) {
+  const book = readBook();
+  const api = getTransactionsApi(book.base);
   const root = createRoot(domContainer);
-  root.render(<TransactionsApp />);
+  api
+    .pickers()
+    .then((pickers) => root.render(<TransactionsApp book={book} api={api} pickers={pickers} />))
+    .catch((err) =>
+      root.render(
+        <div className="text-center py-12 text-error" role="alert">
+          {gettext('Error loading transactions:')} {err.message}
+        </div>,
+      ),
+    );
 }

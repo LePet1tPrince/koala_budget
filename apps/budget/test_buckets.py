@@ -266,9 +266,9 @@ class BucketsHiddenTest(BucketFixture):
         self.assertIn(self.groceries.pk, ids)
 
     def test_transactions_page_never_sends_a_bucket(self):
-        response = self.client.get(self.url("journal:transactions_home"))
+        response = self.client.get(self.url("journal:transaction-pickers"))
         self.assertEqual(response.status_code, 200)
-        ids = {row["id"] for row in response.context["all_accounts"]}
+        ids = {row["id"] for row in response.json()["accounts"]}
         self.assertFalse(ids & set(buckets(self.book).values_list("pk", flat=True)))
         self.assertIn(self.opening.pk, ids)
 

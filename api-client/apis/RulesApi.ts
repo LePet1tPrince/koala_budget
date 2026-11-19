@@ -26,6 +26,7 @@ import type {
   RuleMatch,
   RuleProposal,
   RuleTestResult,
+  RulesPage,
   TransactionId,
 } from '../models/index';
 import {
@@ -51,50 +52,20 @@ import {
     RuleProposalToJSON,
     RuleTestResultFromJSON,
     RuleTestResultToJSON,
+    RulesPageFromJSON,
+    RulesPageToJSON,
     TransactionIdFromJSON,
     TransactionIdToJSON,
 } from '../models/index';
 
-export interface ARulesApiRulesCreateRequest {
-    bookSlug: string;
-    teamSlug: string;
-    rule: Omit<Rule, 'id'|'category_name'|'times_applied'|'times_confirmed'|'times_overridden'|'confirm_streak'|'last_matched_at'|'graduation_declined_at'|'demoted_at'|'problem'|'created_at'>;
-}
-
-export interface ARulesApiRulesDestroyRequest {
-    bookSlug: string;
-    id: number;
-    teamSlug: string;
-}
-
-export interface ARulesApiRulesListRequest {
-    bookSlug: string;
-    teamSlug: string;
-}
-
-export interface ARulesApiRulesPartialUpdateRequest {
-    bookSlug: string;
-    id: number;
-    teamSlug: string;
-    patchedRule?: Omit<PatchedRule, 'id'|'category_name'|'times_applied'|'times_confirmed'|'times_overridden'|'confirm_streak'|'last_matched_at'|'graduation_declined_at'|'demoted_at'|'problem'|'created_at'>;
-}
-
-export interface ARulesApiRulesRetrieveRequest {
-    bookSlug: string;
-    id: number;
-    teamSlug: string;
-}
-
-export interface ARulesApiRulesUpdateRequest {
-    bookSlug: string;
-    id: number;
-    teamSlug: string;
-    rule: Omit<Rule, 'id'|'category_name'|'times_applied'|'times_confirmed'|'times_overridden'|'confirm_streak'|'last_matched_at'|'graduation_declined_at'|'demoted_at'|'problem'|'created_at'>;
-}
-
 export interface RulesApplyRequest {
     bookSlug: string;
     id: number;
+    teamSlug: string;
+}
+
+export interface RulesCreateRequest {
+    bookSlug: string;
     teamSlug: string;
     rule: Omit<Rule, 'id'|'category_name'|'times_applied'|'times_confirmed'|'times_overridden'|'confirm_streak'|'last_matched_at'|'graduation_declined_at'|'demoted_at'|'problem'|'created_at'>;
 }
@@ -103,6 +74,12 @@ export interface RulesDeclineDraftRequest {
     bookSlug: string;
     teamSlug: string;
     declineDraft: DeclineDraft;
+}
+
+export interface RulesDestroyRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
 }
 
 export interface RulesDraftFromTransactionRequest {
@@ -124,22 +101,40 @@ export interface RulesGraduateRequest {
     graduate: Graduate;
 }
 
+export interface RulesListRequest {
+    bookSlug: string;
+    teamSlug: string;
+}
+
 export interface RulesMatchesAcceptRequest {
     bookSlug: string;
     teamSlug: string;
+    transactionId: number;
     acceptMatches: AcceptMatches;
 }
 
 export interface RulesMatchesDismissRequest {
     bookSlug: string;
     teamSlug: string;
-    transactionId: string;
+    transactionId: number;
 }
 
 export interface RulesMatchesUndoRequest {
     bookSlug: string;
     teamSlug: string;
-    transactionId: string;
+    transactionId: number;
+}
+
+export interface RulesPageRequest {
+    bookSlug: string;
+    teamSlug: string;
+}
+
+export interface RulesPartialUpdateRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+    patchedRule?: Omit<PatchedRule, 'id'|'category_name'|'times_applied'|'times_confirmed'|'times_overridden'|'confirm_streak'|'last_matched_at'|'graduation_declined_at'|'demoted_at'|'problem'|'created_at'>;
 }
 
 export interface RulesPromptsRequest {
@@ -159,10 +154,21 @@ export interface RulesProposalsDismissRequest {
     teamSlug: string;
 }
 
+export interface RulesProposalsListRequest {
+    bookSlug: string;
+    teamSlug: string;
+}
+
 export interface RulesReorderRequest {
     bookSlug: string;
     teamSlug: string;
     reorder: Reorder;
+}
+
+export interface RulesRetrieveRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
 }
 
 export interface RulesTestRequest {
@@ -171,366 +177,17 @@ export interface RulesTestRequest {
     ruleDraft?: RuleDraft;
 }
 
+export interface RulesUpdateRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
+    rule: Omit<Rule, 'id'|'category_name'|'times_applied'|'times_confirmed'|'times_overridden'|'confirm_streak'|'last_matched_at'|'graduation_declined_at'|'demoted_at'|'problem'|'created_at'>;
+}
+
 /**
  * 
  */
 export class RulesApi extends runtime.BaseAPI {
-
-    /**
-     * The book\'s rules, in priority order (lower wins).
-     */
-    async aRulesApiRulesCreateRaw(requestParameters: ARulesApiRulesCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Rule>> {
-        if (requestParameters['bookSlug'] == null) {
-            throw new runtime.RequiredError(
-                'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling aRulesApiRulesCreate().'
-            );
-        }
-
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling aRulesApiRulesCreate().'
-            );
-        }
-
-        if (requestParameters['rule'] == null) {
-            throw new runtime.RequiredError(
-                'rule',
-                'Required parameter "rule" was null or undefined when calling aRulesApiRulesCreate().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/rules/api/rules/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'POST',
-            headers: headerParameters,
-            query: queryParameters,
-            body: RuleToJSON(requestParameters['rule']),
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => RuleFromJSON(jsonValue));
-    }
-
-    /**
-     * The book\'s rules, in priority order (lower wins).
-     */
-    async aRulesApiRulesCreate(requestParameters: ARulesApiRulesCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Rule> {
-        const response = await this.aRulesApiRulesCreateRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * The book\'s rules, in priority order (lower wins).
-     */
-    async aRulesApiRulesDestroyRaw(requestParameters: ARulesApiRulesDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
-        if (requestParameters['bookSlug'] == null) {
-            throw new runtime.RequiredError(
-                'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling aRulesApiRulesDestroy().'
-            );
-        }
-
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling aRulesApiRulesDestroy().'
-            );
-        }
-
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling aRulesApiRulesDestroy().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/rules/api/rules/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'DELETE',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.VoidApiResponse(response);
-    }
-
-    /**
-     * The book\'s rules, in priority order (lower wins).
-     */
-    async aRulesApiRulesDestroy(requestParameters: ARulesApiRulesDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
-        await this.aRulesApiRulesDestroyRaw(requestParameters, initOverrides);
-    }
-
-    /**
-     * The book\'s rules, in priority order (lower wins).
-     */
-    async aRulesApiRulesListRaw(requestParameters: ARulesApiRulesListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Rule>>> {
-        if (requestParameters['bookSlug'] == null) {
-            throw new runtime.RequiredError(
-                'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling aRulesApiRulesList().'
-            );
-        }
-
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling aRulesApiRulesList().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/rules/api/rules/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(RuleFromJSON));
-    }
-
-    /**
-     * The book\'s rules, in priority order (lower wins).
-     */
-    async aRulesApiRulesList(requestParameters: ARulesApiRulesListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Rule>> {
-        const response = await this.aRulesApiRulesListRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * The book\'s rules, in priority order (lower wins).
-     */
-    async aRulesApiRulesPartialUpdateRaw(requestParameters: ARulesApiRulesPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Rule>> {
-        if (requestParameters['bookSlug'] == null) {
-            throw new runtime.RequiredError(
-                'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling aRulesApiRulesPartialUpdate().'
-            );
-        }
-
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling aRulesApiRulesPartialUpdate().'
-            );
-        }
-
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling aRulesApiRulesPartialUpdate().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/rules/api/rules/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'PATCH',
-            headers: headerParameters,
-            query: queryParameters,
-            body: PatchedRuleToJSON(requestParameters['patchedRule']),
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => RuleFromJSON(jsonValue));
-    }
-
-    /**
-     * The book\'s rules, in priority order (lower wins).
-     */
-    async aRulesApiRulesPartialUpdate(requestParameters: ARulesApiRulesPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Rule> {
-        const response = await this.aRulesApiRulesPartialUpdateRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * The book\'s rules, in priority order (lower wins).
-     */
-    async aRulesApiRulesRetrieveRaw(requestParameters: ARulesApiRulesRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Rule>> {
-        if (requestParameters['bookSlug'] == null) {
-            throw new runtime.RequiredError(
-                'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling aRulesApiRulesRetrieve().'
-            );
-        }
-
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling aRulesApiRulesRetrieve().'
-            );
-        }
-
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling aRulesApiRulesRetrieve().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/rules/api/rules/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => RuleFromJSON(jsonValue));
-    }
-
-    /**
-     * The book\'s rules, in priority order (lower wins).
-     */
-    async aRulesApiRulesRetrieve(requestParameters: ARulesApiRulesRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Rule> {
-        const response = await this.aRulesApiRulesRetrieveRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * The book\'s rules, in priority order (lower wins).
-     */
-    async aRulesApiRulesUpdateRaw(requestParameters: ARulesApiRulesUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Rule>> {
-        if (requestParameters['bookSlug'] == null) {
-            throw new runtime.RequiredError(
-                'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling aRulesApiRulesUpdate().'
-            );
-        }
-
-        if (requestParameters['id'] == null) {
-            throw new runtime.RequiredError(
-                'id',
-                'Required parameter "id" was null or undefined when calling aRulesApiRulesUpdate().'
-            );
-        }
-
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling aRulesApiRulesUpdate().'
-            );
-        }
-
-        if (requestParameters['rule'] == null) {
-            throw new runtime.RequiredError(
-                'rule',
-                'Required parameter "rule" was null or undefined when calling aRulesApiRulesUpdate().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        headerParameters['Content-Type'] = 'application/json';
-
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
-        }
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/rules/api/rules/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'PUT',
-            headers: headerParameters,
-            query: queryParameters,
-            body: RuleToJSON(requestParameters['rule']),
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => RuleFromJSON(jsonValue));
-    }
-
-    /**
-     * The book\'s rules, in priority order (lower wins).
-     */
-    async aRulesApiRulesUpdate(requestParameters: ARulesApiRulesUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Rule> {
-        const response = await this.aRulesApiRulesUpdateRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
 
     /**
      * \"Save and apply to N existing transactions\": post this auto-post rule\'s current matches.
@@ -557,10 +214,61 @@ export class RulesApi extends runtime.BaseAPI {
             );
         }
 
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/rules/api/rules/{id}/apply/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => RuleFromJSON(jsonValue));
+    }
+
+    /**
+     * \"Save and apply to N existing transactions\": post this auto-post rule\'s current matches.
+     */
+    async rulesApply(requestParameters: RulesApplyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Rule> {
+        const response = await this.rulesApplyRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * The book\'s rules, in priority order (lower wins).
+     */
+    async rulesCreateRaw(requestParameters: RulesCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Rule>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling rulesCreate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling rulesCreate().'
+            );
+        }
+
         if (requestParameters['rule'] == null) {
             throw new runtime.RequiredError(
                 'rule',
-                'Required parameter "rule" was null or undefined when calling rulesApply().'
+                'Required parameter "rule" was null or undefined when calling rulesCreate().'
             );
         }
 
@@ -582,7 +290,7 @@ export class RulesApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/rules/api/rules/{id}/apply/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/rules/api/rules/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -593,10 +301,10 @@ export class RulesApi extends runtime.BaseAPI {
     }
 
     /**
-     * \"Save and apply to N existing transactions\": post this auto-post rule\'s current matches.
+     * The book\'s rules, in priority order (lower wins).
      */
-    async rulesApply(requestParameters: RulesApplyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Rule> {
-        const response = await this.rulesApplyRaw(requestParameters, initOverrides);
+    async rulesCreate(requestParameters: RulesCreateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Rule> {
+        const response = await this.rulesCreateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -659,6 +367,63 @@ export class RulesApi extends runtime.BaseAPI {
     async rulesDeclineDraft(requestParameters: RulesDeclineDraftRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Rule> {
         const response = await this.rulesDeclineDraftRaw(requestParameters, initOverrides);
         return await response.value();
+    }
+
+    /**
+     * The book\'s rules, in priority order (lower wins).
+     */
+    async rulesDestroyRaw(requestParameters: RulesDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling rulesDestroy().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling rulesDestroy().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling rulesDestroy().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/rules/api/rules/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * The book\'s rules, in priority order (lower wins).
+     */
+    async rulesDestroy(requestParameters: RulesDestroyRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.rulesDestroyRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -852,6 +617,57 @@ export class RulesApi extends runtime.BaseAPI {
     }
 
     /**
+     * The book\'s rules, in priority order (lower wins).
+     */
+    async rulesListRaw(requestParameters: RulesListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Rule>>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling rulesList().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling rulesList().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/rules/api/rules/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(RuleFromJSON));
+    }
+
+    /**
+     * The book\'s rules, in priority order (lower wins).
+     */
+    async rulesList(requestParameters: RulesListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<Rule>> {
+        const response = await this.rulesListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Accept suggestions as offered. Each row stands alone: one refused row does not stop the rest.
      */
     async rulesMatchesAcceptRaw(requestParameters: RulesMatchesAcceptRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RuleMatch>> {
@@ -866,6 +682,13 @@ export class RulesApi extends runtime.BaseAPI {
             throw new runtime.RequiredError(
                 'teamSlug',
                 'Required parameter "teamSlug" was null or undefined when calling rulesMatchesAccept().'
+            );
+        }
+
+        if (requestParameters['transactionId'] == null) {
+            throw new runtime.RequiredError(
+                'transactionId',
+                'Required parameter "transactionId" was null or undefined when calling rulesMatchesAccept().'
             );
         }
 
@@ -894,7 +717,7 @@ export class RulesApi extends runtime.BaseAPI {
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/rules/api/matches/accept/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/rules/api/matches/accept/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))).replace(`{${"transaction_id"}}`, encodeURIComponent(String(requestParameters['transactionId']))),
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
@@ -1024,6 +847,118 @@ export class RulesApi extends runtime.BaseAPI {
      */
     async rulesMatchesUndo(requestParameters: RulesMatchesUndoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
         await this.rulesMatchesUndoRaw(requestParameters, initOverrides);
+    }
+
+    /**
+     * What the Rules page opens on: whether the user may edit, the categories and the feed accounts.
+     */
+    async rulesPageRaw(requestParameters: RulesPageRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RulesPage>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling rulesPage().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling rulesPage().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/rules/api/rules/page/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => RulesPageFromJSON(jsonValue));
+    }
+
+    /**
+     * What the Rules page opens on: whether the user may edit, the categories and the feed accounts.
+     */
+    async rulesPage(requestParameters: RulesPageRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RulesPage> {
+        const response = await this.rulesPageRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * The book\'s rules, in priority order (lower wins).
+     */
+    async rulesPartialUpdateRaw(requestParameters: RulesPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Rule>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling rulesPartialUpdate().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling rulesPartialUpdate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling rulesPartialUpdate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/rules/api/rules/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchedRuleToJSON(requestParameters['patchedRule']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => RuleFromJSON(jsonValue));
+    }
+
+    /**
+     * The book\'s rules, in priority order (lower wins).
+     */
+    async rulesPartialUpdate(requestParameters: RulesPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Rule> {
+        const response = await this.rulesPartialUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
     }
 
     /**
@@ -1193,6 +1128,57 @@ export class RulesApi extends runtime.BaseAPI {
     }
 
     /**
+     * Rules the book\'s history proposes (`services.learning`).
+     */
+    async rulesProposalsListRaw(requestParameters: RulesProposalsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<RuleProposal>>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling rulesProposalsList().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling rulesProposalsList().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/rules/api/proposals/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(RuleProposalFromJSON));
+    }
+
+    /**
+     * Rules the book\'s history proposes (`services.learning`).
+     */
+    async rulesProposalsList(requestParameters: RulesProposalsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<RuleProposal>> {
+        const response = await this.rulesProposalsListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Put the book\'s rules in this order (ids first to last; any left out keep their order after).
      */
     async rulesReorderRaw(requestParameters: RulesReorderRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<Rule>>> {
@@ -1254,6 +1240,64 @@ export class RulesApi extends runtime.BaseAPI {
     }
 
     /**
+     * The book\'s rules, in priority order (lower wins).
+     */
+    async rulesRetrieveRaw(requestParameters: RulesRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Rule>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling rulesRetrieve().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling rulesRetrieve().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling rulesRetrieve().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/rules/api/rules/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => RuleFromJSON(jsonValue));
+    }
+
+    /**
+     * The book\'s rules, in priority order (lower wins).
+     */
+    async rulesRetrieve(requestParameters: RulesRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Rule> {
+        const response = await this.rulesRetrieveRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * What a draft rule would match now, how it would have done on history, and what it collides with.
      */
     async rulesTestRaw(requestParameters: RulesTestRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<RuleTestResult>> {
@@ -1304,6 +1348,74 @@ export class RulesApi extends runtime.BaseAPI {
      */
     async rulesTest(requestParameters: RulesTestRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<RuleTestResult> {
         const response = await this.rulesTestRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * The book\'s rules, in priority order (lower wins).
+     */
+    async rulesUpdateRaw(requestParameters: RulesUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Rule>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling rulesUpdate().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling rulesUpdate().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling rulesUpdate().'
+            );
+        }
+
+        if (requestParameters['rule'] == null) {
+            throw new runtime.RequiredError(
+                'rule',
+                'Required parameter "rule" was null or undefined when calling rulesUpdate().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/rules/api/rules/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'PUT',
+            headers: headerParameters,
+            query: queryParameters,
+            body: RuleToJSON(requestParameters['rule']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => RuleFromJSON(jsonValue));
+    }
+
+    /**
+     * The book\'s rules, in priority order (lower wins).
+     */
+    async rulesUpdate(requestParameters: RulesUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Rule> {
+        const response = await this.rulesUpdateRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

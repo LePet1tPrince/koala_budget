@@ -7,6 +7,8 @@ from decimal import Decimal
 
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.accounts.guards import BudgetAccountError, assert_budget_entry_rules, assert_category_allowed
@@ -14,6 +16,7 @@ from apps.accounts.models import (
     Account,
     Payee,
 )
+from apps.accounts.serializers import PayeeSerializer, SimpleAccountSerializer
 from apps.reconciliation.services.guards import (
     ReconciledLineError,
     assert_date_change_allowed,
@@ -486,6 +489,14 @@ class SimpleLineSerializer(serializers.Serializer):
         }
 
 
+class TransactionRowLegSerializer(serializers.Serializer):
+    """One line of a split row, for the table's disclosure."""
+
+    account = serializers.CharField()
+    debit = serializers.DecimalField(max_digits=15, decimal_places=2)
+    credit = serializers.DecimalField(max_digits=15, decimal_places=2)
+
+
 class TransactionRowSerializer(serializers.Serializer):
     """
     Read-only serializer that flattens a JournalEntry with its lines into a
@@ -528,10 +539,10 @@ class TransactionRowSerializer(serializers.Serializer):
         """Return the prefetched lines list (already loaded by the view)."""
         return list(entry.lines.all())
 
-    def get_payee_id(self, entry):
+    def get_payee_id(self, entry) -> int | None:
         return entry.payee_id
 
-    def get_payee_name(self, entry):
+    def get_payee_name(self, entry) -> str | None:
         return entry.payee.name if entry.payee else None
 
     def _sides(self, entry):
@@ -567,16 +578,17 @@ class TransactionRowSerializer(serializers.Serializer):
             return None
         return self.SPLIT_LABEL % {"count": len(lines)}
 
-    def get_debit_account(self, entry):
+    def get_debit_account(self, entry) -> str | None:
         """The account name of the line that carries the debit, or `Split (N)`."""
         debits, _ = self._sides(entry)
         return self._side_label(debits)
 
-    def get_credit_account(self, entry):
+    def get_credit_account(self, entry) -> str | None:
         """The account name of the line that carries the credit, or `Split (N)`."""
         _, credits = self._sides(entry)
         return self._side_label(credits)
 
+    @extend_schema_field(serializers.DecimalField(max_digits=15, decimal_places=2))
     def get_amount(self, entry):
         """Return total debits (== total credits for a balanced entry)."""
         return str(sum(line.dr_amount for line in self._get_lines(entry)))
@@ -587,6 +599,7 @@ class TransactionRowSerializer(serializers.Serializer):
     def get_is_split(self, entry) -> bool:
         return len(self._get_lines(entry)) > 2
 
+    @extend_schema_field(TransactionRowLegSerializer(many=True))
     def get_legs(self, entry):
         """Every line, for the table's split disclosure. Empty for a plain entry."""
         lines = self._get_lines(entry)
@@ -600,6 +613,39 @@ class TransactionRowSerializer(serializers.Serializer):
             }
             for line in lines
         ]
+
+
+class TransactionAccountRefSerializer(serializers.Serializer):
+    """An account a transaction names: its id and name."""
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class TransactionDetailLegSerializer(serializers.Serializer):
+    """One leg of a split transaction, as the edit modal shows it."""
+
+    category_id = serializers.IntegerField()
+    category_name = serializers.CharField()
+    amount = serializers.SerializerMethodField(help_text="Signed: positive is an outflow")
+
+    @extend_schema_field(OpenApiTypes.NUMBER)
+    def get_amount(self, leg):
+        return leg["amount"]
+
+
+class TransactionCapabilitiesSerializer(serializers.Serializer):
+    """What the edit modal may offer; the same predicates `simple_edit` guards with."""
+
+    can_edit = serializers.BooleanField()
+    can_edit_date = serializers.BooleanField()
+    can_edit_amount = serializers.BooleanField()
+    can_edit_account = serializers.BooleanField()
+    can_edit_category = serializers.BooleanField()
+    can_split = serializers.BooleanField()
+    can_delete = serializers.BooleanField()
+    can_void = serializers.BooleanField()
+    can_unvoid = serializers.BooleanField()
 
 
 class TransactionDetailSerializer(serializers.Serializer):
@@ -649,9 +695,11 @@ class TransactionDetailSerializer(serializers.Serializer):
     def get_payee_name(self, entry) -> str | None:
         return entry.payee.name if entry.payee else None
 
+    @extend_schema_field(TransactionAccountRefSerializer)
     def get_account(self, entry):
         return self._account(self._sides(entry).account)
 
+    @extend_schema_field(TransactionAccountRefSerializer(allow_null=True))
     def get_category(self, entry):
         """The single category, or null when the transaction is split."""
         sides = self._sides(entry)
@@ -662,6 +710,7 @@ class TransactionDetailSerializer(serializers.Serializer):
     def get_is_split(self, entry) -> bool:
         return self._sides(entry).is_split
 
+    @extend_schema_field(TransactionDetailLegSerializer(many=True))
     def get_splits(self, entry):
         sides = self._sides(entry)
         if not sides.is_split:
@@ -700,6 +749,7 @@ class TransactionDetailSerializer(serializers.Serializer):
         """Why the transaction is read-only (a closed period), or null. Shown in place of the form."""
         return period_lock.lock_reason(entry)
 
+    @extend_schema_field(TransactionCapabilitiesSerializer)
     def get_capabilities(self, entry):
         sides = self._sides(entry)
         voided = entry.status == JournalEntry.STATUS_VOID
@@ -791,3 +841,22 @@ class TransactionStatusRequestSerializer(serializers.Serializer):
 
 class TransactionIdsSerializer(serializers.Serializer):
     ids = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
+
+
+class TransactionPickersSerializer(serializers.Serializer):
+    """
+    The transaction edit modal's account and payee pickers, for any page that
+    hosts it (Transactions, an account's activity).
+
+    System accounts stay (an opening-balance entry keeps its own category);
+    budget buckets never appear in a transaction.
+    """
+
+    accounts = SimpleAccountSerializer(many=True, help_text="Every account but budget buckets, by name")
+    payees = PayeeSerializer(many=True, help_text="The book's payees, by name")
+
+
+class TransactionRowsSerializer(serializers.Serializer):
+    """The rows a write changed, re-serialized so the table can patch itself in place."""
+
+    results = TransactionRowSerializer(many=True)

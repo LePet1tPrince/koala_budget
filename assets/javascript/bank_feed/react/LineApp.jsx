@@ -692,8 +692,8 @@ const LineApp = ({
             proposal.archive_id,
           );
         } catch (err) {
-          if (err.status === 409 && err.data?.proposal) {
-            const fresh = err.data.proposal;
+          if (err.status === 409 && err.payload?.proposal) {
+            const fresh = err.payload.proposal;
             setMatches((prev) => prev.map((p) => (p === pair ? { ...p, proposal: fresh } : p)));
           }
           throw err;

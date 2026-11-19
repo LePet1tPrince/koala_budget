@@ -25,11 +25,6 @@
     </section>
   </div>
 
-  {{ accounts|json_script:'accounts' }}
-  {{ all_accounts|json_script:'all-accounts' }}
-  {{ all_payees|json_script:'all-payees' }}
-  {{ all_account_groups|json_script:'all-account-groups' }}
-  {{ api_urls|json_script:'api-urls' }}
   {{ request.book.base_url|json_script:'book-base' }}
 {% endblock %}
 

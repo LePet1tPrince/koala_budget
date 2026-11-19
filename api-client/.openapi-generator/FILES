@@ -75,6 +75,7 @@ models/BudgetMonth.ts
 models/BudgetRow.ts
 models/BudgetSection.ts
 models/BudgetSectionEnum.ts
+models/CategorizeTransactionRow.ts
 models/CategorizeTransactionsRequest.ts
 models/CategorySuggestion.ts
 models/CheckoutSessionRequest.ts
@@ -84,6 +85,7 @@ models/CoaGroup.ts
 models/CoaPreview.ts
 models/CoaRequest.ts
 models/CoaSection.ts
+models/CompletedStatement.ts
 models/Composition.ts
 models/CompositionBand.ts
 models/Condition.ts
@@ -91,6 +93,7 @@ models/ConditionFieldEnum.ts
 models/CoverGoal.ts
 models/CoverRequest.ts
 models/CoverResponse.ts
+models/CreateFeedAccountRequest.ts
 models/DataApplyRequest.ts
 models/DataArchiveFile.ts
 models/DataImportDestination.ts
@@ -106,6 +109,7 @@ models/ExchangePublicTokenResponse.ts
 models/ExpectedIncome.ts
 models/ExplainRequest.ts
 models/FeedAccount.ts
+models/FeedPickers.ts
 models/FeedsGoal.ts
 models/FigureTotals.ts
 models/FrequencyEnum.ts
@@ -156,6 +160,7 @@ models/HomeTrendPoint.ts
 models/HomeYnabImport.ts
 models/HomeYnabImportState.ts
 models/HomeYnabImportStateEnum.ts
+models/HubAccount.ts
 models/ImportStatusEnum.ts
 models/InstitutionAccountChoice.ts
 models/InstitutionAccountGroup.ts
@@ -231,11 +236,8 @@ models/OpeningBalances.ts
 models/OpeningBalancesRequest.ts
 models/OpeningBalancesResult.ts
 models/OriginEnum.ts
-models/PaginatedAccountGroupList.ts
 models/PaginatedAuditEventList.ts
-models/PaginatedAuditLogList.ts
 models/PaginatedBankFeedRowList.ts
-models/PaginatedFeedAccountList.ts
 models/PaginatedInvitationList.ts
 models/PaginatedJournalEntryList.ts
 models/PaginatedPlaidAccountList.ts
@@ -263,8 +265,10 @@ models/PatchedRule.ts
 models/PatchedSimpleLine.ts
 models/PatchedTeam.ts
 models/PatchedTransactionEditRequest.ts
+models/Payee.ts
 models/PeriodEnum.ts
 models/PickableAccountTypeEnum.ts
+models/PickerAccount.ts
 models/PlaidAccount.ts
 models/PlaidCreateLinkToken200Response.ts
 models/PlaidItem.ts
@@ -275,7 +279,10 @@ models/PortabilityPage.ts
 models/Price.ts
 models/Profile.ts
 models/ProfileUpdate.ts
+models/ReconcileAccount.ts
+models/ReconcileAccountPage.ts
 models/ReconciliationFinish.ts
+models/ReconciliationHub.ts
 models/ReconciliationStart.ts
 models/ReconciliationTick.ts
 models/ReconciliationTickThrough.ts
@@ -341,6 +348,8 @@ models/RuleProposal.ts
 models/RuleProposalFieldEnum.ts
 models/RuleProposalStatusEnum.ts
 models/RuleTestResult.ts
+models/RulesFeedAccount.ts
+models/RulesPage.ts
 models/SectionSummary.ts
 models/SetHidden.ts
 models/SeverityEnum.ts
@@ -362,16 +371,24 @@ models/SplitLeg.ts
 models/SplitShare.ts
 models/StartEnum.ts
 models/StateEnum.ts
+models/Statement.ts
+models/StatementLine.ts
 models/StripeSession.ts
 models/Subscription.ts
 models/SubscriptionItem.ts
 models/SubscriptionStatusEnum.ts
 models/Team.ts
+models/TransactionAccountRef.ts
+models/TransactionCapabilities.ts
 models/TransactionDetail.ts
+models/TransactionDetailLeg.ts
 models/TransactionId.ts
 models/TransactionIds.ts
 models/TransactionLegInput.ts
+models/TransactionPickers.ts
 models/TransactionRow.ts
+models/TransactionRowLeg.ts
+models/TransactionRows.ts
 models/TransactionStatusRequest.ts
 models/TransactionStatusRequestStatusEnum.ts
 models/TransactionToCreate.ts

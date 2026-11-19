@@ -51,6 +51,8 @@ export default defineConfig({
         'data-transfer-app': path.resolve(__dirname, './assets/javascript/portability/data-transfer-app.jsx'),
         'reconcile-app': path.resolve(__dirname, './assets/javascript/reconcile/reconcile-app.jsx'),
         'rules-app': path.resolve(__dirname, './assets/javascript/rules/rules-app.jsx'),
+        'recurring-list': path.resolve(__dirname, './assets/javascript/bank_feed/recurring-list.js'),
+        'reconcile-statement': path.resolve(__dirname, './assets/javascript/reconcile/statement-page.js'),
         'monthly-review-app': path.resolve(__dirname, './assets/javascript/monthly_review/monthly-review-app.jsx'),
         'monthly-review-resume': path.resolve(__dirname, './assets/javascript/monthly_review/resume.js'),
         'net-worth-month-picker': path.resolve(__dirname, './assets/javascript/reports/NetWorthTrendMonthPicker.jsx'),

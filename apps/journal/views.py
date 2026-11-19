@@ -17,7 +17,6 @@ from rest_framework.response import Response
 
 from apps.accounts.guards import assert_category_allowed
 from apps.accounts.models import Account, Payee
-from apps.accounts.serializers import PayeeSerializer, SimpleAccountSerializer
 from apps.audit.models import AuditEvent, AuditLog
 from apps.audit.serializers import AuditLogSerializer
 from apps.audit.utils import log_event
@@ -41,7 +40,9 @@ from .serializers import (
     TransactionDetailSerializer,
     TransactionEditRequestSerializer,
     TransactionIdsSerializer,
+    TransactionPickersSerializer,
     TransactionRowSerializer,
+    TransactionRowsSerializer,
     TransactionStatusRequestSerializer,
 )
 from .services import period_lock, voiding
@@ -161,7 +162,7 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @extend_schema(operation_id="journal_entries_audit", tags=["journal"], responses=AuditLogSerializer(many=True))
-    @action(detail=True, methods=["get"], url_path="audit")
+    @action(detail=True, methods=["get"], url_path="audit", pagination_class=None)
     def audit(self, request, team_slug=None, book_slug=None, pk=None):
         """Return the row-level audit history for this journal entry and its lines."""
         entry = self.get_object()
@@ -369,17 +370,22 @@ TRANSACTION_QUERY_PARAMS = [
         description="Only include entries on or before this date (YYYY-MM-DD)",
         required=False,
     ),
-    OpenApiParameter(
-        name="f_{column}",
-        type=str,
-        location=OpenApiParameter.QUERY,
-        description=(
-            "Per-column value filter, repeated once per selected value, e.g. `f_payee=Amazon&f_payee=Costco`. "
-            f"Columns: {', '.join(COLUMNS)}. An empty value selects rows with no value in that column. "
-            "Hierarchical columns take a branch as one value: `f_date=2025` (year), `f_date=2025-03` (month), "
-            "`f_debit_account=t:income` (type), `g:12` (group), `a:34` (account)."
-        ),
-        required=False,
+    # One per column: a value filter, repeated once per selected value.
+    *(
+        OpenApiParameter(
+            name=f"f_{key}",
+            type=str,
+            many=True,
+            explode=True,
+            location=OpenApiParameter.QUERY,
+            description=(
+                f"Filter `{key}` to these values, e.g. `f_{key}=a&f_{key}=b`. An empty value selects rows with no "
+                "value in that column. Hierarchical columns take a branch as one value: `f_date=2025` (year), "
+                "`f_date=2025-03` (month), `f_debit_account=t:income` (type), `g:12` (group), `a:34` (account)."
+            ),
+            required=False,
+        )
+        for key in COLUMNS
     ),
     OpenApiParameter(
         name="sort",
@@ -436,6 +442,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
     serializer_class = TransactionRowSerializer
     permission_classes = [BookModelAccessPermissions]
     pagination_class = Pagination
+    queryset = JournalEntry.objects.none()  # for drf-spectacular: types the `id` path parameter
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -457,6 +464,25 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
             # entry, say. The row still lists; it just cannot be opened, and the
             # modal shows this reason instead of failing opaquely.
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        operation_id="transactions_pickers",
+        tags=["journal"],
+        responses={200: TransactionPickersSerializer},
+    )
+    @action(detail=False, methods=["get"], url_path="pickers", pagination_class=None)
+    def pickers(self, request, team_slug=None, book_slug=None):
+        """
+        The edit modal's account and payee pickers, for any page that hosts it
+        (Transactions, an account's activity). Loaded once when the page opens,
+        so the first row click does not wait on a list that rarely changes.
+        """
+        accounts = (
+            Account.for_book.exclude_budget_buckets().select_related("account_group", "institution").order_by("name")
+        )
+        return Response(
+            TransactionPickersSerializer({"accounts": accounts, "payees": Payee.for_book.all().order_by("name")}).data
+        )
 
     def base_queryset(self, *, facet_column=None):
         """
@@ -551,9 +577,9 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         operation_id="transactions_edit",
         tags=["journal"],
         request=TransactionEditRequestSerializer,
-        responses={200: TransactionRowSerializer(many=True)},
+        responses={200: TransactionRowsSerializer},
     )
-    @action(detail=False, methods=["patch"], url_path="edit")
+    @action(detail=False, methods=["patch"], url_path="edit", pagination_class=None)
     def edit(self, request, team_slug=None, book_slug=None):
         """
         Apply one partial edit to one or more transactions.
@@ -645,9 +671,9 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         operation_id="transactions_batch_status",
         tags=["journal"],
         request=TransactionStatusRequestSerializer,
-        responses={200: TransactionRowSerializer(many=True)},
+        responses={200: TransactionRowsSerializer},
     )
-    @action(detail=False, methods=["post"], url_path="batch_status")
+    @action(detail=False, methods=["post"], url_path="batch_status", pagination_class=None)
     def batch_status(self, request, team_slug=None, book_slug=None):
         """Void transactions so they drop out of every balance, or restore them."""
         serializer = TransactionStatusRequestSerializer(data=request.data)
@@ -730,69 +756,18 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
 
 @login_and_book_required
 def transactions_home(request, team_slug, book_slug):
-    """Transactions list page - renders the React-powered transactions table."""
-    api_urls = {
-        "transactions_list": f"/a/{team_slug}/{book_slug}/journal/api/transactions/",
-        "transactions_facets": f"/a/{team_slug}/{book_slug}/journal/api/transactions/facets/",
-    }
+    """
+    Transactions list page - renders the React-powered transactions table.
 
+    The app loads its rows (`api/transactions/`), its pickers
+    (`api/transactions/pickers/`) and reads its opening column filters from the
+    page's own query string (`?f_payee=…`, `?f_debit_account=a:12`).
+    """
     return render(
         request,
         "journal/transactions_home.html",
         {
             "active_tab": "transactions",
             "page_title": _("Transactions | {name}").format(name=book_display_name(request.book)),
-            "api_urls": api_urls,
-            "initial_filters": _initial_account_filters(request),
-            **transaction_editor_pickers(),
         },
     )
-
-
-def transaction_editor_pickers():
-    """
-    The transaction edit modal's account and payee pickers, for any page that
-    hosts it (Transactions, an account's activity). Served with the page the same
-    way `bank_feed_home` serves them: a fetch on open would make the first row
-    click wait on a round trip for a list that rarely changes.
-
-    System accounts stay (an opening-balance entry keeps its own category);
-    budget buckets never appear in a transaction.
-    """
-    all_accounts = (
-        Account.for_book.exclude_budget_buckets().select_related("account_group", "institution").order_by("name")
-    )
-    all_payees = Payee.for_book.all().order_by("name")
-    return {
-        "all_accounts": SimpleAccountSerializer(all_accounts, many=True).data,
-        "all_payees": PayeeSerializer(all_payees, many=True).data,
-    }
-
-
-def _initial_account_filters(request):
-    """
-    `?f_debit_account=a:12` / `?f_credit_account=a:12` from a link (e.g. a goal's
-    "see its spending"), and `?f_payee=<name>` (a payee's page), as the page's
-    opening column filters with their labels. Only single-account tokens are
-    accepted, and only the book's own accounts and payees.
-    """
-    filters = {}
-    for column in ("debit_account", "credit_account"):
-        entries = []
-        for raw in request.GET.getlist(f"f_{column}"):
-            prefix, _sep, rest = raw.partition(":")
-            if prefix != "a" or not rest.isdigit():
-                continue
-            account = Account.objects.filter(book=request.book, pk=int(rest)).only("name").first()
-            if account is not None:
-                entries.append({"value": raw, "label": account.name})
-        if entries:
-            filters[column] = entries
-    # A payee's page links here as ?f_payee=<name> (the column's filter value is the name).
-    payees = [name for name in request.GET.getlist("f_payee") if name]
-    if payees:
-        known = set(Payee.objects.filter(book=request.book, name__in=payees).values_list("name", flat=True))
-        entries = [{"value": name, "label": name} for name in payees if name in known]
-        if entries:
-            filters["payee"] = entries
-    return filters

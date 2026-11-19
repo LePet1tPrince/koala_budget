@@ -32,7 +32,6 @@ from .services import (
     GoalDeleteError,
     GoalService,
     NetWorthService,
-    picker_accounts_data,
 )
 
 
@@ -121,10 +120,7 @@ def budget_month_view(request, team_slug, book_slug):
         messages.error(request, _("Could not save budget amount: %(errors)s") % {"errors": form.errors.as_text()})
 
     context = _budget_swap_context(request.book, month, _budget_tab(request, request.book))
-    # Every account type is a valid "Move to..." target in the Actual popup (the
-    # client groups them by type); moving onto a feed account makes it a transfer.
-    # System accounts (reconciliation adjustments) are bookkeeping, not destinations.
-    context["all_accounts"] = picker_accounts_data(request.book)
+    # The Actual popup's "Move to..." picker loads `bankfeed/api/feed/pickers/`.
     context["active_tab"] = "budget"
     context["page_title"] = f"Budget | {book_display_name(request.book)}"
     return render(request, "budget/budget_home.html", context)

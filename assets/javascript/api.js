@@ -1,6 +1,5 @@
-import Cookies from "js-cookie";
-import {Configuration} from "api-client";
-
+import Cookies from 'js-cookie';
+import { Configuration } from 'api-client';
 
 export function getApiConfiguration(serverBaseUrl) {
   return new Configuration({
@@ -12,7 +11,7 @@ export function getApiConfiguration(serverBaseUrl) {
 export function getApiHeaders() {
   return {
     'X-CSRFToken': Cookies.get('csrftoken'),
-  }
+  };
 }
 
 const firstMessage = (value) => {
@@ -53,4 +52,30 @@ export async function apiCall(request) {
     const body = payload && typeof payload === 'object' ? payload : {};
     throw Object.assign(new Error(apiErrorMessage(body, response)), { payload: body, status: response.status });
   }
+}
+
+/**
+ * Await a generated-client `...Raw()` call and return its JSON body exactly as the
+ * server sent it (snake_case keys, decimal strings), or null for an empty body.
+ *
+ * For the React apps whose components read the API's own field names: the typed
+ * `...()` methods rename every key to camelCase and turn dates into `Date`s. A
+ * failure is `apiCall`'s `Error` (`message`, `status`, `payload`).
+ */
+export async function apiJson(request) {
+  const response = await apiCall(request);
+  const text = await response.raw.text();
+  return text ? JSON.parse(text) : null;
+}
+
+/**
+ * A `YYYY-MM-DD` day as the `Date` a generated request model takes: UTC midnight,
+ * which its `toISOString().substring(0, 10)` turns back into the same day in
+ * every timezone. A `Date` (a picker's local midnight) keeps its local day;
+ * empty is undefined.
+ */
+export function apiDate(value) {
+  if (!value) return undefined;
+  if (value instanceof Date) return new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
+  return new Date(`${String(value).slice(0, 10)}T00:00:00Z`);
 }

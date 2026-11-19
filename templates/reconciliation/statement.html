@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load icons %}
 {% load currency_tags %}
+{% load django_vite %}
 
 {% block app %}
 <section class="app-card" data-testid="statement-page">
@@ -89,11 +90,17 @@
   </div>
 
   {% if statement.status == "completed" %}
-    <form method="post" action="{% url 'reconciliation:statement_undo' request.team.slug request.book.slug statement.id %}" class="mt-6"
-          onsubmit="return confirm('{% translate "Undo this reconciliation? Its transactions become unreconciled and any adjustment is voided." %}')">
-      {% csrf_token %}
-      <button type="submit" class="btn btn-outline btn-warning btn-sm" data-testid="statement-undo">{% translate "Undo reconciliation" %}</button>
-    </form>
+    {% translate "Undo this reconciliation? Its transactions become unreconciled and any adjustment is voided." as undo_confirm %}
+    <div class="mt-6">
+      <button type="button" class="btn btn-outline btn-warning btn-sm" data-testid="statement-undo"
+              data-statement-undo="{{ statement.id }}" data-confirm="{{ undo_confirm }}">{% translate "Undo reconciliation" %}</button>
+      <p class="text-sm text-error mt-2 hidden" role="alert" data-statement-undo-error></p>
+    </div>
   {% endif %}
 </section>
+{{ request.book.base_url|json_script:'book-base' }}
+{% endblock %}
+
+{% block page_js %}
+  {% vite_asset 'assets/javascript/reconcile/statement-page.js' %}
 {% endblock %}

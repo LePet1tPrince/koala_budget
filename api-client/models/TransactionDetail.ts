@@ -13,6 +13,28 @@
  */
 
 import { mapValues } from '../runtime';
+import type { TransactionAccountRef } from './TransactionAccountRef';
+import {
+    TransactionAccountRefFromJSON,
+    TransactionAccountRefFromJSONTyped,
+    TransactionAccountRefToJSON,
+    TransactionAccountRefToJSONTyped,
+} from './TransactionAccountRef';
+import type { TransactionCapabilities } from './TransactionCapabilities';
+import {
+    TransactionCapabilitiesFromJSON,
+    TransactionCapabilitiesFromJSONTyped,
+    TransactionCapabilitiesToJSON,
+    TransactionCapabilitiesToJSONTyped,
+} from './TransactionCapabilities';
+import type { TransactionDetailLeg } from './TransactionDetailLeg';
+import {
+    TransactionDetailLegFromJSON,
+    TransactionDetailLegFromJSONTyped,
+    TransactionDetailLegToJSON,
+    TransactionDetailLegToJSONTyped,
+} from './TransactionDetailLeg';
+
 /**
  * One transaction as the edit modal needs it: an account, a category or several,
  * an amount, and what may be changed about them.
@@ -63,16 +85,16 @@ export interface TransactionDetail {
     source: string;
     /**
      * 
-     * @type {string}
+     * @type {TransactionAccountRef}
      * @memberof TransactionDetail
      */
-    readonly account: string;
+    readonly account: TransactionAccountRef;
     /**
      * 
-     * @type {string}
+     * @type {TransactionAccountRef}
      * @memberof TransactionDetail
      */
-    readonly category: string;
+    readonly category: TransactionAccountRef | null;
     /**
      * 
      * @type {boolean}
@@ -81,10 +103,10 @@ export interface TransactionDetail {
     readonly isSplit: boolean;
     /**
      * 
-     * @type {string}
+     * @type {Array<TransactionDetailLeg>}
      * @memberof TransactionDetail
      */
-    readonly splits: string;
+    readonly splits: Array<TransactionDetailLeg>;
     /**
      * 
      * @type {string}
@@ -129,10 +151,10 @@ export interface TransactionDetail {
     readonly lockedReason: string | null;
     /**
      * 
-     * @type {string}
+     * @type {TransactionCapabilities}
      * @memberof TransactionDetail
      */
-    readonly capabilities: string;
+    readonly capabilities: TransactionCapabilities;
 }
 
 /**
@@ -176,10 +198,10 @@ export function TransactionDetailFromJSONTyped(json: any, ignoreDiscriminator: b
         'payeeName': json['payee_name'],
         'status': json['status'],
         'source': json['source'],
-        'account': json['account'],
-        'category': json['category'],
+        'account': TransactionAccountRefFromJSON(json['account']),
+        'category': TransactionAccountRefFromJSON(json['category']),
         'isSplit': json['is_split'],
-        'splits': json['splits'],
+        'splits': ((json['splits'] as Array<any>).map(TransactionDetailLegFromJSON)),
         'inflow': json['inflow'],
         'outflow': json['outflow'],
         'bankSource': json['bank_source'],
@@ -187,7 +209,7 @@ export function TransactionDetailFromJSONTyped(json: any, ignoreDiscriminator: b
         'isReconciled': json['is_reconciled'],
         'hasNormalAccountSide': json['has_normal_account_side'],
         'lockedReason': json['locked_reason'],
-        'capabilities': json['capabilities'],
+        'capabilities': TransactionCapabilitiesFromJSON(json['capabilities']),
     };
 }
 
