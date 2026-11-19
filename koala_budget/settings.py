@@ -441,7 +441,9 @@ REST_FRAMEWORK = {
         # First, so a bad `X-Session-Token` is a 401 (see the class).
         "apps.api.authentication.SessionTokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
-        "rest_framework.authentication.BasicAuthentication",
+        # No `BasicAuthentication`: an email and password on every request skips MFA and
+        # the sign-in rate limit (security log, WP10). Programs use an API key; the phone
+        # a session token.
     ],
     "DEFAULT_PERMISSION_CLASSES": ("apps.api.permissions.IsAuthenticatedOrHasUserAPIKey",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -454,6 +456,8 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": "100/hour",
         "user": "1000/hour",
+        # Endpoints that check the account password (`throttle_scope`): not a guessing oracle.
+        "password_check": "10/hour",
     },
 }
 

@@ -293,3 +293,22 @@ class SessionCookieTest(TokenAuthTestCase):
         response = self.client.get(self.book_url("journal:journal-entry-list"), headers={"X-Session-Token": token})
         self.assertEqual(response.status_code, 200)
         self.assertIn("QQPHONEQQ", response.content.decode())
+
+
+class BasicAuthRefusedTest(TokenAuthTestCase):
+    """
+    An email and password in an `Authorization: Basic` header sign nobody in: that
+    path skipped MFA and the sign-in rate limit (security log, WP10).
+    """
+
+    def test_basic_credentials_authenticate_nothing(self):
+        import base64
+
+        credentials = base64.b64encode(f"{self.user.email}:{PASSWORD}".encode()).decode()
+        for name in ("journal:journal-entry-list", "book_api:nav_state"):
+            with self.subTest(name=name):
+                response = self.client.get(self.book_url(name), HTTP_AUTHORIZATION=f"Basic {credentials}")
+                self.assertIn(response.status_code, (401, 403))
+                self.assertNotIn("QQPHONEQQ", response.content.decode())
+        response = self.client.get(reverse("api:me"), HTTP_AUTHORIZATION=f"Basic {credentials}")
+        self.assertIn(response.status_code, (401, 403))

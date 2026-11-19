@@ -20,6 +20,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle, UserRateThrottle
 from rest_framework.views import APIView
 
 from apps.api.models import UserAPIKey
@@ -149,6 +150,9 @@ class DeleteAccountView(APIView):
     """
 
     permission_classes = (IsAuthenticated,)
+    # It checks the password: ten tries an hour, so a stolen session can't guess it here.
+    throttle_classes = (UserRateThrottle, ScopedRateThrottle)
+    throttle_scope = "password_check"
 
     @extend_schema(
         tags=["users"],

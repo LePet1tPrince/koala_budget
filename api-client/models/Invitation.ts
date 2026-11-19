@@ -62,7 +62,7 @@ export interface Invitation {
      * @type {boolean}
      * @memberof Invitation
      */
-    isAccepted?: boolean;
+    readonly isAccepted: boolean;
 }
 
 
@@ -75,6 +75,7 @@ export function instanceOfInvitation(value: object): value is Invitation {
     if (!('team' in value) || value['team'] === undefined) return false;
     if (!('email' in value) || value['email'] === undefined) return false;
     if (!('invitedBy' in value) || value['invitedBy'] === undefined) return false;
+    if (!('isAccepted' in value) || value['isAccepted'] === undefined) return false;
     return true;
 }
 
@@ -93,7 +94,7 @@ export function InvitationFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'email': json['email'],
         'role': json['role'] == null ? undefined : RoleEnumFromJSON(json['role']),
         'invitedBy': json['invited_by'],
-        'isAccepted': json['is_accepted'] == null ? undefined : json['is_accepted'],
+        'isAccepted': json['is_accepted'],
     };
 }
 
@@ -101,7 +102,7 @@ export function InvitationFromJSONTyped(json: any, ignoreDiscriminator: boolean)
       return InvitationToJSONTyped(json, false);
   }
 
-  export function InvitationToJSONTyped(value?: Omit<Invitation, 'id'|'invited_by'> | null, ignoreDiscriminator: boolean = false): any {
+  export function InvitationToJSONTyped(value?: Omit<Invitation, 'id'|'invited_by'|'is_accepted'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -111,7 +112,6 @@ export function InvitationFromJSONTyped(json: any, ignoreDiscriminator: boolean)
         'team': value['team'],
         'email': value['email'],
         'role': RoleEnumToJSON(value['role']),
-        'is_accepted': value['isAccepted'],
     };
 }
 

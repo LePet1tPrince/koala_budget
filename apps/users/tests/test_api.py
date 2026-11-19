@@ -5,6 +5,7 @@ import shutil
 import tempfile
 from unittest import mock
 
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -156,6 +157,8 @@ class DownloadDataAPITest(TestCase):
 
 class DeleteAccountAPITest(TestCase):
     def setUp(self):
+        # DRF's throttles count in the cache.
+        cache.clear()
         self.user = make_user()
         self.team = Team.objects.create(name="Mine", slug="mine")
         self.team.members.add(self.user, through_defaults={"role": ROLE_ADMIN})
@@ -184,6 +187,14 @@ class DeleteAccountAPITest(TestCase):
                 response = self.post(body)
                 self.assertEqual(response.status_code, 400)
                 self.assertIn(field, response.json())
+        self.assertTrue(CustomUser.objects.filter(pk=self.user.pk).exists())
+
+    def test_password_guesses_are_throttled(self):
+        # The endpoint checks the password: a stolen session must not use it to guess one (security log, WP10).
+        for _attempt in range(10):
+            self.assertEqual(self.post({"confirmation": "me@example.test", "password": "guess"}).status_code, 400)
+        response = self.post({"confirmation": "me@example.test", "password": PASSWORD})
+        self.assertEqual(response.status_code, 429)
         self.assertTrue(CustomUser.objects.filter(pk=self.user.pk).exists())
 
     def test_an_account_without_a_password_must_have_reauthenticated(self):
