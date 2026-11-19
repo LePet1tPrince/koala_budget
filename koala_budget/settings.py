@@ -467,6 +467,13 @@ SPECTACULAR_SETTINGS = {
     "PREPROCESSING_HOOKS": [
         "apps.api.schema.filter_schema_apis",
     ],
+    # Choice sets shared by several budget fields get one stable enum name each.
+    "ENUM_NAME_OVERRIDES": {
+        "BudgetSectionEnum": "apps.budget.api.serializers.SECTION_KEYS",
+        "BudgetAutofillActionEnum": "apps.budget.figures.AUTOFILL_ACTIONS",
+        "BudgetCoverSourceEnum": "apps.budget.api.serializers.COVER_SOURCES",
+        "BudgetGridActualModeEnum": "apps.budget.grid.GRID_ACTUAL_MODES",
+    },
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}
     },

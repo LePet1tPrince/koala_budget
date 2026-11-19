@@ -400,23 +400,29 @@ class BudgetPageProgressBarTest(PlanFixture):
         self.assertEqual((salary["width"], salary["income"], salary["over"]), (83, True, False))
 
     def test_unbudgeted_category_shows_no_percentage(self):
-        from apps.budget.views import _meter
+        from apps.budget.figures import meter as budget_meter
 
-        meter = _meter("expense", Decimal("0"), Decimal("40"), Decimal("-40"))
+        meter = budget_meter("expense", Decimal("0"), Decimal("40"), Decimal("-40"))
         self.assertEqual((meter["label"], meter["width"], meter["over"]), ("—", 100, True))
-        self.assertEqual(_meter("expense", Decimal("0"), Decimal("0"), Decimal("0"))["width"], 0)
+        self.assertEqual(budget_meter("expense", Decimal("0"), Decimal("0"), Decimal("0"))["width"], 0)
 
     def test_autosave_returns_the_new_bar(self):
         import json
 
         response = self.client.post(
-            reverse("budget:budget_save_amount", args=self.book.url_args),
-            data=json.dumps({"category_id": self.rent.pk, "month": "2026-06-01", "amount": "2200"}),
+            reverse("budget:api_amount", args=self.book.url_args),
+            data=json.dumps({"category_id": self.rent.pk, "month": "2026-06", "amount": "2200"}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
-        cell = response.json()["cells"][f"row:{self.rent.pk}:meter"]
-        self.assertEqual((cell["width"], cell["value"], cell["tone"]), (50, "50%", ""))
+        rows = [
+            row
+            for section in response.json()["figures"]["sections"]
+            for group in section["groups"]
+            for row in group["rows"]
+        ]
+        meter = next(row["meter"] for row in rows if row["category_id"] == self.rent.pk)
+        self.assertEqual((meter["width"], meter["label"], meter["over"]), (50, "50%", False))
 
 
 class ReturnToLabelTest(ConsolidatedReportsBase):
