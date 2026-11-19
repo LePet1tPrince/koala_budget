@@ -30,12 +30,12 @@ from apps.utils.months import add_months
 from .exports import export_monthly_review_csv
 from .models import MonthlyReviewState
 from .serializers import (
-    CompleteResponseSerializer,
-    FinishResponseSerializer,
     MonthlyReviewSerializer,
-    MonthRequestSerializer,
-    StepRequestSerializer,
-    StepResponseSerializer,
+    ReviewCompleteResponseSerializer,
+    ReviewFinishResponseSerializer,
+    ReviewMonthRequestSerializer,
+    ReviewStepRequestSerializer,
+    ReviewStepResponseSerializer,
 )
 from .services.review import build_review
 
@@ -124,7 +124,7 @@ def _state_payload(state: MonthlyReviewState) -> dict:
     }
 
 
-def _month_body(request, serializer_class=MonthRequestSerializer):
+def _month_body(request, serializer_class=ReviewMonthRequestSerializer):
     body = serializer_class(data=request.data)
     body.is_valid(raise_exception=True)
     return body.validated_data
@@ -168,11 +168,11 @@ class StepView(BookAPIView):
     @extend_schema(
         operation_id="monthly_review_step",
         tags=TAGS,
-        request=StepRequestSerializer,
-        responses=StepResponseSerializer,
+        request=ReviewStepRequestSerializer,
+        responses=ReviewStepResponseSerializer,
     )
     def post(self, request, team_slug, book_slug):
-        body = _month_body(request, StepRequestSerializer)
+        body = _month_body(request, ReviewStepRequestSerializer)
         month = body["month"]
         state = _get_or_create_state(self.book, month)
 
@@ -199,7 +199,7 @@ class StepView(BookAPIView):
             state.advance(step)
 
         state.save()
-        return Response(StepResponseSerializer({"state": _state_payload(state)}).data)
+        return Response(ReviewStepResponseSerializer({"state": _state_payload(state)}).data)
 
 
 class CompleteView(BookAPIView):
@@ -208,15 +208,15 @@ class CompleteView(BookAPIView):
     @extend_schema(
         operation_id="monthly_review_complete",
         tags=TAGS,
-        request=MonthRequestSerializer,
-        responses=CompleteResponseSerializer,
+        request=ReviewMonthRequestSerializer,
+        responses=ReviewCompleteResponseSerializer,
     )
     def post(self, request, team_slug, book_slug):
         month = _month_body(request)["month"]
         state = _get_or_create_state(self.book, month)
         if state.is_finished:
             data = {"already_finished": True, "state": _state_payload(state), "current": None}
-            return Response(CompleteResponseSerializer(data).data)
+            return Response(ReviewCompleteResponseSerializer(data).data)
 
         state.complete()
         state.save()
@@ -231,7 +231,7 @@ class CompleteView(BookAPIView):
             },
         )
         data = {"already_finished": False, "state": _state_payload(state), "current": review["current"]}
-        return Response(CompleteResponseSerializer(data).data)
+        return Response(ReviewCompleteResponseSerializer(data).data)
 
 
 class DismissView(BookAPIView):
@@ -240,14 +240,16 @@ class DismissView(BookAPIView):
     @extend_schema(
         operation_id="monthly_review_dismiss",
         tags=TAGS,
-        request=MonthRequestSerializer,
-        responses=FinishResponseSerializer,
+        request=ReviewMonthRequestSerializer,
+        responses=ReviewFinishResponseSerializer,
     )
     def post(self, request, team_slug, book_slug):
         month = _month_body(request)["month"]
         state = _get_or_create_state(self.book, month)
         if state.is_finished:
-            return Response(FinishResponseSerializer({"already_finished": True, "state": _state_payload(state)}).data)
+            return Response(
+                ReviewFinishResponseSerializer({"already_finished": True, "state": _state_payload(state)}).data
+            )
 
         state.dismiss()
         state.save()
@@ -256,7 +258,9 @@ class DismissView(BookAPIView):
             request=request,
             metadata={"month": month.isoformat(), "step": state.step},
         )
-        return Response(FinishResponseSerializer({"already_finished": False, "state": _state_payload(state)}).data)
+        return Response(
+            ReviewFinishResponseSerializer({"already_finished": False, "state": _state_payload(state)}).data
+        )
 
 
 @login_and_book_required

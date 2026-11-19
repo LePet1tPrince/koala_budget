@@ -39,12 +39,12 @@ class MonthKeyField(serializers.Field):
         return format_month(date.fromisoformat(value) if isinstance(value, str) else value)
 
 
-class RefSerializer(serializers.Serializer):
+class ReviewRefSerializer(serializers.Serializer):
     id = serializers.IntegerField(source="pk")
     name = serializers.CharField()
 
 
-class DictRefSerializer(serializers.Serializer):
+class ReviewDictRefSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
 
@@ -52,17 +52,17 @@ class DictRefSerializer(serializers.Serializer):
 # --- Step 1: data health ----------------------------------------------------------
 
 
-class HealthFlagSerializer(serializers.Serializer):
+class ReviewHealthFlagSerializer(serializers.Serializer):
     kind = serializers.ChoiceField(choices=[NO_TRANSACTIONS, STALE_ACCOUNT, UNCATEGORIZED, UNRECONCILED])
-    account = RefSerializer()
+    account = ReviewRefSerializer()
     last_transaction_date = serializers.DateField(allow_null=True, default=None, help_text="stale_account only.")
     days = serializers.IntegerField(allow_null=True, default=None, help_text="stale_account: days before month end.")
     count = serializers.IntegerField(allow_null=True, default=None, help_text="uncategorized / unreconciled.")
     gap = _optional_money(help_text="unreconciled: balance − reconciled balance.")
 
 
-class HealthAccountSerializer(serializers.Serializer):
-    account = RefSerializer()
+class ReviewHealthAccountSerializer(serializers.Serializer):
+    account = ReviewRefSerializer()
     account_type = serializers.ChoiceField(choices=["asset", "liability"])
     institution = serializers.CharField(allow_null=True)
     transaction_count = serializers.IntegerField()
@@ -73,19 +73,19 @@ class HealthAccountSerializer(serializers.Serializer):
     reconciled_balance = _money()
     balance_gap = _money()
     balance_change = _money()
-    flags = HealthFlagSerializer(many=True)
+    flags = ReviewHealthFlagSerializer(many=True)
 
 
-class HealthSerializer(serializers.Serializer):
-    accounts = HealthAccountSerializer(many=True, help_text="Every account on a bank feed.")
-    flags = HealthFlagSerializer(many=True, help_text="Every account's flags, flattened.")
+class ReviewHealthSerializer(serializers.Serializer):
+    accounts = ReviewHealthAccountSerializer(many=True, help_text="Every account on a bank feed.")
+    flags = ReviewHealthFlagSerializer(many=True, help_text="Every account's flags, flattened.")
     all_clear = serializers.BooleanField()
 
 
 # --- Figures and baselines --------------------------------------------------------
 
 
-class CurrentFiguresSerializer(serializers.Serializer):
+class ReviewCurrentFiguresSerializer(serializers.Serializer):
     income = _money()
     spend = _money()
     net = _money()
@@ -94,7 +94,7 @@ class CurrentFiguresSerializer(serializers.Serializer):
     transaction_count = serializers.IntegerField()
 
 
-class BaselineAveragesSerializer(serializers.Serializer):
+class ReviewBaselineAveragesSerializer(serializers.Serializer):
     income = _money()
     spend = _money()
     net = _money()
@@ -102,7 +102,7 @@ class BaselineAveragesSerializer(serializers.Serializer):
     savings_rate = serializers.FloatField()
 
 
-class StreamRowSerializer(serializers.Serializer):
+class ReviewStreamRowSerializer(serializers.Serializer):
     payee = serializers.CharField(help_text="The payee, else the income account's name.")
     amount = _money(help_text="This month.")
     avg = _money()
@@ -110,15 +110,15 @@ class StreamRowSerializer(serializers.Serializer):
     new = serializers.BooleanField(help_text="Income this month with none in the baseline.")
 
 
-class SavingRowSerializer(serializers.Serializer):
-    goal = DictRefSerializer()
+class ReviewSavingRowSerializer(serializers.Serializer):
+    goal = ReviewDictRefSerializer()
     amount = _money(help_text="Saved this month.")
     prev = _money(help_text="Saved last month.")
     avg = _money()
     vs_avg = _money()
 
 
-class BaselineSerializer(serializers.Serializer):
+class ReviewBaselineSerializer(serializers.Serializer):
     id = serializers.ChoiceField(choices=BASELINE_IDS)
     label = serializers.CharField()
     short = serializers.CharField()
@@ -127,16 +127,16 @@ class BaselineSerializer(serializers.Serializer):
     months = serializers.IntegerField(help_text="How many months it averages.")
     clamped = serializers.BooleanField(help_text="Shorter than its name: the book's history starts later.")
     keys = serializers.ListField(child=MonthKeyField(), help_text="Its months, oldest first.")
-    avgs = BaselineAveragesSerializer()
-    streams = StreamRowSerializer(many=True, help_text="Income by payee, largest this month first.")
+    avgs = ReviewBaselineAveragesSerializer()
+    streams = ReviewStreamRowSerializer(many=True, help_text="Income by payee, largest this month first.")
     cat_avg = serializers.DictField(child=_money(), help_text="Category (account) id → its average.")
-    saving_rows = SavingRowSerializer(many=True)
+    saving_rows = ReviewSavingRowSerializer(many=True)
 
 
 # --- Budget ------------------------------------------------------------------------
 
 
-class BudgetCategorySerializer(serializers.Serializer):
+class ReviewBudgetCategorySerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
     income = serializers.BooleanField(help_text="An income category: `spent` is what was received.")
@@ -148,7 +148,7 @@ class BudgetCategorySerializer(serializers.Serializer):
     unbudgeted = serializers.BooleanField()
 
 
-class BudgetGroupSerializer(serializers.Serializer):
+class ReviewBudgetGroupSerializer(serializers.Serializer):
     name = serializers.CharField()
     income = serializers.BooleanField()
     assigned = _money()
@@ -156,35 +156,35 @@ class BudgetGroupSerializer(serializers.Serializer):
     prev = _money()
     available = _money()
     count = serializers.IntegerField()
-    categories = BudgetCategorySerializer(many=True)
+    categories = ReviewBudgetCategorySerializer(many=True)
 
 
-class BudgetTotalsSerializer(serializers.Serializer):
+class ReviewBudgetTotalsSerializer(serializers.Serializer):
     assigned = _money()
     spent = _money()
     available = _money()
 
 
-class OverspentRowSerializer(serializers.Serializer):
-    category = RefSerializer()
-    group = RefSerializer()
+class ReviewOverspentRowSerializer(serializers.Serializer):
+    category = ReviewRefSerializer()
+    group = ReviewRefSerializer()
     assigned = _money()
     spent = _money()
     available = _money()
     over = _money(help_text="Spent − assigned.")
 
 
-class BudgetBreakdownSerializer(serializers.Serializer):
-    groups = BudgetGroupSerializer(many=True, help_text="Budget-page order, income first.")
-    totals = BudgetTotalsSerializer()
-    overspent = OverspentRowSerializer(many=True, help_text="Ended the month with a negative available.")
-    over_assigned = OverspentRowSerializer(many=True, help_text="Beat the assignment, a cushion absorbed it.")
+class ReviewBudgetBreakdownSerializer(serializers.Serializer):
+    groups = ReviewBudgetGroupSerializer(many=True, help_text="Budget-page order, income first.")
+    totals = ReviewBudgetTotalsSerializer()
+    overspent = ReviewOverspentRowSerializer(many=True, help_text="Ended the month with a negative available.")
+    over_assigned = ReviewOverspentRowSerializer(many=True, help_text="Beat the assignment, a cushion absorbed it.")
 
 
 # --- Transactions, net worth, goals ----------------------------------------------
 
 
-class BiggestTransactionSerializer(serializers.Serializer):
+class ReviewBiggestTransactionSerializer(serializers.Serializer):
     entry_id = serializers.IntegerField(help_text="The journal entry (open it in the Transactions list).")
     date = serializers.DateField()
     payee = serializers.CharField(allow_blank=True)
@@ -194,7 +194,7 @@ class BiggestTransactionSerializer(serializers.Serializer):
     amount = _money()
 
 
-class CategoryTransactionSerializer(serializers.Serializer):
+class ReviewCategoryTransactionSerializer(serializers.Serializer):
     date = serializers.DateField()
     payee = serializers.CharField(allow_blank=True)
     memo = serializers.CharField(allow_blank=True)
@@ -202,7 +202,7 @@ class CategoryTransactionSerializer(serializers.Serializer):
     amount = _money(help_text="Signed so positive is spending (expense) or income received (income).")
 
 
-class NetWorthPointSerializer(serializers.Serializer):
+class ReviewNetWorthPointSerializer(serializers.Serializer):
     key = MonthKeyField()
     label = serializers.CharField()
     net = _money()
@@ -210,19 +210,19 @@ class NetWorthPointSerializer(serializers.Serializer):
     liabilities = _money()
 
 
-class NetWorthBandSerializer(serializers.Serializer):
+class ReviewNetWorthBandSerializer(serializers.Serializer):
     bucket = serializers.CharField(help_text="“Bank accounts & credit cards”, or an account group.")
     type = serializers.ChoiceField(choices=["cash", "asset", "liability"])
     values = serializers.ListField(child=_money(), help_text="Contribution to net worth, aligned with `series`.")
 
 
-class NetWorthTotalsSerializer(serializers.Serializer):
+class ReviewNetWorthTotalsSerializer(serializers.Serializer):
     net = _money()
     assets = _money()
     liabilities = _money()
 
 
-class BalanceRowSerializer(serializers.Serializer):
+class ReviewBalanceRowSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
     type = serializers.ChoiceField(choices=["asset", "liability", "equity"])
@@ -230,22 +230,22 @@ class BalanceRowSerializer(serializers.Serializer):
     changes = serializers.DictField(child=_money(), help_text="Baseline id → change over that baseline.")
 
 
-class NetWorthSectionSerializer(serializers.Serializer):
-    series = NetWorthPointSerializer(many=True, help_text="Month ends, back to the longest baseline.")
-    stack = NetWorthBandSerializer(many=True)
-    now = NetWorthTotalsSerializer()
-    prev = NetWorthTotalsSerializer(help_text="At the end of last month.")
-    by_account = BalanceRowSerializer(many=True)
+class ReviewNetWorthSectionSerializer(serializers.Serializer):
+    series = ReviewNetWorthPointSerializer(many=True, help_text="Month ends, back to the longest baseline.")
+    stack = ReviewNetWorthBandSerializer(many=True)
+    now = ReviewNetWorthTotalsSerializer()
+    prev = ReviewNetWorthTotalsSerializer(help_text="At the end of last month.")
+    by_account = ReviewBalanceRowSerializer(many=True)
 
 
-class GoalSpendingSerializer(serializers.Serializer):
+class ReviewGoalSpendingSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
     amount = _money()
     months_funded = serializers.IntegerField()
 
 
-class InsightSerializer(serializers.Serializer):
+class ReviewInsightSerializer(serializers.Serializer):
     kind = serializers.CharField()
     severity = serializers.ChoiceField(choices=["good", "info", "warn", "bad"])
     step = serializers.IntegerField(help_text="The walkthrough step that shows it (1 = the data check).")
@@ -267,21 +267,21 @@ class ReviewSerializer(serializers.Serializer):
     month_label = serializers.CharField()
     prev_label = serializers.CharField()
     is_current_month = serializers.BooleanField()
-    health = HealthSerializer()
-    current = CurrentFiguresSerializer()
-    baselines = serializers.DictField(child=BaselineSerializer(), help_text="Baseline id → its slice.")
+    health = ReviewHealthSerializer()
+    current = ReviewCurrentFiguresSerializer()
+    baselines = serializers.DictField(child=ReviewBaselineSerializer(), help_text="Baseline id → its slice.")
     baseline_order = serializers.ListField(child=serializers.ChoiceField(choices=BASELINE_IDS))
     default_baseline = serializers.ChoiceField(choices=BASELINE_IDS, allow_null=True)
-    budget = BudgetBreakdownSerializer()
-    biggest = BiggestTransactionSerializer(many=True)
+    budget = ReviewBudgetBreakdownSerializer()
+    biggest = ReviewBiggestTransactionSerializer(many=True)
     cat_txns = serializers.DictField(
-        child=serializers.ListField(child=CategoryTransactionSerializer()),
+        child=serializers.ListField(child=ReviewCategoryTransactionSerializer()),
         help_text="Category (account) id → this month's transactions.",
     )
-    net_worth = NetWorthSectionSerializer()
-    goal_spending = GoalSpendingSerializer(many=True)
+    net_worth = ReviewNetWorthSectionSerializer()
+    goal_spending = ReviewGoalSpendingSerializer(many=True)
     notes = serializers.ListField(child=serializers.CharField())
-    insights = InsightSerializer(many=True)
+    insights = ReviewInsightSerializer(many=True)
 
 
 # --- Progress ---------------------------------------------------------------------
@@ -303,27 +303,27 @@ class MonthlyReviewSerializer(serializers.Serializer):
     state = ReviewStateSerializer()
 
 
-class MonthRequestSerializer(serializers.Serializer):
+class ReviewMonthRequestSerializer(serializers.Serializer):
     month = MonthField(help_text="The reviewed month, as YYYY-MM.")
 
 
-class StepRequestSerializer(MonthRequestSerializer):
+class ReviewStepRequestSerializer(ReviewMonthRequestSerializer):
     step = serializers.IntegerField(required=False, min_value=0, max_value=32767)
     baseline = serializers.ChoiceField(
         choices=BASELINE_IDS, required=False, allow_null=True, help_text="Null (or absent) leaves it as it is."
     )
 
 
-class StepResponseSerializer(serializers.Serializer):
+class ReviewStepResponseSerializer(serializers.Serializer):
     state = ReviewStateSerializer()
 
 
-class FinishResponseSerializer(serializers.Serializer):
+class ReviewFinishResponseSerializer(serializers.Serializer):
     already_finished = serializers.BooleanField(help_text="It was completed or dismissed before: nothing changed.")
     state = ReviewStateSerializer()
 
 
-class CompleteResponseSerializer(FinishResponseSerializer):
-    current = CurrentFiguresSerializer(
+class ReviewCompleteResponseSerializer(ReviewFinishResponseSerializer):
+    current = ReviewCurrentFiguresSerializer(
         allow_null=True, help_text="The month's headline figures; null if already finished."
     )

@@ -16,6 +16,8 @@ from apps.budget.unassigned import STATE_NEGATIVE, STATE_POSITIVE, STATE_ZERO
 from .consolidated import COLUMN_PERIODS
 
 COLUMN_CHOICES = ["total", *COLUMN_PERIODS]
+NET_WORTH_SECTION_KEYS = ["assets", "liabilities"]
+WATERFALL_KEYS = ["net_worth", "envelopes", "goals", "unassigned"]
 
 
 def _money(**kwargs):
@@ -186,7 +188,7 @@ class NetWorthGroupSerializer(serializers.Serializer):
 
 
 class NetWorthSectionSerializer(serializers.Serializer):
-    key = serializers.ChoiceField(choices=["assets", "liabilities"])
+    key = serializers.ChoiceField(choices=NET_WORTH_SECTION_KEYS)
     start = _money()
     end = _money()
     change = _money()
@@ -256,7 +258,7 @@ class BudgetGoalsUnassignedSerializer(serializers.Serializer):
 
 
 class WaterfallStepSerializer(serializers.Serializer):
-    key = serializers.ChoiceField(choices=["net_worth", "envelopes", "goals", "unassigned"])
+    key = serializers.ChoiceField(choices=WATERFALL_KEYS)
     label = serializers.CharField()
     value = _money()
     start = _money()
