@@ -10,7 +10,7 @@
   </a>
 {% endblock %}
 {% block manage_content %}
-  {{ manage_props|json_script:'accounts-board-props' }}
+  {{ request.book.base_url|json_script:'book-base' }}
   <div id="accounts-board">
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
       <div class="skeleton h-64 w-full"></div>

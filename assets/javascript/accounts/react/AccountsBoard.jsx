@@ -17,10 +17,10 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import Cookies from 'js-cookie';
 
 import Icon from '../../common/Icon';
 import { formatCurrency } from '../../utilities/currency';
+import { accountsUrls, apiErrorMessage, callApi, getAccountsApi } from '../accountsApi';
 
 // Tabs over the type sections: one account type on screen at a time. Goals
 // also shows plain equity, which is the same stored type.
@@ -57,26 +57,30 @@ const accountDndId = (id) => `account-${id}`;
 const groupDndId = (id) => `group-${id}`;
 const groupDropId = (id) => `group-drop-${id}`;
 
-async function postJson(url, body) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': Cookies.get('csrftoken'),
-    },
-    body: JSON.stringify(body),
-  });
-  let data = {};
-  try {
-    data = await response.json();
-  } catch {
-    // non-JSON error page; fall through to the generic message
-  }
-  if (!response.ok) {
-    throw new Error(data.error || gettext('Something went wrong. Please try again.'));
-  }
-  return data;
-}
+// ---------------------------------------------------------------------------
+// The board API's rows (apps/accounts/api.py) with the page links the board
+// draws, built from the book's base URL.
+// ---------------------------------------------------------------------------
+const toAccountRow = (account, urls) => ({
+  ...account,
+  institution: account.institutionName,
+  url: urls.account(account.id),
+});
+
+const toGroupCard = (group, urls) => ({
+  ...group,
+  url: urls.group(group.id),
+  accounts: group.accounts.map((account) => toAccountRow(account, urls)),
+});
+
+const toSection = (section, urls) => ({
+  key: section.key,
+  accountType: section.accountType,
+  label: section.label,
+  // Goals are created on the Goals page, which makes their account.
+  newGoalUrl: section.createsGoals ? urls.newGoal : null,
+  groups: section.groups.map((group) => toGroupCard(group, urls)),
+});
 
 const GripIcon = () => (
   <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true">
@@ -450,7 +454,50 @@ function TypeSection({
 // ---------------------------------------------------------------------------
 // Board
 // ---------------------------------------------------------------------------
-export default function AccountsBoard({ types: initialTypes, urls }) {
+/**
+ * Loads the board, then hands it to the drag-and-drop board. Until the first
+ * request answers, the page's skeleton stays in place.
+ */
+export default function AccountsBoard({ book }) {
+  const api = useMemo(() => getAccountsApi(), []);
+  const urls = useMemo(() => accountsUrls(book.base), [book.base]);
+  const [sections, setSections] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .accountsBoardRetrieve({ ...book.params })
+      .then((board) => {
+        if (!cancelled) setSections(board.sections.map((section) => toSection(section, urls)));
+      })
+      .catch(async (error) => {
+        if (!cancelled) setLoadError(await apiErrorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, book, urls]);
+
+  if (loadError) {
+    return (
+      <div className="alert alert-error" role="alert" data-testid="accounts-board-error">
+        <span>{loadError}</span>
+      </div>
+    );
+  }
+  if (!sections) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8" aria-busy="true" data-testid="accounts-board-loading">
+        <div className="skeleton h-64 w-full"></div>
+        <div className="skeleton h-64 w-full"></div>
+      </div>
+    );
+  }
+  return <Board initialTypes={sections} urls={urls} api={api} book={book} />;
+}
+
+function Board({ initialTypes, urls, api, book }) {
   const [types, setTypes] = useState(initialTypes);
   const [active, setActive] = useState(null); // {kind, account|group, accountType, groupId?}
   const [overGroupId, setOverGroupId] = useState(null);
@@ -609,7 +656,12 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
 
     try {
       const accountType = types.find((section) => section.key === activeData.accountType)?.accountType;
-      await postJson(urls.reorderGroups, { account_type: accountType || activeData.accountType, group_ids: orderedIds });
+      await callApi(() =>
+        api.accountsBoardReorderGroups({
+          ...book.params,
+          reorderGroups: { accountType: accountType || activeData.accountType, groupIds: orderedIds },
+        })
+      );
       showToast(gettext('Order saved'));
     } catch (e) {
       revert();
@@ -657,13 +709,15 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
     for (const section of finalState) {
       for (const group of section.groups) {
         if (changedGroupIds.has(group.id)) {
-          groupsPayload.push({ group_id: group.id, account_ids: group.accounts.map((a) => a.id) });
+          groupsPayload.push({ groupId: group.id, accountIds: group.accounts.map((a) => a.id) });
         }
       }
     }
 
     try {
-      await postJson(urls.reorderAccounts, { groups: groupsPayload });
+      await callApi(() =>
+        api.accountsBoardReorderAccounts({ ...book.params, reorderAccounts: { groups: groupsPayload } })
+      );
       showToast(
         sourceGroupId !== finalLocation.group.id
           ? interpolate(gettext('Moved to %s'), [finalLocation.group.name])
@@ -677,27 +731,33 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
 
   // ----- inline creates -------------------------------------------------------
   const createAccount = async (groupId, name) => {
-    const data = await postJson(urls.createAccount, { name, group_id: groupId });
+    const created = await callApi(() =>
+      api.accountsBoardCreateAccount({ ...book.params, boardCreateAccount: { name, groupId } })
+    );
+    const account = toAccountRow(created, urls);
     setTypes((state) =>
       state.map((section) => ({
         ...section,
         groups: section.groups.map((group) =>
-          group.id === groupId ? { ...group, accounts: [...group.accounts, data.account] } : group
+          group.id === groupId ? { ...group, accounts: [...group.accounts, account] } : group
         ),
       }))
     );
-    showToast(interpolate(gettext('Account "%s" created'), [data.account.name]));
+    showToast(interpolate(gettext('Account "%s" created'), [account.name]));
   };
 
   const createGroup = async (sectionKey, name) => {
     const accountType = types.find((section) => section.key === sectionKey)?.accountType || sectionKey;
-    const data = await postJson(urls.createGroup, { name, account_type: accountType });
+    const created = await callApi(() =>
+      api.accountsBoardCreateGroup({ ...book.params, boardCreateGroup: { name, accountType } })
+    );
+    const group = toGroupCard(created, urls);
     setTypes((state) =>
       state.map((section) =>
-        section.key === sectionKey ? { ...section, groups: [...section.groups, data.group] } : section
+        section.key === sectionKey ? { ...section, groups: [...section.groups, group] } : section
       )
     );
-    showToast(interpolate(gettext('Group "%s" created'), [data.group.name]));
+    showToast(interpolate(gettext('Group "%s" created'), [group.name]));
   };
 
   // ----- Eye toggle ----------------------------------------------------------
@@ -715,7 +775,9 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
   const toggleHidden = async (account, isHidden) => {
     setAccountHidden(account.id, isHidden);
     try {
-      await postJson(urls.setHidden, { account_id: account.id, is_hidden: isHidden });
+      await callApi(() =>
+        api.accountsBoardSetHidden({ ...book.params, setHidden: { accountId: account.id, isHidden } })
+      );
       showToast(
         interpolate(
           isHidden

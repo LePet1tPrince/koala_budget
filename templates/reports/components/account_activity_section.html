@@ -3,30 +3,33 @@
 {% load account_nav %}
 {% load icons %}
 {# Shared account activity section: balance or budget-vs-actual chart + transactions table. #}
-{# Context: report_data, balance_chart_data, budget_chart_data, start_date. Sits inside an .app-card. #}
+{# Context: report_data, has_balance_chart, budget_chart_kind, start_date. Sits inside an .app-card. #}
+{# The charts are drawn from the charts API by account-charts.js; each canvas waits behind a skeleton. #}
 {# Account and payee links carry this page as return_to, so their back link comes straight back. #}
 {# A transaction row (data-entry-id) opens the edit modal: account-activity-editor.jsx. #}
-{% if budget_chart_data %}
+{% if budget_chart_kind %}
 <!-- Budget vs Actual chart for income/expense accounts (collapsible, open by default) -->
 <div class="collapse collapse-arrow border border-base-300 rounded-box mb-4" data-testid="account-budget-chart-panel">
   <input type="checkbox" checked aria-label="{% translate 'Toggle budget chart' %}" />
-  <div class="collapse-title font-medium">{% if budget_chart_data.account_type == "goal" %}{% translate "Allocated vs Spent" %}{% else %}{% translate "Budget vs Actual" %}{% endif %}</div>
+  <div class="collapse-title font-medium">{% if budget_chart_kind == "goal" %}{% translate "Allocated vs Spent" %}{% else %}{% translate "Budget vs Actual" %}{% endif %}</div>
   <div class="collapse-content">
-    <div class="h-64 md:h-72">
-      <canvas id="account-budget-chart" class="w-full h-full"></canvas>
+    <div class="h-64 md:h-72 relative">
+      <div class="skeleton absolute inset-0" data-chart-loading="account-budget-chart" aria-hidden="true"></div>
+      <canvas id="account-budget-chart" class="w-full h-full" aria-busy="true"></canvas>
     </div>
   </div>
 </div>
 {% endif %}
 
-{% if balance_chart_data %}
+{% if has_balance_chart %}
 <!-- Balance-over-time chart (collapsible, open by default) -->
 <div class="collapse collapse-arrow border border-base-300 rounded-box mb-4" data-testid="account-balance-chart-panel">
   <input type="checkbox" checked aria-label="{% translate 'Toggle balance chart' %}" />
   <div class="collapse-title font-medium">{% translate "Balance Over Time" %}</div>
   <div class="collapse-content">
-    <div class="h-64 md:h-72">
-      <canvas id="account-balance-chart" class="w-full h-full"></canvas>
+    <div class="h-64 md:h-72 relative">
+      <div class="skeleton absolute inset-0" data-chart-loading="account-balance-chart" aria-hidden="true"></div>
+      <canvas id="account-balance-chart" class="w-full h-full" aria-busy="true"></canvas>
     </div>
   </div>
 </div>

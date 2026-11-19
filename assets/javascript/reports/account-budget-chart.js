@@ -2,13 +2,30 @@
 import Chart from 'chart.js/auto';
 import {GRID, MONEY, currency, getInk, getSurface, observeTheme} from './chart-theme';
 
-document.addEventListener('DOMContentLoaded', () => {
-  const dataEl = document.getElementById('account-budget-data');
-  const canvas = document.getElementById('account-budget-chart');
-  if (!dataEl || !canvas) return;
+// Series names per chart kind: a goal's account draws Allocated vs Spent with its running Left.
+const SERIES_LABELS = {
+  goal: {budgeted: 'Allocated', actual: 'Spent', available: 'Left'},
+  default: {budgeted: 'Budgeted', actual: 'Actual', available: 'Available'},
+};
 
-  const data = JSON.parse(dataEl.textContent);
-  if (!data.labels || data.labels.length === 0) return;
+// `YYYY-MM` -> "Jan 2026", read as UTC so a timezone offset can't shift the month.
+const monthLabel = (month) => {
+  const [year, number] = month.split('-').map(Number);
+  return new Date(Date.UTC(year, number - 1, 1)).toLocaleDateString(undefined, {
+    timeZone: 'UTC',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
+/**
+ * Draw the budget chart on `canvas`.
+ *
+ * `data` is the charts API's `budget` (apps/accounts/api.py): `{kind, months:
+ * ['YYYY-MM', ...], budgeted, actual, available}` with decimal strings.
+ */
+export function drawBudgetChart(canvas, data) {
+  if (!data.months || data.months.length === 0) return null;
 
   // Green for income, red for expenses; the Available rollover line is blue.
   // Budgeted and Actual fully overlap (grouped: false) so each month reads as
@@ -16,9 +33,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // fill shows how much of it is used. The outline is a darker step of the
   // same hue so it stays visible where an over-budget fill overflows it.
   // A goal account draws Allocated vs Spent with its running Left, in the goals colour.
-  const income = data.account_type === 'income';
-  const goal = data.account_type === 'goal';
-  const labels = {budgeted: 'Budgeted', actual: 'Actual', available: 'Available', ...(data.series_labels || {})};
+  const income = data.kind === 'income';
+  const goal = data.kind === 'goal';
+  const labels = goal ? SERIES_LABELS.goal : SERIES_LABELS.default;
+  const series = (values) => values.map(Number);
   const seriesColor = goal ? '#c98500' : income ? MONEY.in : MONEY.out;
   const outlineColor = goal ? 'rgb(133, 88, 0)' : income ? 'rgb(15, 118, 66)' : 'rgb(185, 28, 28)';
 
@@ -28,13 +46,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const chart = new Chart(canvas, {
     data: {
-      labels: data.labels,
+      labels: data.months.map(monthLabel),
       datasets: [
         {
           // Dataset 0 draws top-most, so the line rides over the bars.
           type: 'line',
           label: labels.available,
-          data: data.available,
+          data: series(data.available),
           borderColor: MONEY.net,
           backgroundColor: MONEY.net,
           pointBackgroundColor: MONEY.net,
@@ -50,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
           // stays visible whether the fill is inside it or overflows it.
           type: 'bar',
           label: labels.budgeted,
-          data: data.budgeted,
+          data: series(data.budgeted),
           backgroundColor: 'transparent',
           borderColor: outlineColor,
           borderWidth: 2,
@@ -61,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
         {
           type: 'bar',
           label: labels.actual,
-          data: data.actual,
+          data: series(data.actual),
           backgroundColor: seriesColor,
           borderWidth: 0,
           borderRadius: 4,
@@ -108,4 +126,5 @@ document.addEventListener('DOMContentLoaded', () => {
     themedChart.options.scales.y.ticks.color = newInk;
     themedChart.data.datasets[0].pointBorderColor = newSurface;
   });
-});
+  return chart;
+}

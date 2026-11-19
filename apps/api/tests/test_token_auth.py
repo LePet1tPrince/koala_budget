@@ -117,10 +117,10 @@ class TokenRequestTest(TokenAuthTestCase):
         )
         self.assertEqual(log.user, self.user)
 
-    def test_token_reaches_a_plain_django_json_view_without_csrf(self):
+    def test_token_reaches_a_board_write_without_csrf(self):
         token = self.login()
         response = self.client.post(
-            self.book_url("accounts:api_set_hidden"),
+            self.book_url("accounts:board-set-hidden"),
             data=json.dumps({"account_id": self.data.groceries.id, "is_hidden": True}),
             content_type="application/json",
             headers={"X-Session-Token": token},
@@ -202,10 +202,10 @@ class SessionCookieTest(TokenAuthTestCase):
         self.assertIn("CSRF", response.json()["detail"])
         self.assertEqual(JournalEntry.objects.count(), before)
 
-    def test_a_session_post_without_csrf_to_a_plain_view_is_still_refused(self):
+    def test_a_session_post_without_csrf_to_a_board_write_is_still_refused(self):
         self.client.force_login(self.user)
         response = self.client.post(
-            self.book_url("accounts:api_set_hidden"),
+            self.book_url("accounts:board-set-hidden"),
             data=json.dumps({"account_id": self.data.groceries.id, "is_hidden": True}),
             content_type="application/json",
         )

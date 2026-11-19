@@ -41,6 +41,12 @@ READS = {
     "accounts:accountgroup_list": {},
     "accounts:payee_list": {},
     "accounts:institution_list": {},
+    "accounts:api-root": {},
+    "accounts:board": {},
+    "accounts:account-list": {},
+    "accounts:account-group-list": {},
+    "accounts:payee-list": {},
+    "accounts:institution-list": {},
     "journal:transactions_home": {},
     "journal:journal-entry-list": {},
     "journal:line-list": lambda a, b: {"account": b.groceries.id},
@@ -133,6 +139,13 @@ OBJECTS = {
     "accounts:institution_update": ("institution", "pk", "get"),
     "accounts:institution_accounts": ("institution", "pk", "post"),
     "accounts:institution_delete": ("institution", "pk", "post"),
+    "accounts:account-detail": ("account", "pk", "get"),
+    "accounts:account-activity": ("account", "pk", "get"),
+    "accounts:account-charts": ("account", "pk", "get"),
+    "accounts:account-group-detail": ("group", "pk", "delete"),
+    "accounts:payee-detail": ("payee", "pk", "patch"),
+    "accounts:institution-detail": ("institution", "pk", "delete"),
+    "accounts:institution-accounts": ("institution", "pk", "post"),
     "journal:journal-entry-detail": ("entry", "pk", "get"),
     "journal:journal-entry-audit": ("entry", "pk", "get"),
     "journal:journal-entry-post-entry": ("entry", "pk", "post"),
@@ -184,13 +197,13 @@ OBJECTS = {
 # name -> JSON body naming book B's rows (a callable taking (a, b) BookData).
 # The request may succeed on book A or be refused; book B must not change.
 WRITES = {
-    "accounts:api_reorder_accounts": lambda a, b: {
+    "accounts:board-reorder-accounts": lambda a, b: {
         "groups": [{"group_id": b.expense_group.id, "account_ids": [b.groceries.id]}]
     },
-    "accounts:api_reorder_groups": lambda a, b: {"account_type": "expense", "group_ids": [b.expense_group.id]},
-    "accounts:api_create_account": lambda a, b: {"name": "Sneaky", "group_id": b.expense_group.id},
-    "accounts:api_create_group": lambda a, b: {"name": "New group", "account_type": "expense"},
-    "accounts:api_set_hidden": lambda a, b: {"account_id": b.chequing.id, "is_hidden": True},
+    "accounts:board-reorder-groups": lambda a, b: {"account_type": "expense", "group_ids": [b.expense_group.id]},
+    "accounts:board-create-account": lambda a, b: {"name": "Sneaky", "group_id": b.expense_group.id},
+    "accounts:board-create-group": lambda a, b: {"name": "New group", "account_type": "expense"},
+    "accounts:board-set-hidden": lambda a, b: {"account_id": b.chequing.id, "is_hidden": True},
     "journal:journal-entry-list": None,  # placeholder, see WRITE_OVERRIDES
     # The Transactions page's editor. Every write takes a list of ids, so book B's
     # entry is named the same way a selection would name it.
@@ -350,7 +363,9 @@ class ReadIsolationTest(TwoBooksTestCase):
     def test_the_pages_do_show_book_a(self):
         """Guards the test itself: a page that renders nothing would pass the check above."""
         for name in (
-            "accounts:accounts_home",
+            "accounts:board",
+            "accounts:account-list",
+            "accounts:payee-list",
             "journal:transaction-list",
             "bank_feed:bank-feed-list",
             "budget:goals_list",

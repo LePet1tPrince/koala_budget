@@ -478,6 +478,9 @@ SPECTACULAR_SETTINGS = {
         "OpeningBalanceAccountTypeEnum": "apps.onboarding.serializers.OPENING_ACCOUNT_TYPES",
         # nav-state's Unassigned pill (apps.budget.unassigned), under the name it had first.
         "StateEnum": ["positive", "zero", "negative"],
+        # Every type the model stores (budget buckets included), and the ones a user may pick.
+        "AccountTypeEnum": "apps.accounts.models.ALL_ACCOUNT_TYPE_CHOICES",
+        "PickableAccountTypeEnum": "apps.accounts.models.ACCOUNT_TYPE_CHOICES",
     },
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}
