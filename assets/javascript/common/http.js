@@ -1,9 +1,9 @@
 import Cookies from 'js-cookie';
 
 /**
- * Shared plumbing for the hand-written page APIs (`ynab_import`, `portability`,
- * `reconcile`, `onboarding`, `monthly_review`): the CSRF header, JSON in and
- * out, and one reading of an error.
+ * Shared plumbing for the hand-written page APIs (`reconcile`, `monthly_review`):
+ * the CSRF header, JSON in and out, and one reading of an error. (Onboarding and
+ * the two import wizards use the generated api-client, via `api.js::apiCall`.)
  *
  * A failed response without an `error` field is one that never reached the
  * view -- a crash that returned Django's HTML page, a proxy timeout, a 413.
