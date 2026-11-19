@@ -53,13 +53,12 @@ export default defineConfig({
         'rules-app': path.resolve(__dirname, './assets/javascript/rules/rules-app.jsx'),
         'monthly-review-app': path.resolve(__dirname, './assets/javascript/monthly_review/monthly-review-app.jsx'),
         'monthly-review-resume': path.resolve(__dirname, './assets/javascript/monthly_review/resume.js'),
-        'income-statement-sankey': path.resolve(__dirname, './assets/javascript/reports/income-statement-sankey.js'),
-        'net-worth-chart': path.resolve(__dirname, './assets/javascript/reports/net-worth-chart.js'),
         'net-worth-month-picker': path.resolve(__dirname, './assets/javascript/reports/NetWorthTrendMonthPicker.jsx'),
-        'net-worth-composition-chart': path.resolve(__dirname, './assets/javascript/reports/net-worth-composition-chart.js'),
         'home-net-worth-chart': path.resolve(__dirname, './assets/javascript/dashboard/home-net-worth-chart.js'),
-        'cash-flow-chart': path.resolve(__dirname, './assets/javascript/reports/cash-flow-chart.js'),
-        'dollar-map-chart': path.resolve(__dirname, './assets/javascript/reports/dollar-map-chart.js'),
+        // The report pages' charts, each loaded from the reports API (apps/reports/api.py).
+        'spending-report': path.resolve(__dirname, './assets/javascript/reports/spending-report.js'),
+        'net-worth-report': path.resolve(__dirname, './assets/javascript/reports/net-worth-report.js'),
+        'budget-goals-report': path.resolve(__dirname, './assets/javascript/reports/budget-goals-report.js'),
         'unassigned-pill': path.resolve(__dirname, './assets/javascript/unassigned/unassigned-pill.js'),
       },
       output: {

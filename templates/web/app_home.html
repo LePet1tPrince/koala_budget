@@ -42,11 +42,8 @@
       <a href="{% url 'reports:net_worth' request.team.slug request.book.slug %}" class="link text-sm">{% translate "See more reports" %}</a>
     </div>
     {% if has_net_worth_trend %}
-      <div class="w-full relative" style="height: 220px;" data-chart-frame>
-        {# Drawn from `GET …/api/home/` (home-net-worth-chart.js); the spinner shows until it lands. #}
-        <div class="absolute inset-0 flex items-center justify-center" data-chart-loading>
-          <span class="loading loading-spinner loading-md text-base-content/40" aria-label="{% translate 'Loading' %}"></span>
-        </div>
+      {# Drawn from `GET …/api/home/` (home-net-worth-chart.js), with a spinner until it lands. #}
+      <div class="w-full" style="height: 220px;">
         <canvas id="home-net-worth-chart" class="w-full h-full"></canvas>
       </div>
     {% else %}

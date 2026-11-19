@@ -65,7 +65,7 @@ class MonthlyReviewHomeTests(MonthlyReviewViewTestCase):
 
     def test_month_query_param_is_parsed(self):
         response = self.client.get(self.home_url, {"month": "2026-08"})
-        self.assertContains(response, "2026-08-01")
+        self.assertContains(response, 'data-month="2026-08"')
 
     def test_month_defaults_to_last_complete_month(self):
         response = self.client.get(self.home_url)
@@ -90,14 +90,16 @@ class MonthlyReviewHomeTests(MonthlyReviewViewTestCase):
         response = self.client.get(self.home_url, {"month": "2026-10"})
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "nothing to review")
-        self.assertContains(response, "monthly-review-props")
+        # The app's mount, which loads the review from `api/review/`; no payload in the page.
+        self.assertContains(response, 'id="monthly-review-app"')
+        self.assertNotContains(response, "monthly-review-props")
 
     def test_can_navigate_back_to_an_earlier_reviewed_month(self):
         first_response = self.client.get(self.home_url, {"month": "2026-08"})
-        self.assertContains(first_response, "2026-08-01")
+        self.assertContains(first_response, 'data-month="2026-08"')
 
         later_response = self.client.get(self.home_url, {"month": "2026-09"})
-        self.assertContains(later_response, "2026-09-01")
+        self.assertContains(later_response, 'data-month="2026-09"')
 
         # Each month keeps its own state row.
         self.assertTrue(MonthlyReviewState.objects.filter(book=self.book, month=date(2026, 8, 1)).exists())
@@ -112,8 +114,9 @@ class MonthlyReviewHomeTests(MonthlyReviewViewTestCase):
 
 class ApiStepTests(MonthlyReviewViewTestCase):
     def test_records_step_and_logs_event(self):
-        response = self.post_json(self.step_url, {"month": "2026-08-01", "step": 3})
+        response = self.post_json(self.step_url, {"month": "2026-08", "step": 3})
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["state"]["step"], 3)
         state = MonthlyReviewState.objects.get(book=self.book, month=date(2026, 8, 1))
         self.assertEqual(state.step, 3)
         self.assertIn(3, state.steps_seen)
@@ -122,7 +125,7 @@ class ApiStepTests(MonthlyReviewViewTestCase):
         )
 
     def test_baseline_change_is_logged(self):
-        self.post_json(self.step_url, {"month": "2026-08-01", "baseline": "6m"})
+        self.post_json(self.step_url, {"month": "2026-08", "baseline": "6m"})
         state = MonthlyReviewState.objects.get(book=self.book, month=date(2026, 8, 1))
         self.assertEqual(state.baseline, "6m")
         self.assertTrue(
@@ -132,38 +135,121 @@ class ApiStepTests(MonthlyReviewViewTestCase):
     def test_non_member_is_refused(self):
         outsider = CustomUser.objects.create_user(username="outsider2", password="pass")
         self.client.force_login(outsider)
+        response = self.post_json(self.step_url, {"month": "2026-08", "step": 2})
+        self.assertIn(response.status_code, (403, 404))
+        self.assertFalse(MonthlyReviewState.objects.filter(book=self.book).exists())
+
+    def test_anonymous_is_refused(self):
+        self.client.logout()
+        response = self.post_json(self.step_url, {"month": "2026-08", "step": 2})
+        self.assertIn(response.status_code, (401, 403))
+
+    def test_month_must_be_yyyy_mm(self):
         response = self.post_json(self.step_url, {"month": "2026-08-01", "step": 2})
-        self.assertNotEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("month", response.json())
+
+    def test_unknown_baseline_is_refused(self):
+        response = self.post_json(self.step_url, {"month": "2026-08", "baseline": "2y"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("baseline", response.json())
+
+    def test_a_step_starts_the_review(self):
+        self.post_json(self.step_url, {"month": "2026-08", "step": 1})
+        self.assertIsNotNone(MonthlyReviewState.objects.get(book=self.book, month=date(2026, 8, 1)).started_at)
 
 
 class ApiCompleteTests(MonthlyReviewViewTestCase):
     def test_marks_month_reviewed_and_returns_recap(self):
-        response = self.post_json(self.complete_url, {"month": "2026-08-01"})
+        response = self.post_json(self.complete_url, {"month": "2026-08"})
         self.assertEqual(response.status_code, 200)
         state = MonthlyReviewState.objects.get(book=self.book, month=date(2026, 8, 1))
         self.assertTrue(state.is_finished)
         payload = response.json()
-        self.assertIn("current", payload)
-        self.assertEqual(Decimal(str(payload["current"]["income"])), Decimal("1000"))
+        self.assertFalse(payload["already_finished"])
+        self.assertTrue(payload["state"]["is_finished"])
+        self.assertEqual(Decimal(payload["current"]["income"]), Decimal("1000"))
         self.assertTrue(
             AuditEvent.objects.filter(team=self.team, event_type=AuditEvent.MONTHLY_REVIEW_COMPLETED).exists()
         )
 
     def test_already_finished_is_a_no_op(self):
-        self.post_json(self.complete_url, {"month": "2026-08-01"})
-        response = self.post_json(self.complete_url, {"month": "2026-08-01"})
-        self.assertEqual(response.json(), {"already_finished": True})
+        self.post_json(self.complete_url, {"month": "2026-08"})
+        response = self.post_json(self.complete_url, {"month": "2026-08"})
+        payload = response.json()
+        self.assertTrue(payload["already_finished"])
+        self.assertIsNone(payload["current"])
+        self.assertEqual(
+            AuditEvent.objects.filter(team=self.team, event_type=AuditEvent.MONTHLY_REVIEW_COMPLETED).count(), 1
+        )
+
+    def test_month_is_required(self):
+        response = self.post_json(self.complete_url, {})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("month", response.json())
 
 
 class ApiDismissTests(MonthlyReviewViewTestCase):
     def test_dismisses_and_logs_event(self):
-        response = self.post_json(self.dismiss_url, {"month": "2026-08-01"})
+        response = self.post_json(self.dismiss_url, {"month": "2026-08"})
         self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(response.json()["state"]["dismissed_at"])
         state = MonthlyReviewState.objects.get(book=self.book, month=date(2026, 8, 1))
         self.assertTrue(state.is_finished)
         self.assertTrue(
             AuditEvent.objects.filter(team=self.team, event_type=AuditEvent.MONTHLY_REVIEW_DISMISSED).exists()
         )
+
+
+class ApiReviewTests(MonthlyReviewViewTestCase):
+    def setUp(self):
+        super().setUp()
+        self.review_url = reverse("monthly_review:api_review", args=[self.team.slug, self.book.slug])
+
+    def test_returns_the_whole_review_with_ids_and_no_links(self):
+        response = self.client.get(self.review_url, {"month": "2026-08"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["month"], "2026-08")
+        self.assertTrue(payload["has_activity"])
+        review = payload["review"]
+        self.assertEqual(review["month"], "2026-08")
+        self.assertEqual(Decimal(review["current"]["income"]), Decimal("1000.00"))
+        self.assertEqual(payload["state"]["step"], 0)
+        self.assertFalse(payload["state"]["is_finished"])
+        by_account = {row["name"]: row for row in review["net_worth"]["by_account"]}
+        self.assertEqual(by_account["Chequing"]["id"], self.chequing.id)
+        self.assertEqual(review["net_worth"]["series"][-1]["key"], "2026-08")
+        self.assertNotIn("/a/", response.content.decode())
+
+    def test_is_a_read(self):
+        """Opening the page starts a review; reading it does not (no state row, no audit event)."""
+        self.client.get(self.review_url, {"month": "2026-08"})
+        self.assertFalse(MonthlyReviewState.objects.filter(book=self.book).exists())
+        self.assertFalse(AuditEvent.objects.filter(event_type=AuditEvent.MONTHLY_REVIEW_STARTED).exists())
+
+    def test_reports_saved_progress(self):
+        self.post_json(self.step_url, {"month": "2026-08", "step": 4, "baseline": "1m"})
+        state = self.client.get(self.review_url, {"month": "2026-08"}).json()["state"]
+        self.assertEqual((state["step"], state["baseline"], state["steps_seen"]), (4, "1m", [4]))
+
+    def test_month_before_any_activity_has_no_review(self):
+        payload = self.client.get(self.review_url, {"month": "2020-01"}).json()
+        self.assertFalse(payload["has_activity"])
+        self.assertIsNone(payload["review"])
+
+    def test_malformed_month_is_a_400(self):
+        response = self.client.get(self.review_url, {"month": "August"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("month", response.json())
+
+    def test_non_member_is_refused(self):
+        self.client.force_login(CustomUser.objects.create_user(username="outsider3", password="pass"))
+        self.assertIn(self.client.get(self.review_url, {"month": "2026-08"}).status_code, (403, 404))
+
+    def test_anonymous_is_refused(self):
+        self.client.logout()
+        self.assertIn(self.client.get(self.review_url, {"month": "2026-08"}).status_code, (401, 403))
 
 
 class ExportTests(MonthlyReviewViewTestCase):

@@ -261,11 +261,11 @@ function render(canvas, data) {
   }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const dataEl = document.getElementById('net-worth-composition-data');
-  const canvas = document.getElementById('net-worth-composition-chart');
-  if (!dataEl || !canvas) return;
-  const data = JSON.parse(dataEl.textContent);
+/**
+ * The Net Worth composition chart. `data`: {labels: [ISO month end], groups: [{name, type, values}],
+ * net_worth} -- numbers.
+ */
+export function drawCompositionChart(canvas, data) {
   if (!data.groups || !data.groups.length) return;
 
   // The canvas may start in a hidden view, where Chart.js would size it 0×0:
@@ -277,4 +277,4 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   observer.observe(canvas);
-});
+}

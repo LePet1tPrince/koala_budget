@@ -227,7 +227,7 @@
   </h2>
   <p class="text-sm text-base-content/70 mb-4">{% translate "Each bar is one step of the sum." %}</p>
   <div class="w-full" style="height: 300px;">
-    <canvas id="dollar-map-chart" class="w-full h-full" aria-hidden="true"></canvas>
+    <canvas id="dollar-map-chart" class="w-full h-full" aria-hidden="true" data-month="{{ month|date:'Y-m' }}"></canvas>
   </div>
   <div class="overflow-x-auto mt-4">
     <table class="table table-sm table-quiet">
@@ -245,6 +245,7 @@
 {% endblock %}
 
 {% block page_js %}
-{{ waterfall|json_script:'dollar-map-data' }}
-{% vite_asset 'assets/javascript/reports/dollar-map-chart.js' %}
+{% comment %}The waterfall loads from `GET …/reports/api/budget-and-goals/` (budget-goals-report.js).{% endcomment %}
+{{ request.book.base_url|json_script:'book-base' }}
+{% vite_asset 'assets/javascript/reports/budget-goals-report.js' %}
 {% endblock %}
