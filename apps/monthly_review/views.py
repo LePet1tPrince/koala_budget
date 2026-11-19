@@ -1,39 +1,45 @@
 """
-The guided monthly review: a page view rendering the whole payload for one
-month, plus tiny JSON POSTs recording walkthrough progress.
+The guided monthly review: a page view (the empty state, or the React app's
+mount) and its API -- the whole review for one month, plus small POSTs
+recording walkthrough progress.
 
 Not a takeover -- unlike onboarding, a returning user must be able to leave
 mid-review, so this page extends the ordinary app shell and keeps the sidebar
 (docs/monthly-review-plan.md §5.4).
 
-The whole review ships in one `json_script` payload (§2): there is no data
-endpoint for the walkthrough or the dashboard, only these small state writes.
+The whole review is one read (`api/review/`, §2): the walkthrough and the
+dashboard both render from it, and changing the baseline never asks again.
 """
 
-from dataclasses import asdict as dataclass_asdict
-from dataclasses import is_dataclass
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import date
 
-from django.db.models import Model
-from django.http import JsonResponse
 from django.shortcuts import render
-from django.urls import reverse
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_POST
+from drf_spectacular.utils import extend_schema
+from rest_framework.response import Response
 
+from apps.api.base import BookAPIView, month_parameter, month_query_param
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
 from apps.journal.models import JournalEntry, counted_entries, transaction_entries
-from apps.utils.json_views import json_body
 from apps.utils.months import add_months
 
 from .exports import export_monthly_review_csv
 from .models import MonthlyReviewState
+from .serializers import (
+    CompleteResponseSerializer,
+    FinishResponseSerializer,
+    MonthlyReviewSerializer,
+    MonthRequestSerializer,
+    StepRequestSerializer,
+    StepResponseSerializer,
+)
 from .services.review import build_review
+
+TAGS = ["monthly_review"]
 
 
 def _parse_month(value):
@@ -63,27 +69,6 @@ def _month_from_request(request):
     return _default_month()
 
 
-def _json_safe(value):
-    """Recursively convert a `build_review` payload into JSON-safe types for
-    `json_script`: Decimal -> float, dates -> ISO strings, model instances ->
-    {id, name}, Insight dataclasses -> dict."""
-    if isinstance(value, Decimal):
-        return float(value)
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, date):
-        return value.isoformat()
-    if is_dataclass(value) and not isinstance(value, type):
-        return _json_safe(dataclass_asdict(value))
-    if isinstance(value, Model):
-        return {"id": value.pk, "name": str(value)}
-    if isinstance(value, dict):
-        return {key: _json_safe(val) for key, val in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(v) for v in value]
-    return value
-
-
 def _get_or_create_state(book, month) -> MonthlyReviewState:
     state, _created = MonthlyReviewState.objects.get_or_create(book=book, month=month)
     return state
@@ -104,6 +89,11 @@ def _book_has_activity_by(book, month) -> bool:
 @ensure_csrf_cookie
 @login_and_book_required
 def monthly_review_home(request, team_slug, book_slug):
+    """
+    The review's page: the empty state, or the mount the React app fills from
+    `api/review/` (it shows a skeleton until the review lands). Opening the page
+    is what starts a month's review.
+    """
     month = _month_from_request(request)
     state = _get_or_create_state(request.book, month)
 
@@ -120,107 +110,153 @@ def monthly_review_home(request, team_slug, book_slug):
         "next_month": add_months(month, 1),
         "empty_state": not _book_has_activity_by(request.book, month),
     }
-
-    if not context["empty_state"]:
-        review = build_review(request.book, month)
-        context["monthly_review_props"] = {
-            "teamSlug": team_slug,
-            "month": month.isoformat(),
-            "review": _json_safe(review),
-            "state": {
-                "step": state.step,
-                "stepsSeen": state.steps_seen,
-                "baseline": state.baseline,
-                "isFinished": state.is_finished,
-            },
-            "urls": {
-                "step": reverse("monthly_review:api_step", args=[team_slug, book_slug]),
-                "complete": reverse("monthly_review:api_complete", args=[team_slug, book_slug]),
-                "dismiss": reverse("monthly_review:api_dismiss", args=[team_slug, book_slug]),
-                "export": reverse("monthly_review:export", args=[team_slug, book_slug]) + f"?month={month.isoformat()}",
-                "reportsHome": reverse("reports:reports_home", args=[team_slug, book_slug]),
-                "inbox": reverse("bank_feed:bank_feed_home", args=[team_slug, book_slug]),
-            },
-        }
-
     return render(request, "monthly_review/monthly_review_home.html", context)
 
 
-@require_POST
-@login_and_book_required
-def api_step(request, team_slug, book_slug):
-    body = json_body(request)
-    month = _parse_month(body.get("month")) or _default_month()
-    state = _get_or_create_state(request.book, month)
-
-    if state.started_at is None:
-        state.start()
-        log_event(AuditEvent.MONTHLY_REVIEW_STARTED, request=request, metadata={"month": month.isoformat()})
-
-    baseline = body.get("baseline")
-    if baseline and baseline != state.baseline:
-        log_event(
-            AuditEvent.MONTHLY_REVIEW_BASELINE_CHANGED,
-            request=request,
-            metadata={"month": month.isoformat(), "from": state.baseline, "to": baseline},
-        )
-        state.baseline = baseline
-
-    step = body.get("step")
-    if isinstance(step, int) and step != state.step:
-        log_event(
-            AuditEvent.MONTHLY_REVIEW_STEP_COMPLETED,
-            request=request,
-            metadata={"month": month.isoformat(), "step": state.step, "next": step},
-        )
-        state.advance(step)
-
-    state.save()
-    return JsonResponse({"step": state.step, "steps_seen": state.steps_seen, "baseline": state.baseline})
+def _state_payload(state: MonthlyReviewState) -> dict:
+    return {
+        "step": state.step,
+        "steps_seen": state.steps_seen,
+        "baseline": state.baseline,
+        "is_finished": state.is_finished,
+        "completed_at": state.completed_at,
+        "dismissed_at": state.dismissed_at,
+    }
 
 
-@require_POST
-@login_and_book_required
-def api_complete(request, team_slug, book_slug):
-    body = json_body(request)
-    month = _parse_month(body.get("month")) or _default_month()
-    state = _get_or_create_state(request.book, month)
+def _month_body(request, serializer_class=MonthRequestSerializer):
+    body = serializer_class(data=request.data)
+    body.is_valid(raise_exception=True)
+    return body.validated_data
 
-    if state.is_finished:
-        return JsonResponse({"already_finished": True})
 
-    state.complete()
-    state.save()
+class ReviewView(BookAPIView):
+    """
+    The whole review of one month, every comparison baseline precomputed (a client
+    reslices it per baseline without asking again), with where the user got to.
+    The month defaults to the last complete one. A month before the book's first
+    activity has nothing to review: `has_activity` is false and `review` null.
 
-    review = build_review(request.book, month)
-    log_event(
-        AuditEvent.MONTHLY_REVIEW_COMPLETED,
-        request=request,
-        metadata={
-            "month": month.isoformat(),
-            "steps_seen": state.steps_seen,
-            "flags": [flag["kind"] for flag in review["health"]["flags"]],
-        },
+    A read: it does not start the review (opening the page does, or the first
+    `api/step/`).
+    """
+
+    @extend_schema(
+        operation_id="monthly_review_retrieve",
+        tags=TAGS,
+        parameters=[month_parameter(description="The reviewed month, as YYYY-MM (default: last month).")],
+        responses=MonthlyReviewSerializer,
     )
-    return JsonResponse({"current": _json_safe(review["current"])})
+    def get(self, request, team_slug, book_slug):
+        month = month_query_param(request, default=_default_month)
+        state = MonthlyReviewState.objects.filter(book=self.book, month=month).first() or MonthlyReviewState(
+            book=self.book, month=month
+        )
+        has_activity = _book_has_activity_by(self.book, month)
+        data = {
+            "month": month,
+            "has_activity": has_activity,
+            "review": build_review(self.book, month) if has_activity else None,
+            "state": _state_payload(state),
+        }
+        return Response(MonthlyReviewSerializer(data).data)
 
 
-@require_POST
-@login_and_book_required
-def api_dismiss(request, team_slug, book_slug):
-    body = json_body(request)
-    month = _parse_month(body.get("month")) or _default_month()
-    state = _get_or_create_state(request.book, month)
+class StepView(BookAPIView):
+    """Record the step the user is on and the baseline they chose (each optional); starts the review."""
 
-    if state.is_finished:
-        return JsonResponse({"already_finished": True})
-
-    state.dismiss()
-    state.save()
-    log_event(
-        AuditEvent.MONTHLY_REVIEW_DISMISSED, request=request, metadata={"month": month.isoformat(), "step": state.step}
+    @extend_schema(
+        operation_id="monthly_review_step",
+        tags=TAGS,
+        request=StepRequestSerializer,
+        responses=StepResponseSerializer,
     )
-    return JsonResponse({"dismissed": True})
+    def post(self, request, team_slug, book_slug):
+        body = _month_body(request, StepRequestSerializer)
+        month = body["month"]
+        state = _get_or_create_state(self.book, month)
+
+        if state.started_at is None:
+            state.start()
+            log_event(AuditEvent.MONTHLY_REVIEW_STARTED, request=request, metadata={"month": month.isoformat()})
+
+        baseline = body.get("baseline")
+        if baseline and baseline != state.baseline:
+            log_event(
+                AuditEvent.MONTHLY_REVIEW_BASELINE_CHANGED,
+                request=request,
+                metadata={"month": month.isoformat(), "from": state.baseline, "to": baseline},
+            )
+            state.baseline = baseline
+
+        step = body.get("step")
+        if step is not None and step != state.step:
+            log_event(
+                AuditEvent.MONTHLY_REVIEW_STEP_COMPLETED,
+                request=request,
+                metadata={"month": month.isoformat(), "step": state.step, "next": step},
+            )
+            state.advance(step)
+
+        state.save()
+        return Response(StepResponseSerializer({"state": _state_payload(state)}).data)
+
+
+class CompleteView(BookAPIView):
+    """Mark the month reviewed (once): the client opens the month's dashboard. Returns its headline figures."""
+
+    @extend_schema(
+        operation_id="monthly_review_complete",
+        tags=TAGS,
+        request=MonthRequestSerializer,
+        responses=CompleteResponseSerializer,
+    )
+    def post(self, request, team_slug, book_slug):
+        month = _month_body(request)["month"]
+        state = _get_or_create_state(self.book, month)
+        if state.is_finished:
+            data = {"already_finished": True, "state": _state_payload(state), "current": None}
+            return Response(CompleteResponseSerializer(data).data)
+
+        state.complete()
+        state.save()
+        review = build_review(self.book, month)
+        log_event(
+            AuditEvent.MONTHLY_REVIEW_COMPLETED,
+            request=request,
+            metadata={
+                "month": month.isoformat(),
+                "steps_seen": state.steps_seen,
+                "flags": [flag["kind"] for flag in review["health"]["flags"]],
+            },
+        )
+        data = {"already_finished": False, "state": _state_payload(state), "current": review["current"]}
+        return Response(CompleteResponseSerializer(data).data)
+
+
+class DismissView(BookAPIView):
+    """Skip the month's review (once): the dashboard stops nudging for it."""
+
+    @extend_schema(
+        operation_id="monthly_review_dismiss",
+        tags=TAGS,
+        request=MonthRequestSerializer,
+        responses=FinishResponseSerializer,
+    )
+    def post(self, request, team_slug, book_slug):
+        month = _month_body(request)["month"]
+        state = _get_or_create_state(self.book, month)
+        if state.is_finished:
+            return Response(FinishResponseSerializer({"already_finished": True, "state": _state_payload(state)}).data)
+
+        state.dismiss()
+        state.save()
+        log_event(
+            AuditEvent.MONTHLY_REVIEW_DISMISSED,
+            request=request,
+            metadata={"month": month.isoformat(), "step": state.step},
+        )
+        return Response(FinishResponseSerializer({"already_finished": False, "state": _state_payload(state)}).data)
 
 
 @login_and_book_required

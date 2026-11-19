@@ -167,11 +167,6 @@ def _contra_account_name(line) -> str:
 
 
 def _biggest_transactions(book, month, month_end, limit=25) -> list:
-    # There is no per-entry detail page in the app (transactions are worked
-    # through the Transactions list, not a standalone URL per entry), so every
-    # row links there rather than to a page that doesn't exist.
-    transactions_url = reverse("journal:transactions_home", args=book.url_args)
-
     lines = (
         JournalLine.objects.filter(
             book=book,
@@ -188,12 +183,15 @@ def _biggest_transactions(book, month, month_end, limit=25) -> list:
     for line in lines:
         rows.append(
             {
+                # The entry, for a client to find it in the Transactions list (there
+                # is no per-entry page).
+                "entry_id": line.journal_entry_id,
                 "date": line.journal_entry.entry_date,
                 "payee": line.journal_entry.payee.name if line.journal_entry.payee else "",
+                "category_id": line.account_id,
                 "category": line.account.name,
                 "account": _contra_account_name(line),
                 "amount": line.dr_amount,
-                "entry_url": transactions_url,
             }
         )
     return rows
@@ -262,6 +260,7 @@ def _balance_by_account(report_service, month_end, baselines) -> list:
                 continue
             rows.append(
                 {
+                    "id": account.pk,
                     "name": account.name,
                     "type": type_label,
                     "balance": item["amount"],
@@ -392,7 +391,7 @@ def _goal_spending(book, month: date) -> list:
     monthly = goal_monthly(book, goals, end=add_months(month, 1))
     for goal in goals:
         months_funded = sum(1 for v in monthly[goal.pk].values() if v["saved"] > 0)
-        rows.append({"name": goal.name, "amount": goal.spent_this_month, "months_funded": months_funded})
+        rows.append({"id": goal.pk, "name": goal.name, "amount": goal.spent_this_month, "months_funded": months_funded})
     rows.sort(key=lambda r: r["amount"], reverse=True)
     return rows
 
