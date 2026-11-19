@@ -68,7 +68,11 @@ export interface GoalWrite {
      */
     monthlyContribution?: string | null;
     /**
+     * Omitted, the goal keeps its own.
      * 
+     * * `withdraw` - withdraw
+     * * `spend` - spend
+     * * `ignore` - ignore
      * @type {GoalOutflowEnum}
      * @memberof GoalWrite
      */

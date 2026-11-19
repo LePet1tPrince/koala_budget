@@ -40,7 +40,13 @@ export interface ReviewStepRequest {
      */
     step?: number;
     /**
+     * Null (or absent) leaves it as it is.
      * 
+     * * `1m` - 1m
+     * * `3m` - 3m
+     * * `6m` - 6m
+     * * `12m` - 12m
+     * * `all` - all
      * @type {ReviewBaselineEnum}
      * @memberof ReviewStepRequest
      */

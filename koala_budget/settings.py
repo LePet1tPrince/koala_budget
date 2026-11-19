@@ -467,6 +467,11 @@ SPECTACULAR_SETTINGS = {
     "PREPROCESSING_HOOKS": [
         "apps.api.schema.filter_schema_apis",
     ],
+    # A choice field that allows "" (or null) references its enum directly, rather than
+    # `oneOf: [Enum, BlankEnum]`: openapi-generator 7.9.0's typescript-fetch emits a
+    # oneOf-of-enums model that doesn't compile (a missing `...ToJSONTyped`). The blank
+    # value is documented in the field's description instead.
+    "ENUM_ADD_EXPLICIT_BLANK_NULL_CHOICE": False,
     # Choice sets whose field name (`status`, `state`, `kind`...) other components
     # share: named here so they neither collide nor rename another component's enum.
     "ENUM_NAME_OVERRIDES": {

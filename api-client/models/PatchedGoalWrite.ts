@@ -68,7 +68,11 @@ export interface PatchedGoalWrite {
      */
     monthlyContribution?: string | null;
     /**
+     * Omitted, the goal keeps its own.
      * 
+     * * `withdraw` - withdraw
+     * * `spend` - spend
+     * * `ignore` - ignore
      * @type {GoalOutflowEnum}
      * @memberof PatchedGoalWrite
      */

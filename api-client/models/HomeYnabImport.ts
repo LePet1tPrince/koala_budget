@@ -13,13 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
-import type { HomeYnabImportState } from './HomeYnabImportState';
+import type { HomeYnabImportStateEnum } from './HomeYnabImportStateEnum';
 import {
-    HomeYnabImportStateFromJSON,
-    HomeYnabImportStateFromJSONTyped,
-    HomeYnabImportStateToJSON,
-    HomeYnabImportStateToJSONTyped,
-} from './HomeYnabImportState';
+    HomeYnabImportStateEnumFromJSON,
+    HomeYnabImportStateEnumFromJSONTyped,
+    HomeYnabImportStateEnumToJSON,
+    HomeYnabImportStateEnumToJSONTyped,
+} from './HomeYnabImportStateEnum';
 
 /**
  * 
@@ -34,12 +34,18 @@ export interface HomeYnabImport {
      */
     offered: boolean;
     /**
+     * An import still going or one that failed; blank for neither.
      * 
-     * @type {HomeYnabImportState}
+     * * `` - 
+     * * `running` - running
+     * * `failed` - failed
+     * @type {HomeYnabImportStateEnum}
      * @memberof HomeYnabImport
      */
-    state: HomeYnabImportState;
+    state: HomeYnabImportStateEnum;
 }
+
+
 
 /**
  * Check if a given object implements the HomeYnabImport interface.
@@ -61,7 +67,7 @@ export function HomeYnabImportFromJSONTyped(json: any, ignoreDiscriminator: bool
     return {
         
         'offered': json['offered'],
-        'state': HomeYnabImportStateFromJSON(json['state']),
+        'state': HomeYnabImportStateEnumFromJSON(json['state']),
     };
 }
 
@@ -77,7 +83,7 @@ export function HomeYnabImportFromJSONTyped(json: any, ignoreDiscriminator: bool
     return {
         
         'offered': value['offered'],
-        'state': HomeYnabImportStateToJSON(value['state']),
+        'state': HomeYnabImportStateEnumToJSON(value['state']),
     };
 }
 

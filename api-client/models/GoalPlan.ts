@@ -58,7 +58,11 @@ export interface GoalPlan {
      */
     rateForDate: string | null;
     /**
+     * Against the plan's straight line; null once funded.
      * 
+     * * `ahead` - ahead
+     * * `on_track` - on_track
+     * * `behind` - behind
      * @type {GoalPlanStatusEnum}
      * @memberof GoalPlan
      */

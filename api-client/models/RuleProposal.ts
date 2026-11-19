@@ -20,13 +20,13 @@ import {
     RuleProposalFieldEnumToJSON,
     RuleProposalFieldEnumToJSONTyped,
 } from './RuleProposalFieldEnum';
-import type { DirectionE31Enum } from './DirectionE31Enum';
+import type { RuleDirectionEnum } from './RuleDirectionEnum';
 import {
-    DirectionE31EnumFromJSON,
-    DirectionE31EnumFromJSONTyped,
-    DirectionE31EnumToJSON,
-    DirectionE31EnumToJSONTyped,
-} from './DirectionE31Enum';
+    RuleDirectionEnumFromJSON,
+    RuleDirectionEnumFromJSONTyped,
+    RuleDirectionEnumToJSON,
+    RuleDirectionEnumToJSONTyped,
+} from './RuleDirectionEnum';
 import type { RuleProposalStatusEnum } from './RuleProposalStatusEnum';
 import {
     RuleProposalStatusEnumFromJSON,
@@ -67,10 +67,10 @@ export interface RuleProposal {
     readonly value: string;
     /**
      * 
-     * @type {DirectionE31Enum}
+     * @type {RuleDirectionEnum}
      * @memberof RuleProposal
      */
-    readonly direction: DirectionE31Enum;
+    readonly direction: RuleDirectionEnum;
     /**
      * 
      * @type {number}
@@ -136,7 +136,7 @@ export function RuleProposalFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'signature': json['signature'],
         'field': RuleProposalFieldEnumFromJSON(json['field']),
         'value': json['value'],
-        'direction': DirectionE31EnumFromJSON(json['direction']),
+        'direction': RuleDirectionEnumFromJSON(json['direction']),
         'category': json['category'],
         'categoryName': json['category_name'],
         'evidenceCount': json['evidence_count'],

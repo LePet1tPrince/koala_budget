@@ -16,11 +16,14 @@
 import * as runtime from '../runtime';
 import type {
   CheckoutSessionRequest,
+  ProductWithMetadata,
   StripeSession,
 } from '../models/index';
 import {
     CheckoutSessionRequestFromJSON,
     CheckoutSessionRequestToJSON,
+    ProductWithMetadataFromJSON,
+    ProductWithMetadataToJSON,
     StripeSessionFromJSON,
     StripeSessionToJSON,
 } from '../models/index';
@@ -38,6 +41,43 @@ export interface CreatePortalSessionRequest {
  * 
  */
 export class SubscriptionsApi extends runtime.BaseAPI {
+
+    /**
+     * The plans on offer, with their prices: what a client shows before `create_checkout_session`.
+     */
+    async activeProductsListRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<ProductWithMetadata>>> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
+            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        }
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/subscriptions/api/active-products/`,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(ProductWithMetadataFromJSON));
+    }
+
+    /**
+     * The plans on offer, with their prices: what a client shows before `create_checkout_session`.
+     */
+    async activeProductsList(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<ProductWithMetadata>> {
+        const response = await this.activeProductsListRaw(initOverrides);
+        return await response.value();
+    }
 
     /**
      * A Stripe Checkout session for the team to subscribe to `price_id`: the URL to send the user to. The API form of the upgrade page\'s form, whose view (`create_checkout_session`) redirects to the same URL; Stripe returns to `subscriptions:subscription_confirm`.

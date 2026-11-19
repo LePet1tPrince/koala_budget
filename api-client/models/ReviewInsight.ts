@@ -65,11 +65,11 @@ export interface ReviewInsight {
      */
     body: string;
     /**
-     * 
+     * Where to act on it: `inbox`, or null.
      * @type {ReviewInsightActionEnum}
      * @memberof ReviewInsight
      */
-    action: ReviewInsightActionEnum | null;
+    readonly action: ReviewInsightActionEnum | null;
     /**
      * 
      * @type {string}
@@ -132,7 +132,7 @@ export function ReviewInsightFromJSONTyped(json: any, ignoreDiscriminator: boole
       return ReviewInsightToJSONTyped(json, false);
   }
 
-  export function ReviewInsightToJSONTyped(value?: ReviewInsight | null, ignoreDiscriminator: boolean = false): any {
+  export function ReviewInsightToJSONTyped(value?: Omit<ReviewInsight, 'action'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -144,7 +144,6 @@ export function ReviewInsightFromJSONTyped(json: any, ignoreDiscriminator: boole
         'step': value['step'],
         'title': value['title'],
         'body': value['body'],
-        'action': ReviewInsightActionEnumToJSON(value['action']),
         'metric': value['metric'],
         'delta': value['delta'],
         'lines': value['lines'],

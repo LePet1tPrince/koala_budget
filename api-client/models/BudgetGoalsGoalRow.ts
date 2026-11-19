@@ -13,6 +13,13 @@
  */
 
 import { mapValues } from '../runtime';
+import type { NoteEnum } from './NoteEnum';
+import {
+    NoteEnumFromJSON,
+    NoteEnumFromJSONTyped,
+    NoteEnumToJSON,
+    NoteEnumToJSONTyped,
+} from './NoteEnum';
 import type { BudgetGoalsGoal } from './BudgetGoalsGoal';
 import {
     BudgetGoalsGoalFromJSON,
@@ -20,13 +27,6 @@ import {
     BudgetGoalsGoalToJSON,
     BudgetGoalsGoalToJSONTyped,
 } from './BudgetGoalsGoal';
-import type { BudgetGoalsGoalRowNote } from './BudgetGoalsGoalRowNote';
-import {
-    BudgetGoalsGoalRowNoteFromJSON,
-    BudgetGoalsGoalRowNoteFromJSONTyped,
-    BudgetGoalsGoalRowNoteToJSON,
-    BudgetGoalsGoalRowNoteToJSONTyped,
-} from './BudgetGoalsGoalRowNote';
 
 /**
  * 
@@ -48,10 +48,10 @@ export interface BudgetGoalsGoalRow {
     needed: string | null;
     /**
      * 
-     * @type {BudgetGoalsGoalRowNote}
+     * @type {NoteEnum}
      * @memberof BudgetGoalsGoalRow
      */
-    note: BudgetGoalsGoalRowNote;
+    note: NoteEnum;
     /**
      * Assigned to the goal this month.
      * @type {string}
@@ -84,6 +84,8 @@ export interface BudgetGoalsGoalRow {
     pctCapped: number;
 }
 
+
+
 /**
  * Check if a given object implements the BudgetGoalsGoalRow interface.
  */
@@ -111,7 +113,7 @@ export function BudgetGoalsGoalRowFromJSONTyped(json: any, ignoreDiscriminator: 
         
         'goal': BudgetGoalsGoalFromJSON(json['goal']),
         'needed': json['needed'],
-        'note': BudgetGoalsGoalRowNoteFromJSON(json['note']),
+        'note': NoteEnumFromJSON(json['note']),
         'assigned': json['assigned'],
         'spent': json['spent'],
         'left': json['left'],
@@ -133,7 +135,7 @@ export function BudgetGoalsGoalRowFromJSONTyped(json: any, ignoreDiscriminator: 
         
         'goal': BudgetGoalsGoalToJSON(value['goal']),
         'needed': value['needed'],
-        'note': BudgetGoalsGoalRowNoteToJSON(value['note']),
+        'note': NoteEnumToJSON(value['note']),
         'assigned': value['assigned'],
         'spent': value['spent'],
         'left': value['left'],

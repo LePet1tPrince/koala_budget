@@ -43,7 +43,6 @@ models/BalancePoint.ts
 models/BankFeedRow.ts
 models/BankFeedRowSourceEnum.ts
 models/BatchIds.ts
-models/BlankEnum.ts
 models/Board.ts
 models/BoardAccount.ts
 models/BoardCreateAccount.ts
@@ -65,7 +64,6 @@ models/BudgetCoverSourceEnum.ts
 models/BudgetGoalsEnvelopes.ts
 models/BudgetGoalsGoal.ts
 models/BudgetGoalsGoalRow.ts
-models/BudgetGoalsGoalRowNote.ts
 models/BudgetGoalsGoalTotals.ts
 models/BudgetGoalsReport.ts
 models/BudgetGoalsUnassigned.ts
@@ -102,7 +100,6 @@ models/DataImportStatus.ts
 models/DataUploadResult.ts
 models/DeclineDraft.ts
 models/DeleteAccount.ts
-models/DirectionE31Enum.ts
 models/EventTypeEnum.ts
 models/ExchangePublicTokenRequest.ts
 models/ExchangePublicTokenResponse.ts
@@ -158,7 +155,6 @@ models/HomeIncome.ts
 models/HomeMonthlyReviewNudge.ts
 models/HomeTrendPoint.ts
 models/HomeYnabImport.ts
-models/HomeYnabImportState.ts
 models/HomeYnabImportStateEnum.ts
 models/HubAccount.ts
 models/ImportStatusEnum.ts
@@ -207,7 +203,6 @@ models/NetWorthSection.ts
 models/NetWorthSectionKeyEnum.ts
 models/NetWorthStats.ts
 models/NoteEnum.ts
-models/NullEnum.ts
 models/OnboardingAnswersRequest.ts
 models/OnboardingAnswersResponse.ts
 models/OnboardingCatalog.ts
@@ -277,6 +272,9 @@ models/PlaidItemsSync200Response.ts
 models/PlaidTransaction.ts
 models/PortabilityPage.ts
 models/Price.ts
+models/Product.ts
+models/ProductMetadata.ts
+models/ProductWithMetadata.ts
 models/Profile.ts
 models/ProfileUpdate.ts
 models/ReconcileAccount.ts
@@ -335,6 +333,7 @@ models/ReviewStreamRow.ts
 models/RoleEnum.ts
 models/Rule.ts
 models/RuleActionEnum.ts
+models/RuleDirectionEnum.ts
 models/RuleDraft.ts
 models/RuleDraftActionEnum.ts
 models/RuleDraftDirectionEnum.ts
