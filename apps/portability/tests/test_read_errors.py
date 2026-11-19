@@ -10,6 +10,7 @@ import json
 import zipfile
 from datetime import date
 from decimal import Decimal
+from unittest import mock
 
 from django.test import SimpleTestCase
 
@@ -48,6 +49,16 @@ def _drop_column(csv_bytes: bytes, column: str) -> bytes:
 
 
 class StructuralErrorTests(SimpleTestCase):
+    def test_an_archive_that_decompresses_past_the_cap_is_refused(self):
+        # A zip bomb: refused from the sizes the archive declares, before anything is read.
+        data = _archive()
+        total = sum(info.file_size for info in zipfile.ZipFile(io.BytesIO(data)).infolist())
+        with mock.patch.object(read, "MAX_UNCOMPRESSED_BYTES", total - 1), self.assertRaises(DocumentError) as ctx:
+            read.read_archive(data)
+        self.assertIn("too large", str(ctx.exception))
+        with mock.patch.object(read, "MAX_UNCOMPRESSED_BYTES", total):
+            read.read_archive(data)  # must not raise
+
     def test_not_a_zip_file_is_refused(self):
         with self.assertRaises(DocumentError):
             read.read_archive(b"this is not a zip file")
