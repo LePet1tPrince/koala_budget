@@ -116,6 +116,13 @@ class InvitationViewSet(viewsets.ModelViewSet):
         invitation = serializer.save(invited_by=self.request.user)
         send_invitation(invitation)
 
+    def perform_update(self, serializer):
+        # An invitation stays in the team it was made in. Moving it (a writable `team`)
+        # would let an admin of any team -- anyone can create one -- point an invitation
+        # to their own address at another team and accept it (security log, WP10).
+        self._ensure_team_match(serializer.validated_data.get("team", serializer.instance.team))
+        serializer.save()
+
     @extend_schema(
         operation_id="invitations_resend",
         request=None,

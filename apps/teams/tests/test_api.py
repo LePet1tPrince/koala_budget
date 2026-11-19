@@ -211,6 +211,52 @@ class ResendInvitationTest(TeamAPITestCase):
         self.assertEqual(mail.outbox, [])
 
 
+class InvitationEditTest(TeamAPITestCase):
+    """An invitation stays in its team: editing one never moves it, or accepts it (security log, WP10)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        # The attacker: admin of a team of their own (anyone may create one), with an
+        # invitation to their own, verified address.
+        cls.victim_team = Team.objects.create(name="Yankees", slug="yanks")
+        cls.victim_team.members.add(cls.outsider, through_defaults={"role": ROLE_ADMIN})
+        EmailAddress.objects.create(user=cls.member, email=cls.member.email, verified=True, primary=True)
+        cls.invitation = Invitation.objects.create(
+            team=cls.team, email=cls.member.email, role=ROLE_ADMIN, invited_by=cls.admin
+        )
+
+    def url(self):
+        return reverse("single_team:invitation-detail", args=[self.team.slug, self.invitation.id])
+
+    def test_an_invitation_cannot_be_moved_to_another_team(self):
+        self.client.force_login(self.admin)
+        for method in (self.client.patch, self.client.put):
+            with self.subTest(method=method.__name__):
+                body = {"team": self.victim_team.id, "email": self.member.email, "role": ROLE_ADMIN}
+                response = method(self.url(), data=json.dumps(body), content_type="application/json")
+                self.assertEqual(response.status_code, 400, response.content)
+        self.invitation.refresh_from_db()
+        self.assertEqual(self.invitation.team, self.team)
+        # So accepting it joins the team it was made in, never the other one.
+        self.client.force_login(self.member)
+        self.client.post(reverse("teams:invitation_api", args=[self.invitation.id]))
+        self.assertFalse(Membership.objects.filter(team=self.victim_team, user=self.member).exists())
+
+    def test_an_admin_still_edits_the_role(self):
+        self.client.force_login(self.admin)
+        response = self.patch(self.url(), {"role": ROLE_MEMBER})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.invitation.refresh_from_db()
+        self.assertEqual(self.invitation.role, ROLE_MEMBER)
+
+    def test_editing_never_marks_it_accepted(self):
+        self.client.force_login(self.admin)
+        self.assertEqual(self.patch(self.url(), {"is_accepted": True}).status_code, 200)
+        self.invitation.refresh_from_db()
+        self.assertFalse(self.invitation.is_accepted)
+
+
 class AcceptInvitationAPITest(TestCase):
     @classmethod
     def setUpTestData(cls):
