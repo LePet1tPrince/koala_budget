@@ -72,6 +72,7 @@ const TeamApplication = function(props) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [teams, setTeams] = useState([]);
+  const [user, setUser] = useState(null);
   const [userInvitations, setUserInvitations] = useState([]);
   const [editErrors, setEditErrors] = useState({});
   let navigate = useNavigate();
@@ -80,7 +81,9 @@ const TeamApplication = function(props) {
     props.client.userInvitations().then(result => {
       setUserInvitations(result.results)
     })
-    props.client.teamsList().then((result) => {
+    // The signed-in user (for "is this row me?") and the teams, both before the page shows.
+    Promise.all([props.meClient.meRetrieve(), props.client.teamsList()]).then(([me, result]) => {
+      setUser(me.user);
       initializeTeams(result.results);
     }).catch((error) => {
       console.error(error);
@@ -159,7 +162,7 @@ const TeamApplication = function(props) {
       return <TeamList
         teams={teams}
         userInvitations={userInvitations}
-        user={props.user}
+        user={user}
         apiUrls={props.apiUrls}
       />;
 
@@ -179,7 +182,7 @@ const TeamApplication = function(props) {
                      team={team}
                      client={props.client}
                      apiUrls={props.apiUrls}
-                     user={props.user}
+                     user={user}
                      errors={editErrors}
         />
       );

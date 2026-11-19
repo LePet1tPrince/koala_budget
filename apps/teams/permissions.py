@@ -40,6 +40,35 @@ class TeamModelAccessPermissions(permissions.BasePermission):
         return _view_for_members_edit_for_admins(request, obj.team)
 
 
+class TeamMemberPermissions(permissions.BasePermission):
+    """
+    A member of the URL's team, whatever the method. For team-level endpoints
+    whose own rules say who may change what (memberships: an admin changes
+    others, anyone may leave) -- the view enforces those.
+    """
+
+    def has_permission(self, request, view):
+        return _request_allowed_for_team(request)
+
+
+class TeamAdminWritePermissions(permissions.BasePermission):
+    """
+    Team-level endpoints: members of the URL's team read, only its admins write --
+    every write, including creates and custom actions, which `TeamModelAccessPermissions`
+    leaves to the object check.
+    """
+
+    def has_permission(self, request, view):
+        return _request_allowed_for_team(request) and _view_for_members_edit_for_admins(request, request.team)
+
+
+class TeamAdminPermissions(permissions.BasePermission):
+    """Admins of the URL's team only, reads included (billing)."""
+
+    def has_permission(self, request, view):
+        return _request_allowed_for_team(request) and is_admin(request.user, request.team)
+
+
 def _request_allowed_for_team(request: Request) -> bool:
     # Require an authenticated member of the team in context. Object-level checks
     # still restrict edits of existing objects to admins.

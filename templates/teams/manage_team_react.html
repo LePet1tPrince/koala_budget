@@ -3,8 +3,7 @@
 {% load django_vite %}
 {% block settings_content %}
 <div id="manage-team-content"></div>
-{{ user_json|json_script:'user-details' }}
-{{ team_json|json_script:'team' }}
+{{ team.id|json_script:'team-id' }}
 {{ api_urls|json_script:'api-urls' }}
 {{ server_url|json_script:'server-url' }}
 {% endblock %}

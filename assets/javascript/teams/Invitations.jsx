@@ -1,7 +1,5 @@
 'use strict';
 import React, {useState} from "react";
-import Cookies from "js-cookie";
-import {getResendInviteUrl} from "./urls";
 import ValidationErrors from "../utilities/ValidationErrors";
 import Icon from '../common/Icon';
 
@@ -97,22 +95,13 @@ export const InvitationList = function(props) {
   };
 
   const resendInvitation = function(index) {
-    const inviteUrl = getResendInviteUrl(
-      props.apiUrls['single_team:resend_invitation'],
-      props.team.slug,
-      invitations[index].id
-    );
-    fetch(inviteUrl, {
-      method: "POST",
-      credentials: 'same-origin',
-      headers: {
-        'X-CSRFToken': Cookies.get('csrftoken'),
-      }
-    }).then((response) => {
-      if (response.ok) {
-        invitations[index].sent = true;
-        setInvitations(invitations);
-      }
+    const params = {
+      id: invitations[index].id,
+      teamSlug: props.team.slug,
+    };
+    props.client.invitationsResend(params).then(() => {
+      invitations[index].sent = true;
+      setInvitations(invitations);
     });
   };
 
