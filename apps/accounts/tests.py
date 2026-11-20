@@ -684,21 +684,21 @@ class AccountViewTest(TestCase):
         self.assertRedirects(response, detail_url, fetch_redirect_response=False)
         self.assertTrue(Account.objects.filter(pk=account.pk).exists())
 
-    def test_account_detail_view_has_delete_confirmation_dialog(self):
-        """The detail page carries its own delete-confirmation dialog rather than linking to a separate page."""
+    def test_account_detail_view_deletes_from_the_editor(self):
+        """Delete opens the account editor with its delete already asked; its href is the no-JS confirm page."""
         account = Account.objects.create(book=self.book, name="Has Dialog", account_group=self.account_group)
         url = reverse(
             "accounts:account_detail",
             kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
         )
         response = self.client.get(url)
-        self.assertContains(response, 'id="delete-account-modal"')
         self.assertContains(response, 'id="delete-account-btn"')
+        self.assertContains(response, f'data-manage-modal="account" data-id="{account.pk}" data-confirm-delete')
         delete_url = reverse(
             "accounts:account_delete",
             kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
         )
-        self.assertContains(response, f'action="{delete_url}"')
+        self.assertContains(response, f'href="{delete_url}"')
 
 
 class PayeeViewTest(TestCase):
@@ -1348,17 +1348,20 @@ class InstitutionAccountsTest(TestCase):
         )
 
     def test_checklist_offers_assets_and_liabilities_only(self):
-        response = self.client.get(self.td.get_absolute_url())
+        response = self.client.get(self.url)
         choices = {
             choice["account"].name: choice
-            for section in response.context["account_sections"]
+            for section in response.context["sections"]
             for group in section["groups"]
             for choice in group["choices"]
         }
         self.assertEqual(set(choices), {"Chequing", "Savings", "Visa"})
         self.assertTrue(choices["Chequing"]["checked"])
         self.assertEqual(choices["Savings"]["elsewhere"], self.rbc)
-        self.assertContains(response, "Choose accounts")
+        # The institution's page opens the same checklist in its editor.
+        detail = self.client.get(self.td.get_absolute_url())
+        self.assertContains(detail, "Choose accounts")
+        self.assertContains(detail, 'data-manage-modal="institution-accounts"')
 
     def test_ticked_accounts_are_linked_and_unticked_unlinked(self):
         response = self.client.post(self.url, {"accounts": [self.savings.pk, self.visa.pk]})

@@ -4,7 +4,7 @@
 {% block manage_title %}{% translate "Payees" %}{% endblock %}
 {% block manage_subtitle %}{% translate "Who your transactions are with. Rename one here and every transaction using it follows." %}{% endblock %}
 {% block manage_actions %}
-  <a href="{% url 'accounts:payee_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-dialog="create-dialog" data-testid="new-payee-btn">
+  <a href="{% url 'accounts:payee_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-manage-modal="payee" data-testid="new-payee-btn">
     {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}{% translate "New payee" %}
   </a>
 {% endblock %}
@@ -41,9 +41,6 @@
     </div>
   {% endif %}
 {% endblock %}
-{% block dialogs %}
-  {% url 'accounts:payee_create' request.team.slug request.book.slug as create_url %}
-  {% translate "New payee" as dialog_title %}
-  {% translate "Create payee" as submit_label %}
-  {% include "accounts/components/form_dialog.html" with dialog_id="create-dialog" title=dialog_title form=create_form action=create_url submit_label=submit_label %}
+{% block page_js %}
+  {% include "accounts/components/manage_modals_js.html" %}
 {% endblock %}

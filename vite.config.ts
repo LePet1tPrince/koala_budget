@@ -44,6 +44,7 @@ export default defineConfig({
         'accounts-board-app': path.resolve(__dirname, './assets/javascript/accounts/accounts-board-app.jsx'),
         'account-activity-editor': path.resolve(__dirname, './assets/javascript/accounts/account-activity-editor.jsx'),
         'account-charts': path.resolve(__dirname, './assets/javascript/accounts/account-charts.js'),
+        'manage-modals': path.resolve(__dirname, './assets/javascript/accounts/manage-modals.jsx'),
         'onboarding-app': path.resolve(__dirname, './assets/javascript/onboarding/onboarding-app.jsx'),
         'task-rail-app': path.resolve(__dirname, './assets/javascript/onboarding/task-rail-app.jsx'),
         'onboarding-resume': path.resolve(__dirname, './assets/javascript/onboarding/resume.js'),

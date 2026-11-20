@@ -8,10 +8,10 @@
   <span>{% blocktranslate trimmed count counter=rows|length %}{{ counter }} account{% plural %}{{ counter }} accounts{% endblocktranslate %}</span>
 {% endblock %}
 {% block detail_actions %}
-  <a href="{{ edit_url }}" class="btn btn-outline btn-sm" data-dialog="edit-dialog" data-testid="edit-btn">
+  <a href="{{ edit_url }}" class="btn btn-outline btn-sm" data-manage-modal="institution" data-id="{{ institution.pk }}" data-name="{{ institution.name }}" data-testid="edit-btn">
     {% icon "pencil" class="inline-block shrink-0 w-4 h-4" %}{% translate "Rename" %}
   </a>
-  <a href="{{ delete_url }}" class="btn btn-ghost btn-sm text-error" data-dialog="delete-dialog" data-testid="delete-btn">
+  <a href="{{ delete_url }}" class="btn btn-ghost btn-sm text-error" data-manage-modal="institution" data-id="{{ institution.pk }}" data-name="{{ institution.name }}" data-confirm-delete data-after-delete="{% url 'accounts:institution_list' request.team.slug request.book.slug %}" data-testid="delete-btn">
     {% icon "trash" class="inline-block shrink-0 w-4 h-4" %}{% translate "Delete" %}
   </a>
 {% endblock %}
@@ -20,10 +20,10 @@
   <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
     <h2 class="text-base font-semibold">{% translate "Accounts held here" %}</h2>
     <div class="flex flex-wrap gap-2">
-      <a href="{{ choose_accounts_url }}" class="btn btn-outline btn-sm" data-dialog="accounts-dialog" data-testid="choose-accounts-btn">
+      <a href="{{ choose_accounts_url }}" class="btn btn-outline btn-sm" data-manage-modal="institution-accounts" data-id="{{ institution.pk }}" data-name="{{ institution.name }}" data-testid="choose-accounts-btn">
         {% icon "list-filter" class="inline-block shrink-0 w-4 h-4" %}{% translate "Choose accounts" %}
       </a>
-      <a href="{% return_here add_account_url %}" class="btn btn-ghost btn-sm" data-testid="add-account-link">
+      <a href="{% return_here add_account_url %}" class="btn btn-ghost btn-sm" data-manage-modal="account" data-account-type="asset" data-institution="{{ institution.pk }}" data-after-save="reload" data-testid="add-account-link">
         {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}{% translate "Add account" %}
       </a>
     </div>
@@ -37,20 +37,6 @@
   {% endif %}
 </section>
 {% endblock %}
-{% block dialogs %}
-  <dialog id="accounts-dialog" class="modal" data-testid="accounts-dialog">
-    <div class="modal-box max-w-lg">
-      <h3 class="text-lg font-semibold">{% blocktranslate trimmed with name=institution.name %}Accounts at {{ name }}{% endblocktranslate %}</h3>
-      <p class="mt-1 text-sm text-base-content/70">{% translate "Tick every account held here. Ticking one held elsewhere moves it here." %}</p>
-      {% include "accounts/components/institution_accounts_form.html" with action=choose_accounts_url sections=account_sections return_to=return_to list_class="max-h-[55vh] overflow-y-auto pr-1" %}
-    </div>
-    <form method="dialog" class="modal-backdrop"><button>{% translate "close" %}</button></form>
-  </dialog>
-  {% translate "Rename institution" as edit_title %}
-  {% include "accounts/components/form_dialog.html" with dialog_id="edit-dialog" title=edit_title form=edit_form action=edit_url %}
-  {% translate "Delete institution" as delete_title %}
-  {% if rows %}
-    {% blocktranslate trimmed count counter=rows|length asvar delete_note %}Its {{ counter }} account is kept and simply unlinked.{% plural %}Its {{ counter }} accounts are kept and simply unlinked.{% endblocktranslate %}
-  {% endif %}
-  {% include "accounts/components/delete_dialog.html" with dialog_id="delete-dialog" title=delete_title name=institution.name action=delete_url note=delete_note %}
+{% block page_js %}
+  {% include "accounts/components/manage_modals_js.html" %}
 {% endblock %}

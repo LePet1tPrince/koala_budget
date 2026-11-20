@@ -35,11 +35,11 @@
       {% translate "Reconcile" %}
     </a>
   {% endif %}
-  <a href="{{ edit_url }}" class="btn btn-outline btn-sm" data-testid="edit-account-btn">
+  <a href="{{ edit_url }}" class="btn btn-outline btn-sm" data-manage-modal="account" data-id="{{ account.pk }}" data-testid="edit-account-btn">
     {% icon "pencil" class="inline-block shrink-0 w-4 h-4" %}{% translate "Edit" %}
   </a>
   {% if not account.is_system %}
-    <a href="#" id="delete-account-btn" class="btn btn-ghost btn-sm text-error" data-dialog="delete-account-modal" data-testid="delete-account-btn">
+    <a href="{% url 'accounts:account_delete' request.team.slug request.book.slug account.pk %}" id="delete-account-btn" class="btn btn-ghost btn-sm text-error" data-manage-modal="account" data-id="{{ account.pk }}" data-confirm-delete data-after-delete="{% url 'accounts:accounts_home' request.team.slug request.book.slug %}" data-testid="delete-account-btn">
       {% icon "trash" class="inline-block shrink-0 w-4 h-4" %}{% translate "Delete" %}
     </a>
   {% endif %}
@@ -127,19 +127,12 @@
   {{ request.book.base_url|json_script:'book-base' }}
 </section>
 {% endblock %}
-{% block dialogs %}
-  {% if not account.is_system %}
-    {% url 'accounts:account_delete' request.team.slug request.book.slug account.pk as delete_url %}
-    {% translate "Delete account" as delete_title %}
-    {% translate "Accounts with transactions can't be deleted. An opening balance, if it has one, is removed along with it." as delete_note %}
-    {% include "accounts/components/delete_dialog.html" with dialog_id="delete-account-modal" title=delete_title name=account.name action=delete_url note=delete_note %}
-  {% endif %}
-{% endblock %}
 
 {% block page_js %}
 {% vite_react_refresh %}
 {% vite_asset 'assets/javascript/reports/ReportsDateRangePicker.jsx' %}
 {% vite_asset 'assets/javascript/accounts/account-activity-editor.jsx' %}
+{% vite_asset 'assets/javascript/accounts/manage-modals.jsx' %}
 {% if has_balance_chart or budget_chart_kind %}
 {{ charts_json|json_script:'account-charts-data' }}
 {% vite_asset 'assets/javascript/accounts/account-charts.js' %}

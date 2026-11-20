@@ -21,6 +21,8 @@ import { CSS } from '@dnd-kit/utilities';
 import Icon from '../../common/Icon';
 import { formatCurrency } from '../../utilities/currency';
 import { accountsUrls, apiErrorMessage, callApi, getAccountsApi } from '../accountsApi';
+import AccountModal from './manage/AccountModal';
+import GroupModal from './manage/GroupModal';
 
 // Tabs over the type sections: one account type on screen at a time. Goals
 // also shows plain equity, which is the same stored type.
@@ -98,7 +100,7 @@ const PlusIcon = () => (
 // ---------------------------------------------------------------------------
 // Inline "+" form used for both new accounts and new groups
 // ---------------------------------------------------------------------------
-function InlineCreateForm({ placeholder, onSubmit, onCancel, extraAction }) {
+function InlineCreateForm({ placeholder, onSubmit, onCancel, onMoreOptions }) {
   const [name, setName] = useState('');
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -156,7 +158,16 @@ function InlineCreateForm({ placeholder, onSubmit, onCancel, extraAction }) {
         ) : (
           <span className="text-xs text-base-content/70">{gettext('Enter to add · Esc to close')}</span>
         )}
-        {extraAction}
+        {onMoreOptions && (
+          <button
+            type="button"
+            className="text-xs link link-hover text-base-content/70"
+            onClick={() => onMoreOptions(name.trim())}
+            data-testid="more-options-btn"
+          >
+            {gettext('More options…')}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -191,7 +202,28 @@ function VisibilityToggle({ account, onToggleHidden }) {
   );
 }
 
-function AccountRowContent({ account, dragHandleProps, dragging, overlay, onToggleHidden }) {
+// A pencil that opens the item's editor; it appears on hover, like the drag handle.
+function EditButton({ label, onClick, testId, scope }) {
+  return (
+    <button
+      type="button"
+      className={[
+        'shrink-0 rounded p-1 text-base-content/40 transition-all hover:bg-base-300 hover:text-base-content',
+        scope === 'row'
+          ? 'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100'
+          : 'opacity-0 group-hover/hdr:opacity-100 focus-visible:opacity-100',
+      ].join(' ')}
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      data-testid={testId}
+    >
+      <Icon name="pencil" className="block h-4 w-4" />
+    </button>
+  );
+}
+
+function AccountRowContent({ account, dragHandleProps, dragging, overlay, onToggleHidden, onEdit }) {
   return (
     <div
       className={[
@@ -228,11 +260,19 @@ function AccountRowContent({ account, dragHandleProps, dragging, overlay, onTogg
         {formatCurrency(account.balance)}
         {account.isGoal && <span className="ml-1 font-sans text-xs text-base-content/70">{gettext('left')}</span>}
       </span>
+      {onEdit && (
+        <EditButton
+          label={interpolate(gettext('Edit %s'), [account.name])}
+          onClick={() => onEdit(account)}
+          testId="account-edit-btn"
+          scope="row"
+        />
+      )}
     </div>
   );
 }
 
-function SortableAccountRow({ account, groupId, accountType, onToggleHidden }) {
+function SortableAccountRow({ account, groupId, accountType, onToggleHidden, onEdit }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: accountDndId(account.id),
     data: { kind: 'account', account, groupId, accountType },
@@ -245,6 +285,7 @@ function SortableAccountRow({ account, groupId, accountType, onToggleHidden }) {
         dragging={isDragging}
         dragHandleProps={{ ...attributes, ...listeners }}
         onToggleHidden={onToggleHidden}
+        onEdit={onEdit}
       />
     </li>
   );
@@ -258,9 +299,11 @@ function GroupCard({
   accountType,
   serverType,
   newGoalUrl,
-  urls,
   onCreateAccount,
   onToggleHidden,
+  onEditAccount,
+  onEditGroup,
+  onMoreOptions,
   isDropTarget,
   draggingAccount,
 }) {
@@ -271,7 +314,6 @@ function GroupCard({
   });
 
   const subtotal = group.accounts.reduce((sum, a) => sum + parseFloat(a.balance || 0), 0);
-  const createPageUrl = `${urls.accountCreatePage}?account_type=${serverType}&account_group=${group.id}`;
 
   return (
     <div
@@ -305,6 +347,12 @@ function GroupCard({
         <span className="ml-auto font-mono text-sm text-base-content/70 tabular-nums shrink-0">
           {formatCurrency(subtotal)}
         </span>
+        <EditButton
+          label={interpolate(gettext('Edit %s'), [group.name])}
+          onClick={() => onEditGroup(group)}
+          testId="group-edit-btn"
+          scope="header"
+        />
       </div>
 
       <SortableContext items={group.accounts.map((a) => accountDndId(a.id))} strategy={verticalListSortingStrategy}>
@@ -316,6 +364,7 @@ function GroupCard({
               groupId={group.id}
               accountType={accountType}
               onToggleHidden={onToggleHidden}
+              onEdit={onEditAccount}
             />
           ))}
           {group.accounts.length === 0 && (
@@ -348,11 +397,10 @@ function GroupCard({
             placeholder={gettext('New account name')}
             onSubmit={(name) => onCreateAccount(group.id, name)}
             onCancel={() => setAdding(false)}
-            extraAction={
-              <a href={createPageUrl} className="text-xs link link-hover text-base-content/70">
-                {gettext('More options…')}
-              </a>
-            }
+            onMoreOptions={(name) => {
+              setAdding(false);
+              onMoreOptions({ name, accountType: serverType, accountGroup: group.id });
+            }}
           />
         ) : (
           <button
@@ -376,10 +424,12 @@ function GroupCard({
 // ---------------------------------------------------------------------------
 function TypeSection({
   section,
-  urls,
   onCreateAccount,
   onCreateGroup,
   onToggleHidden,
+  onEditAccount,
+  onEditGroup,
+  onMoreOptions,
   dropTargetGroupId,
   draggingAccount,
   dimmed,
@@ -405,9 +455,11 @@ function TypeSection({
               accountType={section.key}
               serverType={section.accountType || section.key}
               newGoalUrl={section.newGoalUrl}
-              urls={urls}
               onCreateAccount={onCreateAccount}
               onToggleHidden={onToggleHidden}
+              onEditAccount={onEditAccount}
+              onEditGroup={onEditGroup}
+              onMoreOptions={onMoreOptions}
               isDropTarget={dropTargetGroupId === group.id}
               draggingAccount={draggingAccount}
             />
@@ -791,6 +843,26 @@ function Board({ initialTypes, urls, api, book }) {
     }
   };
 
+  // ----- Editors --------------------------------------------------------------
+  // {kind: 'account' | 'group', id, defaults}: the open modal. After a save or a
+  // delete the board is read again, since either can move rows between groups.
+  const [editor, setEditor] = useState(null);
+  const refresh = () =>
+    api
+      .accountsBoardRetrieve({ ...book.params })
+      .then((board) => setTypes(board.sections.map((section) => toSection(section, urls))))
+      .catch(async (error) => showToast(await apiErrorMessage(error), 'error'));
+  const closeEditor = (message) => {
+    setEditor(null);
+    if (message) {
+      refresh();
+      showToast(message);
+    }
+  };
+  const editAccount = (account) => setEditor({ kind: 'account', id: account.id });
+  const editGroup = (group) => setEditor({ kind: 'group', id: group.id });
+  const moreOptions = (defaults) => setEditor({ kind: 'account', id: null, defaults });
+
   // ----- Tabs -----------------------------------------------------------------
   const [tab, setTab] = useState(readStoredTab);
   const selectTab = (key) => {
@@ -868,10 +940,12 @@ function Board({ initialTypes, urls, api, book }) {
           <TypeSection
             key={section.key}
             section={section}
-            urls={urls}
             onCreateAccount={createAccount}
             onCreateGroup={createGroup}
             onToggleHidden={toggleHidden}
+            onEditAccount={editAccount}
+            onEditGroup={editGroup}
+            onMoreOptions={moreOptions}
             showHeading={visibleSections.length > 1}
             dropTargetGroupId={draggingAccount ? overGroupId : null}
             draggingAccount={draggingAccount}
@@ -881,6 +955,32 @@ function Board({ initialTypes, urls, api, book }) {
       </div>
 
       <DragOverlay dropAnimation={{ duration: 180 }}>{overlayContent}</DragOverlay>
+
+      {editor?.kind === 'account' && (
+        <AccountModal
+          book={book}
+          api={api}
+          accountId={editor.id}
+          defaults={editor.defaults}
+          onSaved={(account) =>
+            closeEditor(
+              interpolate(editor.id ? gettext('"%s" saved') : gettext('Account "%s" created'), [account.name])
+            )
+          }
+          onDeleted={() => closeEditor(gettext('Account deleted'))}
+          onClose={() => closeEditor()}
+        />
+      )}
+      {editor?.kind === 'group' && (
+        <GroupModal
+          book={book}
+          api={api}
+          groupId={editor.id}
+          onSaved={(group) => closeEditor(interpolate(gettext('"%s" saved'), [group.name]))}
+          onDeleted={() => closeEditor(gettext('Group deleted'))}
+          onClose={() => closeEditor()}
+        />
+      )}
 
       {toast && (
         <div className="toast toast-end z-50">

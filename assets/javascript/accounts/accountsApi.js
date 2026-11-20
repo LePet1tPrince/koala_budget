@@ -62,7 +62,6 @@ export function accountsUrls(base) {
   return {
     account: (id) => `${base}accounts/accounts/${id}/`,
     group: (id) => `${base}accounts/account-groups/${id}/`,
-    accountCreatePage: `${base}accounts/accounts/new/`,
     newGoal: `${base}budget/goals/new/`,
   };
 }

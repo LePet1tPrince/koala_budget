@@ -211,9 +211,7 @@ class FormPageMixin:
 
 
 class DetailPageMixin:
-    """Back link, edit form and return path for a detail page."""
-
-    form_class = None
+    """Back link, edit and delete URLs (the no-JS pages behind the editor) and return path for a detail page."""
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -227,15 +225,13 @@ class DetailPageMixin:
         model_name = self.model._meta.model_name
         context["edit_url"] = with_return_to(reverse(f"accounts:{model_name}_update", args=args), return_to)
         context["delete_url"] = reverse(f"accounts:{model_name}_delete", args=args)
-        if self.form_class:
-            context["edit_form"] = self.form_class(instance=self.object, book=self.request.book)
         return context
 
 
 class DeleteGuardMixin:
     """
-    Delete from the detail page's dialog. A GET (the no-JS path) still renders the
-    confirm page; a delete the object's references forbid is refused with a
+    The no-JS delete (the detail page's editor deletes through the API). A GET
+    renders the confirm page; a delete the object's references forbid is refused with a
     message instead of reaching the database's PROTECT as a 500.
     """
 
@@ -300,7 +296,6 @@ class AccountGroupListView(AccountGroupViewMixin, ListView):
             for account_type in ACCOUNT_TYPE_ORDER
             if account_type in by_type
         ]
-        context["create_form"] = AccountGroupForm(book=self.request.book)
         return context
 
 
@@ -313,8 +308,6 @@ class AccountGroupCreateView(AccountGroupViewMixin, BookFormMixin, FormPageMixin
 class AccountGroupDetailView(AccountGroupViewMixin, DetailPageMixin, DetailView):
     """An account group and the accounts in it."""
 
-    form_class = AccountGroupForm
-
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         group = self.object
@@ -324,7 +317,6 @@ class AccountGroupDetailView(AccountGroupViewMixin, DetailPageMixin, DetailView)
         context["rows"] = rows
         context["amount_label"] = amount_label
         context["total"] = sum((row["amount"] for row in rows), Decimal("0"))
-        context["blocked_reason"] = group_delete_blocked_reason(group)
         context["add_account_url"] = (
             reverse("accounts:account_create", args=self.request.book.url_args)
             + "?"
@@ -572,7 +564,6 @@ class PayeeListView(PayeeViewMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["create_form"] = PayeeForm(book=self.request.book)
         return context
 
 
@@ -588,8 +579,6 @@ PAYEE_RECENT_LIMIT = 25
 
 class PayeeDetailView(PayeeViewMixin, DetailPageMixin, DetailView):
     """A payee: how it's used and its recent transactions."""
-
-    form_class = PayeeForm
 
     def get_queryset(self):
         return payee_usage(Payee.objects.filter(book=self.request.book))
@@ -629,7 +618,6 @@ class PayeeDetailView(PayeeViewMixin, DetailPageMixin, DetailView):
             + "?"
             + urlencode({"f_payee": payee.name})
         )
-        context["blocked_reason"] = payee_delete_blocked_reason(payee)
         return context
 
 
@@ -671,7 +659,6 @@ class InstitutionListView(InstitutionViewMixin, ListView):
             net[account.institution_id] = net.get(account.institution_id, Decimal("0")) + account.balance
         for institution in context["object_list"]:
             institution.net_balance = net.get(institution.pk, Decimal("0"))
-        context["create_form"] = InstitutionForm(book=self.request.book)
         return context
 
 
@@ -683,8 +670,6 @@ class InstitutionCreateView(InstitutionViewMixin, BookFormMixin, FormPageMixin, 
 
 class InstitutionDetailView(InstitutionViewMixin, DetailPageMixin, DetailView):
     """An institution and the accounts held there."""
-
-    form_class = InstitutionForm
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -704,7 +689,6 @@ class InstitutionDetailView(InstitutionViewMixin, DetailPageMixin, DetailView):
             reverse("accounts:institution_accounts", args=[*self.request.book.url_args, institution.pk]),
             context["return_to"],
         )
-        context["account_sections"] = institution_account_sections(institution)
         return context
 
 
