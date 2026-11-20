@@ -31,13 +31,10 @@ class BasePage:
         box.click()
         box.fill(typed)
         self.page.locator("[data-testid='transaction-category-create']").click()
-        self.page.locator("[data-testid='create-account-modal']").wait_for(state="visible")
-        type_select = self.page.locator("[data-testid='create-account-type']")
-        type_select.wait_for(state="visible")
-        self.page.wait_for_function(
-            "() => !document.querySelector(\"[data-testid='create-account-type']\").disabled", timeout=10_000
-        )
-        type_select.select_option(account_type)
-        self.page.locator("[data-testid='create-account-group']").select_option(label=group_name)
-        self.page.locator("[data-testid='create-account-submit']").click()
+        modal = self.page.locator("dialog[open][data-testid='create-account-modal']")
+        modal.wait_for(state="visible")
+        # Type and group are rows of buttons, shown once the groups have loaded.
+        modal.locator(f"[data-testid='create-account-type-{account_type}']").click()
+        modal.locator("[data-testid='create-account-group']", has_text=group_name).first.click()
+        modal.locator("[data-testid='modal-save-btn']").click()
         self.page.locator("[data-testid='create-account-modal']").wait_for(state="detached", timeout=10_000)
