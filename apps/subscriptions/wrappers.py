@@ -81,9 +81,6 @@ class SubscriptionWrapper:
             capture_exception(e)
             return None
 
-    def uses_secondary_currency(self):
-        return any([p.currency != self.currency for p in self.prices])
-
 
 class InvoiceFacade:
     """

@@ -58,10 +58,6 @@ class AccountsPage(BasePage):
         self.account_row(name).locator("[data-testid='account-visibility-toggle']").click()
         self.page.wait_for_selector("[data-testid='board-toast']")
 
-    def click_new_account(self):
-        self.page.locator("[data-testid='new-account-btn']").click()
-        self.page.wait_for_selector("[data-testid='account-form']")
-
     def fill_account_form(self, name: str, account_group_name: str, account_type: str = "expense"):
         self.page.locator("[name='name']").fill(name)
         # The create form uses Alpine button pickers (not <select>s): choose the
@@ -74,9 +70,6 @@ class AccountsPage(BasePage):
 
     def click_cancel(self):
         self.page.locator("[data-testid='cancel-btn']").click()
-
-    def click_account(self, name: str):
-        self.page.locator("[data-testid='account-name']", has_text=name).first.click()
 
     def create_account(self, name: str, account_group_name: str, book, account_type: str = "expense"):
         """High-level helper: navigate to create form, fill, and submit."""

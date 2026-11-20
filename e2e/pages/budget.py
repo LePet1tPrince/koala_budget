@@ -93,9 +93,6 @@ class BudgetPage(BasePage):
     def get_goal_card_count(self) -> int:
         return self.page.locator("[data-testid='goal-card']").count()
 
-    def has_goals_summary(self) -> bool:
-        return self.page.locator("[data-testid='goals-summary']").is_visible()
-
     def has_goals_empty_state(self) -> bool:
         return self.page.locator("[data-testid='goals-empty-state']").is_visible()
 
@@ -113,9 +110,6 @@ class BudgetPage(BasePage):
 
     def unassigned_pill_value(self) -> str:
         return self.page.locator("[data-testid='unassigned-pill'] [data-unassigned-pill-value]").inner_text().strip()
-
-    def assign_available(self, goal_index: int = 0):
-        self.page.locator("[data-testid='assign-available-btn']").nth(goal_index).click()
 
     def withdraw(self, goal_index: int = 0, amount: str | None = None):
         """Open a goal card's withdraw row and withdraw `amount` (or everything)."""
@@ -167,9 +161,6 @@ class BudgetPage(BasePage):
 
     def goal_saved(self, name: str) -> str:
         return self.goal_card(name).locator("[data-num='allocated']").inner_text().strip()
-
-    def goto_goal_detail(self, book, goal):
-        self.goto(f"{book.base_url}budget/goals/{goal.pk}/", wait_for="[data-testid='goal-accounts']")
 
     def detail_links(self):
         return self.page.locator("[data-testid='goal-link']")

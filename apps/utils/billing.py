@@ -1,7 +1,5 @@
-import decimal
-
 import stripe
-from djstripe.models import APIKey, Coupon, Price
+from djstripe.models import APIKey, Price
 from djstripe.settings import djstripe_settings
 from djstripe.utils import CURRENCY_SIGILS
 
@@ -15,15 +13,6 @@ def get_stripe_module():
 def create_stripe_api_keys_if_necessary() -> bool:
     key, created = APIKey.objects.get_or_create_by_api_key(djstripe_settings.STRIPE_SECRET_KEY)
     return created
-
-
-def get_discounted_price(amount: decimal.Decimal, coupon: Coupon) -> decimal.Decimal:
-    if coupon.amount_off:
-        return max(amount - (100 * coupon.amount_off), 0)
-    elif coupon.percent_off:
-        # todo
-        return amount * (1 - (coupon.percent_off / 100))
-    return amount
 
 
 def get_friendly_currency_amount(price: Price, currency: str | None = None) -> str:

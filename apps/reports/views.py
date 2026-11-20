@@ -51,7 +51,6 @@ def reports_home(request, team_slug, book_slug):
         {
             "active_tab": "reports",
             "page_title": _("Reports"),
-            "monthly_review_last_month": last_reviewable_month,
             "monthly_review_reviewed": reviewed,
         },
     )

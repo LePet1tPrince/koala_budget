@@ -154,21 +154,9 @@ class PlaidAccount(BaseBookModel):
         return f"{self.name} ({self.mask}) [Unmapped]"
 
     @property
-    def is_mapped(self):
-        """Check if this Plaid account is mapped to a ledger account."""
-        return self.account is not None
-
-    @property
     def is_foreign_currency(self):
         """True when the account is kept in a currency other than the books' (`BASE_CURRENCY`)."""
         return is_foreign_currency(self.iso_currency_code)
-
-    def can_sync_transactions(self):
-        """
-        Check if this account is ready to sync transactions.
-        Requires a mapped ledger account.
-        """
-        return self.is_mapped
 
 
 class PlaidTransaction(BaseBookModel):

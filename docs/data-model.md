@@ -363,12 +363,6 @@ Individual account at a Plaid-connected institution.
 | `subtype` | CharField | Account subtype |
 | `type` | CharField | Account type |
 
-**Properties:**
-- `is_mapped` - account is not None
-
-**Methods:**
-- `can_sync_transactions()` - Returns is_mapped
-
 ### PlaidTransaction (`apps/plaid/models.py`)
 
 Extended transaction data from Plaid.

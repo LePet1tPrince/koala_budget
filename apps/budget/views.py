@@ -334,7 +334,6 @@ def _goal_form_view(request, goal=None):
             # Another goal standing in the way, to link to (it may be archived, and
             # so on no list).
             "link_error_goal": link_error_goal,
-            "any_linked": any(option["checked"] for option in options),
         },
     )
 

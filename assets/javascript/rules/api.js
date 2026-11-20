@@ -85,11 +85,3 @@ export const getRulesApi = (book) => {
 
 /** The rules API for a page that knows only its book base (`/a/{team}/{book}/`). */
 export const rulesApiForBook = (bookBase) => getRulesApi(bookFromBase(bookBase));
-
-/** The Rules page, optionally opening the builder on one rule or on a draft. */
-export const rulesPageUrl = (bookBase, { edit, draft } = {}) => {
-  const url = `${bookBase}rules/`;
-  if (edit) return `${url}?edit=${encodeURIComponent(edit)}`;
-  if (draft) return `${url}?draft=${encodeURIComponent(JSON.stringify(draft))}`;
-  return url;
-};

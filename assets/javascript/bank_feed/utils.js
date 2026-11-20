@@ -41,12 +41,3 @@ export function formatDateForInput(dateVal) {
   const day = String(utc ? date.getUTCDate() : date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
-
-/**
- * Capitalize first letter of string
- * @param {string} val - String to capitalize
- * @returns {string} Capitalized string
- */
-export function ProperCase(val) {
-    return String(val).charAt(0).toUpperCase() + String(val).slice(1);
-}

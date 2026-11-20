@@ -60,11 +60,6 @@ class BankFeedPage(BasePage):
         self.page.keyboard.press("Escape")
         self.wait_for_rows()
 
-    def show_all_accounts(self):
-        self.page.locator("[data-testid='account-filter-btn']").click()
-        self.page.locator("[data-testid='account-filter-all']").click()
-        self.wait_for_rows()
-
     def heading(self) -> str:
         return self.page.locator("[data-testid='feed-heading']").inner_text().strip()
 
@@ -126,19 +121,8 @@ class BankFeedPage(BasePage):
                 out.append(text)
         return out
 
-    def visible_row_count(self) -> int:
-        return len(self.row_descriptions())
-
     def has_row_matching(self, needle: str) -> bool:
         return any(needle in text for text in self.row_descriptions())
-
-    def open_quick_filters(self):
-        self.page.locator("[data-testid='quick-filters-btn']").click()
-        self.page.wait_for_selector("[data-testid='filter-to-review']", timeout=5_000)
-
-    def close_quick_filters(self):
-        self.page.keyboard.press("Escape")
-        self.page.wait_for_timeout(200)
 
     def quick_filters_disabled(self) -> bool:
         return self.page.locator("[data-testid='quick-filters-btn']").is_disabled()
@@ -180,10 +164,6 @@ class BankFeedPage(BasePage):
         """Labels of every enabled-or-disabled button the bar is showing."""
         candidates = ["Bulk Edit", "Void", "Restore", "Delete", "Reconcile", "Unreconcile", "Duplicate", "Export"]
         return [name for name in candidates if self.batch_button(name).count() and self.batch_button(name).is_visible()]
-
-    def batch_bar_text(self) -> str:
-        """The bar's summary strip — selection count and the In/Out/Net figures."""
-        return self.page.get_by_text("selected", exact=False).last.locator("xpath=ancestor::*[3]").inner_text()
 
     # ------------------------------------------------------------------
     # Possible duplicate transfers (inline chip + panel)

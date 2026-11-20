@@ -91,41 +91,12 @@ def spending_report(book, start_date, end_date, period=None):
         "num_months": num_months,
     }
 
-    has_activity = bool(data["income"] or data["expenses"] or goal_spending["items"])
-    chart_data = None
-    if has_activity:
-        chart_data = {
-            "labels": data["period_labels"],
-            "income": [float(a) for a in data["total_income_per_period"]],
-            "expenses": [float(a) for a in data["total_expenses_per_period"]],
-            "goal_spending": [float(a) for a in goal_spending["per_period"]] if goal_spending["items"] else None,
-            "net": [float(a) for a in data["net_after_goal_spending_per_period"]],
-        }
-
-    sankey_data = None
-    if has_activity:
-        sankey_data = {
-            "income": [_sankey_item(item) for item in data["income"]],
-            "expenses": [_sankey_item(item) for item in data["expenses"]],
-            "income_groups": [{"name": g["group"].name, "amount": float(g["subtotal"])} for g in data["income_groups"]],
-            "expense_groups": [
-                {"name": g["group"].name, "amount": float(g["subtotal"])} for g in data["expense_groups"]
-            ],
-            "net_profit": float(data["net_profit"]),
-            "goal_spending": float(goal_spending["total"]),
-        }
-
     return {
         "data": data,
         "period": period,
         "stats": stats,
-        "chart_data": chart_data,
-        "sankey_data": sankey_data,
+        "has_activity": bool(data["income"] or data["expenses"] or goal_spending["items"]),
     }
-
-
-def _sankey_item(item):
-    return {"name": item["account"].name, "amount": float(item["amount"]), "group": item["account"].account_group.name}
 
 
 # --- B. Net Worth -----------------------------------------------------------------
@@ -159,25 +130,13 @@ def net_worth_report(book, start_date, end_date):
         "debt_ratio": _pct(closing["total_liabilities"], closing["total_assets"]),
         "num_months": len(trend),
     }
-    chart_data = None
-    if trend:
-        chart_data = {
-            "labels": [point["date"].isoformat() for point in trend],
-            "net_worth": [float(point["net_worth"]) for point in trend],
-            "assets": [float(point["assets"]) for point in trend],
-            "liabilities": [float(point["liabilities"]) for point in trend],
-        }
-    composition_data = None
-    if trend:
-        composition_data = net_worth_composition(service, start_date, end_date)
-        composition_data["net_worth"] = chart_data["net_worth"]
-        if not composition_data["groups"]:
-            composition_data = None
+    composition_data = net_worth_composition(service, start_date, end_date) if trend else None
+    if composition_data and not composition_data["groups"]:
+        composition_data = None
     return {
         "sections": sections,
         "trend": trend,
         "stats": stats,
-        "chart_data": chart_data,
         "composition_data": composition_data,
         "wealth_rank": global_rank(end_worth, book.household_adults),
         "household_adults": book.household_adults,

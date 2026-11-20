@@ -17,8 +17,3 @@ class LoginPage(BasePage):
     def is_showing_error(self) -> bool:
         """Returns True if an authentication error message is visible."""
         return self.page.locator(".errorlist, [data-testid='login-error']").is_visible()
-
-    def current_path(self) -> str:
-        from urllib.parse import urlparse
-
-        return urlparse(self.page.url).path

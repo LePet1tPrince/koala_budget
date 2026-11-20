@@ -652,11 +652,12 @@ class GoalReportsTest(GoalsFixture):
         page = self.client.get(reverse("reports:spending", args=self.book.url_args) + qs)
         self.assertContains(page, 'data-testid="spending-goals"')
         self.assertContains(page, 'data-testid="spending-goal-spending"')
-        self.assertEqual(page.context["sankey_data"]["goal_spending"], 19400.0)
+        # The charts read goal spending from the embedded API body.
+        self.assertEqual(page.context["report_json"]["goal_spending"]["total"], "19400.00")
         # Savings rate reads the operating net; the net shown is after goal spending.
         self.assertEqual(round(page.context["stats"]["savings_rate"]), 30)
         self.assertEqual(page.context["stats"]["net_after_goals"], Decimal("-17600"))
-        self.assertEqual(page.context["chart_data"]["goal_spending"], [19400.0])
+        self.assertEqual(page.context["report_json"]["goal_spending"]["per_period"], ["19400.00"])
         csv = self.client.get(reverse("reports:export_income_statement", args=self.book.url_args) + qs)
         body = csv.content.decode()
         self.assertIn("GOAL SPENDING", body)

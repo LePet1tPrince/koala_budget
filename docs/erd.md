@@ -223,7 +223,6 @@ erDiagram
         string mask "last 4 digits"
         string subtype
         string type
-        prop is_mapped "account not null"
     }
 
     PlaidTransaction {

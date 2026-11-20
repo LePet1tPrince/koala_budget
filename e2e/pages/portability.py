@@ -10,9 +10,6 @@ class PortabilityPage(BasePage):
     def goto_home(self, book):
         self.goto(self.path(book), wait_for="[data-testid='export-button']")
 
-    def export_url(self, book) -> str:
-        return f"{book.base_url}data/export/"
-
     # ------------------------------------------------------------------
     # Import
     # ------------------------------------------------------------------

@@ -115,7 +115,7 @@ def spending_payload(report, start_date, end_date, chosen, offered):
                 {"start_date": first, "end_date": last, "label": label}
                 for (first, last), label in zip(bounds, data["period_labels"], strict=True)
             ],
-            "has_activity": report["chart_data"] is not None,
+            "has_activity": report["has_activity"],
             "stats": report["stats"],
             "income": {
                 "total": data["total_income"],

@@ -55,7 +55,6 @@ function storeTab(key) {
 // ---------------------------------------------------------------------------
 const accountDndId = (id) => `account-${id}`;
 const groupDndId = (id) => `group-${id}`;
-const groupDropId = (id) => `group-drop-${id}`;
 
 // ---------------------------------------------------------------------------
 // The board API's rows (apps/accounts/api.py) with the page links the board

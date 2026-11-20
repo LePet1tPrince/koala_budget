@@ -23,7 +23,7 @@ import statistics
 from types import SimpleNamespace
 
 from django.db import transaction
-from django.db.models import F, Q
+from django.db.models import F
 from django.utils import timezone
 
 from apps.bank_feed.models import BankTransaction, VoidRowError
@@ -281,10 +281,3 @@ def run_safely(book, transactions=None, **kwargs):
 def refresh(book):
     """After a rule changes: re-evaluate every eligible row, suggesting only."""
     return run(book, allow_auto_post=False)
-
-
-def pending_matches(book):
-    """Suggested matches on rows still uncategorized (the feed's suggestion chips)."""
-    return RuleMatch.objects.filter(
-        book=book, status=RuleMatch.STATUS_SUGGESTED, transaction__journal_entry__isnull=True
-    ).filter(Q(transaction__is_void=False))
