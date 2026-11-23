@@ -12,6 +12,7 @@ Link's update mode instead of the feed silently going stale.
 
 import logging
 
+from django.db import transaction
 from django.utils.dateparse import parse_datetime
 
 from apps.audit.models import AuditEvent
@@ -77,6 +78,17 @@ def set_status(item, status, *, error_code="", error_message="", **extra):
             book=item.book,
             metadata={"plaid_item_id": item.pk, "from": previous, "to": status, "error_code": error_code or None},
         )
+        _email_team(item, status)
+
+
+def _email_team(item, status):
+    """Tell the team by email when the connection now needs them (apps.emails.alerts.bank_connection)."""
+    from apps.emails.alerts import BANK_ALERT_STATUSES
+    from apps.emails.tasks import send_bank_connection_alert
+
+    if status in BANK_ALERT_STATUSES:
+        # robust: a broker outage logs instead of failing the sync or webhook that changed the status.
+        transaction.on_commit(lambda: send_bank_connection_alert.delay(item.pk, status), robust=True)
 
 
 def record_error(item, error_code, error_message="") -> bool:

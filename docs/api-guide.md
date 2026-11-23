@@ -133,7 +133,7 @@ institution), `unassigned` (this month: `month`, `amount`, `state`, `label`, `ex
 | Book data | `/a/{team_slug}/{book_slug}/{app}/api/...` | `…/budget/api/month/`, `…/bankfeed/api/feed/` |
 | Book, no one app | `/a/{team_slug}/{book_slug}/api/...` | `…/api/nav-state/`, `…/api/home/` |
 | Team data | `/a/{team_slug}/{area}/api/...` | `/a/{team}/books/api/books/`, `/a/{team}/team/api/memberships/` |
-| User / global | `/api/...`, `/users/api/...`, `/teams/api/...`, `/subscriptions/api/...` | `/api/me/`, `/users/api/profile/` |
+| User / global | `/api/...`, `/users/api/...`, `/emails/api/...`, `/teams/api/...`, `/subscriptions/api/...` | `/api/me/`, `/users/api/profile/` |
 
 There is no `/v1/` prefix: the web app and the API ship together (add one when a released phone app
 needs it). `GET /api/me/` gives each book's `base_url`; the generated client takes `teamSlug` and
@@ -302,6 +302,8 @@ endpoints change: `manage.py spectacular --file schema.yml`, then each path's UR
 | PATCH | `/users/api/profile/` | `users:api_profile` | Change the profile; fields left out keep their value. |
 | POST | `/users/api/profile/avatar/` | `users:api_profile_avatar` | Upload a profile picture (multipart, an image of up to 5 MB). |
 | GET | `/users/download-data/` | `users:download_data` | All the user's data as a ZIP archive (GDPR data portability). |
+| GET | `/emails/api/preferences/` | `emails:api_preferences` | Which optional emails the signed-in user gets (`bank_connection_alerts`, `budget_alerts`). |
+| PATCH | `/emails/api/preferences/` | `emails:api_preferences` | Turn optional emails on or off; fields left out keep their value. Billing notices go to admins regardless. |
 
 #### Team: books
 

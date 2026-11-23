@@ -90,6 +90,7 @@ urlpatterns = [
     path("accounts/", include("allauth.urls")),
     path("_allauth/", include("allauth.headless.urls")),
     path("users/", include("apps.users.urls")),
+    path("emails/", include("apps.emails.urls")),
     path("subscriptions/", include("apps.subscriptions.urls")),
     path("teams/", include("apps.teams.urls")),
     path("", include("apps.web.urls")),

@@ -1,0 +1,9 @@
+{% extends 'emails/base.html' %}
+{% load i18n %}
+{% block message_body %}
+<p>{% include "emails/_payment_failed_body.txt" %}</p>
+{% if invoice_url %}<p style='font-size:15px;'><a href='{{ invoice_url }}'>{% translate "View the invoice" %}</a></p>{% endif %}
+{% endblock %}
+{% block cta_link %}{{ subscription_url }}{% endblock %}
+{% block cta_text %}{% translate "Update payment method" %}{% endblock %}
+{% block footer_reason %}{% translate "You get this because you administer this team's subscription." %}{% endblock %}

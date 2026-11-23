@@ -1,0 +1,5 @@
+{% load i18n %}{% autoescape off %}{% include "emails/_payment_failed_body.txt" %}
+{{ subscription_url }}{% if invoice_url %}
+{% translate "View the invoice" %}: {{ invoice_url }}{% endif %}
+
+{% translate "You get this because you administer this team's subscription." as reason %}{% include "emails/footer.txt" with reason=reason %}{% endautoescape %}

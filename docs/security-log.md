@@ -2,6 +2,9 @@
 
 ## Open Issues
 
+- **S-EMAIL-01 (Low, accepted) — Unsubscribe links never expire.** Anyone holding a forwarded alert can turn that alert family off for its recipient. Accepted: CASL requires the mechanism to keep working, and the worst outcome is a missed alert the person can turn back on. Rotating `SECRET_KEY` without `SECRET_KEY_FALLBACKS` breaks every old link.
+- **S-EMAIL-02 (Low, open — ops) — `DEFAULT_FROM_EMAIL` defaults to a personal Gmail address** (`settings.py`). Mail sent through Mailgun "from" a gmail.com address fails DMARC and lands in spam or is rejected. Production must set `DEFAULT_FROM_EMAIL` to an address on the Mailgun sending domain.
+
 From the API-first migration review (2026-11-19, entry below). Each needs a product or deployment
 decision, so none was changed.
 
@@ -54,6 +57,16 @@ decision, so none was changed.
   request, so the practical gap is small.
 
 ## Resolved Issues
+
+### 2026-11-23 — Transactional email (`apps.emails`)
+**Feature:** Bank connection, overspending and billing emails; preferences page and API; one-click unsubscribe.
+**Verdict:** Approved — no Critical or High findings.
+
+- **Unsubscribe without sign-in.** `/emails/unsubscribe/<token>/` is `csrf_exempt` (RFC 8058 one-click POSTs carry no CSRF token). The token is `signing.dumps({"u", "p"})` with its own salt, so only a link we sent works; the payload's preference must be one of `PREFERENCE_LABELS`, so a forged-but-signed token for another field (or a token signed under a different salt) is refused (`TokenTest`). It can only turn one alert family *off*. GET changes nothing (link scanners). The page masks the address; a bad token and a deleted user both get the same 400.
+- **Recipients.** Book alerts go to the book's team's members; billing to that team's admins through `team.membership_set` (a `team.members.filter(membership__role=ADMIN)` query would also have matched admins of other teams). Only confirmed addresses are mailed, so an address someone typed but never confirmed gets nothing. `BankConnectionTest.test_another_teams_members_are_not_emailed`.
+- **Injection.** HTML bodies autoescape every user- or bank-supplied string (category, book and institution names, Plaid's error message); subjects are collapsed to one line before Django's header check.
+- **API.** `/emails/api/preferences/` is `IsAuthenticated` on the person (session or session token); an API key is refused (`test_api_key_cannot_change_preferences`).
+- **Stripe.** Handlers run on dj-stripe's verified events and pass only `event.data["object"]` to Celery.
 
 ### 2026-11-19 — API-first migration (WP1–WP9, `git diff origin/develop...HEAD`)
 **Feature:** Every screen's data through DRF (`docs/api-first-migration-plan.md`): phone session-token

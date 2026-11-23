@@ -1,0 +1,5 @@
+{% load i18n %}{% if trial_end %}{% blocktranslate trimmed with team=team.name date=trial_end|date:"DATE_FORMAT" %}
+The free trial for {{ team }} ends on {{ date }}. After that your subscription continues at your plan's price unless you cancel. You can review your plan, payment method or cancel from the subscription page.
+{% endblocktranslate %}{% else %}{% blocktranslate trimmed with team=team.name %}
+The free trial for {{ team }} ends in a few days. After that your subscription continues at your plan's price unless you cancel. You can review your plan, payment method or cancel from the subscription page.
+{% endblocktranslate %}{% endif %}

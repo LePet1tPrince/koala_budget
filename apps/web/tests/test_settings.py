@@ -105,6 +105,7 @@ class SettingsSectionsTest(TestCase):
             self._sections(self.admin),
             {
                 "profile",
+                "emails",
                 "password",
                 "book",
                 "data_transfer",

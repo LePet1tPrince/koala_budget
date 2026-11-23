@@ -1,0 +1,13 @@
+{% load i18n %}{% if status == "login_required" %}{% blocktranslate trimmed with bank=item.institution_name book=book.name %}
+Koala Budget can't import new transactions from {{ bank }} into {{ book }} until you sign in to the bank again. It takes a minute from your Inbox.
+{% endblocktranslate %}{% elif status == "pending_expiration" %}{% if item.consent_expiration_time %}{% blocktranslate trimmed with bank=item.institution_name book=book.name date=item.consent_expiration_time|date:"DATE_FORMAT" %}
+The access you gave {{ book }} to {{ bank }} expires on {{ date }}. Renew it from your Inbox so transactions keep arriving.
+{% endblocktranslate %}{% else %}{% blocktranslate trimmed with bank=item.institution_name book=book.name %}
+The access you gave {{ book }} to {{ bank }} expires soon. Renew it from your Inbox so transactions keep arriving.
+{% endblocktranslate %}{% endif %}{% elif status == "pending_disconnect" %}{% blocktranslate trimmed with bank=item.institution_name book=book.name %}
+{{ bank }} is about to drop its connection to {{ book }}. Reconnect from your Inbox so transactions keep arriving.
+{% endblocktranslate %}{% elif status == "revoked" %}{% blocktranslate trimmed with bank=item.institution_name book=book.name %}
+Access to {{ bank }} was withdrawn, so {{ book }} no longer receives its transactions. Link the bank again from your Inbox to resume.
+{% endblocktranslate %}{% else %}{% blocktranslate trimmed with bank=item.institution_name book=book.name %}
+{{ book }} stopped receiving transactions from {{ bank }}. Open your Inbox to see what the bank reported and reconnect.
+{% endblocktranslate %}{% endif %}

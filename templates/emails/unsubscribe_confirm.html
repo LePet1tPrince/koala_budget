@@ -1,0 +1,15 @@
+{% extends "account/base.html" %}
+{% load i18n %}
+{% block content %}
+  <div class="app-card" data-testid="unsubscribe-confirm">
+    <h1 class="text-2xl font-bold mb-2">{% translate "Unsubscribe" %}</h1>
+    <p class="mb-4">
+      {% blocktranslate trimmed with label=label email=masked_email %}
+        Stop sending {{ label }} to {{ email }}?
+      {% endblocktranslate %}
+    </p>
+    <form method="post">
+      <button type="submit" class="btn btn-primary" data-testid="unsubscribe-submit">{% translate "Unsubscribe" %}</button>
+    </form>
+  </div>
+{% endblock %}

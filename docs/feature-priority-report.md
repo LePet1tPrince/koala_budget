@@ -183,6 +183,8 @@ sees it. Connecting a second bank is effectively undiscoverable.
 ### P0.4 — Transactional email and alerts
 **Effort: M/L · 6–9 days · Complexity: Medium**
 
+> **Status (2026-11-23): built** — `apps.emails`: bank connection, overspending and billing (trial ending, payment failed, annual renewal) emails, preferences page and API, one-click unsubscribe. The welcome email predates it (`apps/users/emails.py`). Production still needs the Mailgun backend and a domain `DEFAULT_FROM_EMAIL` set (see `docs/feature-history.md`).
+
 There is no email layer at all. No `templates/emails/`, no `apps/users/emails.py`, no
 Celery email tasks. `EMAIL_BACKEND` defaults to a dev console backend
 (`settings.py:408`), Anymail is configured but not activated (`settings.py:413`), and

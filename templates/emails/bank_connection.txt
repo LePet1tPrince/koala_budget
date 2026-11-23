@@ -1,0 +1,6 @@
+{% load i18n %}{% autoescape off %}{% include "emails/_bank_connection_body.txt" %}{% if item.error_message %}
+{% translate "The bank said:" %} {{ item.error_message }}
+{% endif %}
+{% translate "Open your Inbox" %}: {{ inbox_url }}
+
+{% translate "You get this because you are a member of this book's team." as reason %}{% include "emails/footer.txt" with reason=reason %}{% endautoescape %}

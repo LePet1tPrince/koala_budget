@@ -1,0 +1,5 @@
+{% load i18n %}{% autoescape off %}--
+{{ reason }}
+{% translate "Email preferences" %}: {{ preferences_url }}{% if unsubscribe_url %}
+{% translate "Unsubscribe from these alerts" %}: {{ unsubscribe_url }}{% endif %}
+{% endautoescape %}

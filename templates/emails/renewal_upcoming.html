@@ -1,0 +1,6 @@
+{% extends 'emails/base.html' %}
+{% load i18n %}
+{% block message_body %}<p>{% include "emails/_renewal_upcoming_body.txt" %}</p>{% endblock %}
+{% block cta_link %}{{ subscription_url }}{% endblock %}
+{% block cta_text %}{% translate "Review your subscription" %}{% endblock %}
+{% block footer_reason %}{% translate "You get this because you administer this team's subscription." %}{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "web/settings/settings_base.html" %}
+{% load i18n %}
+{% load form_tags %}
+{% block settings_content %}
+<section class="app-card" data-testid="email-preferences">
+  <form method="post" class="space-y-3">
+    {% csrf_token %}
+    {% render_checkbox_input form.bank_connection_alerts %}
+    {% render_checkbox_input form.budget_alerts %}
+    <div class="pt-2">
+      <button type="submit" class="btn btn-primary" data-testid="email-preferences-save">{% translate "Save" %}</button>
+    </div>
+  </form>
+</section>
+<section class="app-card mt-4">
+  <h3 class="font-semibold">{% translate "Always sent" %}</h3>
+  <p class="mt-1 text-sm text-base-content/70">
+    {% blocktranslate trimmed %}
+      Team admins always get billing notices: a trial about to end, a payment that didn't go through and an
+      annual renewal coming up. Sign-in emails (confirming an address, resetting a password) are always sent.
+    {% endblocktranslate %}
+  </p>
+  <p class="mt-2 text-sm text-base-content/70">
+    {% blocktranslate trimmed with email=user.email %}Emails go to {{ email }}.{% endblocktranslate %}
+    <a href="{% url 'users:user_profile' %}" class="link">{% translate "Change it on your profile" %}</a>
+  </p>
+</section>
+{% endblock %}
