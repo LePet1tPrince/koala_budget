@@ -1,7 +1,6 @@
-from apps.accounts.models import ACCOUNT_TYPE_ASSET, Account
 from apps.books.helpers import nav_book_for_member
 
-from .models import BankTransaction
+from .services import nav
 
 
 def nav_feed_accounts(request):
@@ -13,18 +12,7 @@ def nav_feed_accounts(request):
     book = nav_book_for_member(request)
     if not book:
         return {}
-    feed_accounts = (
-        Account.objects.filter(book=book, has_feed=True, is_hidden=False)
-        .select_related("account_group", "institution")
-        .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
-    )
-    groups = {}
-    for account in feed_accounts:
-        account.is_bank_account = account.account_group.account_type == ACCOUNT_TYPE_ASSET
-        name = account.institution.name if account.institution else None
-        groups.setdefault(name, []).append(account)
-    ordered = sorted(groups.items(), key=lambda item: (item[0] is None, (item[0] or "").lower()))
-    return {"nav_feed_institutions": [{"name": name, "accounts": accounts} for name, accounts in ordered]}
+    return {"nav_feed_institutions": nav.feed_accounts_by_institution(book)}
 
 
 def inbox_count(request):
@@ -39,11 +27,4 @@ def inbox_count(request):
     book = nav_book_for_member(request)
     if not book:
         return {}
-    return {
-        "inbox_count": BankTransaction.objects.filter(
-            book=book,
-            journal_entry__isnull=True,
-            is_void=False,
-            account__is_hidden=False,
-        ).count()
-    }
+    return {"inbox_count": nav.inbox_count(book)}

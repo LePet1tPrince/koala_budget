@@ -1,0 +1,9 @@
+{% load django_vite %}
+{% comment %}
+The editors for accounts, groups, payees and institutions (accounts/manage-modals.jsx),
+for a Manage page whose own `page_js` loads nothing else. Its `data-manage-modal`
+links open them; their hrefs are the no-JS form pages.
+{% endcomment %}
+{{ request.book.base_url|json_script:'book-base' }}
+{% vite_react_refresh %}
+{% vite_asset 'assets/javascript/accounts/manage-modals.jsx' %}

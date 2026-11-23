@@ -62,7 +62,7 @@ export interface PatchedInvitation {
      * @type {boolean}
      * @memberof PatchedInvitation
      */
-    isAccepted?: boolean;
+    readonly isAccepted?: boolean;
 }
 
 
@@ -97,7 +97,7 @@ export function PatchedInvitationFromJSONTyped(json: any, ignoreDiscriminator: b
       return PatchedInvitationToJSONTyped(json, false);
   }
 
-  export function PatchedInvitationToJSONTyped(value?: Omit<PatchedInvitation, 'id'|'invited_by'> | null, ignoreDiscriminator: boolean = false): any {
+  export function PatchedInvitationToJSONTyped(value?: Omit<PatchedInvitation, 'id'|'invited_by'|'is_accepted'> | null, ignoreDiscriminator: boolean = false): any {
     if (value == null) {
         return value;
     }
@@ -107,7 +107,6 @@ export function PatchedInvitationFromJSONTyped(json: any, ignoreDiscriminator: b
         'team': value['team'],
         'email': value['email'],
         'role': RoleEnumToJSON(value['role']),
-        'is_accepted': value['isAccepted'],
     };
 }
 

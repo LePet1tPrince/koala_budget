@@ -15,14 +15,16 @@
 
 import * as runtime from '../runtime';
 import type {
+  AccountGroup,
   BankFeedRow,
   BatchIds,
   CategorizeTransactionsRequest,
   CategorySuggestion,
+  CreateFeedAccountRequest,
+  FeedAccount,
+  FeedPickers,
   ManualTransaction,
-  PaginatedAccountGroupList,
   PaginatedBankFeedRowList,
-  PaginatedFeedAccountList,
   PatchedBatchEditRequest,
   RecurringTransaction,
   SimilarCategorySuggestion,
@@ -38,6 +40,8 @@ import type {
   UploadValidateDatesResponse,
 } from '../models/index';
 import {
+    AccountGroupFromJSON,
+    AccountGroupToJSON,
     BankFeedRowFromJSON,
     BankFeedRowToJSON,
     BatchIdsFromJSON,
@@ -46,14 +50,16 @@ import {
     CategorizeTransactionsRequestToJSON,
     CategorySuggestionFromJSON,
     CategorySuggestionToJSON,
+    CreateFeedAccountRequestFromJSON,
+    CreateFeedAccountRequestToJSON,
+    FeedAccountFromJSON,
+    FeedAccountToJSON,
+    FeedPickersFromJSON,
+    FeedPickersToJSON,
     ManualTransactionFromJSON,
     ManualTransactionToJSON,
-    PaginatedAccountGroupListFromJSON,
-    PaginatedAccountGroupListToJSON,
     PaginatedBankFeedRowListFromJSON,
     PaginatedBankFeedRowListToJSON,
-    PaginatedFeedAccountListFromJSON,
-    PaginatedFeedAccountListToJSON,
     PatchedBatchEditRequestFromJSON,
     PatchedBatchEditRequestToJSON,
     RecurringTransactionFromJSON,
@@ -85,8 +91,6 @@ import {
 export interface BankFeedAccountGroupsRequest {
     bookSlug: string;
     teamSlug: string;
-    page?: number;
-    pageSize?: number;
 }
 
 export interface BankFeedBatchDeleteRequest {
@@ -99,8 +103,6 @@ export interface BankFeedBatchDuplicateRequest {
     bookSlug: string;
     teamSlug: string;
     batchIds: BatchIds;
-    page?: number;
-    pageSize?: number;
 }
 
 export interface BankFeedBatchEditRequest {
@@ -129,14 +131,12 @@ export interface BankFeedCategorySuggestionsRequest {
 export interface BankFeedCreateAccountRequest {
     bookSlug: string;
     teamSlug: string;
-    bankFeedRow: BankFeedRow;
+    createFeedAccountRequest: CreateFeedAccountRequest;
 }
 
 export interface BankFeedFeedAccountsRequest {
     bookSlug: string;
     teamSlug: string;
-    page?: number;
-    pageSize?: number;
 }
 
 export interface BankFeedFeedCreateRequest {
@@ -194,10 +194,22 @@ export interface BankFeedLocateRequest {
     view?: BankFeedLocateViewEnum;
 }
 
+export interface BankFeedPickersRequest {
+    bookSlug: string;
+    teamSlug: string;
+}
+
 export interface BankFeedRecurringListRequest {
     bookSlug: string;
     teamSlug: string;
     account?: string;
+    includeFinished?: boolean;
+}
+
+export interface BankFeedRecurringStopRequest {
+    bookSlug: string;
+    id: number;
+    teamSlug: string;
 }
 
 export interface BankFeedSampleCsvRequest {
@@ -273,6 +285,7 @@ export interface BankFeedUploadPreviewRequest {
     accountId?: number;
     columnMapping?: string;
     categoryMappings?: string;
+    dateFormat?: string;
 }
 
 export interface BankFeedUploadValidateDatesRequest {
@@ -292,7 +305,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     /**
      * Return all account groups for the book, for use in account creation.
      */
-    async bankFeedAccountGroupsRaw(requestParameters: BankFeedAccountGroupsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedAccountGroupList>> {
+    async bankFeedAccountGroupsRaw(requestParameters: BankFeedAccountGroupsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AccountGroup>>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
@@ -309,19 +322,12 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const queryParameters: any = {};
 
-        if (requestParameters['page'] != null) {
-            queryParameters['page'] = requestParameters['page'];
-        }
-
-        if (requestParameters['pageSize'] != null) {
-            queryParameters['page_size'] = requestParameters['pageSize'];
-        }
-
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -333,13 +339,13 @@ export class BankFeedApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedAccountGroupListFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(AccountGroupFromJSON));
     }
 
     /**
      * Return all account groups for the book, for use in account creation.
      */
-    async bankFeedAccountGroups(requestParameters: BankFeedAccountGroupsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedAccountGroupList> {
+    async bankFeedAccountGroups(requestParameters: BankFeedAccountGroupsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AccountGroup>> {
         const response = await this.bankFeedAccountGroupsRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -375,9 +381,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -403,7 +410,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     /**
      * Batch duplicate multiple bank transactions. Creates new BankTransaction copies without journal entries, and answers with the copies made: reconciled rows are not copied, and a transfer with both legs selected is copied once.
      */
-    async bankFeedBatchDuplicateRaw(requestParameters: BankFeedBatchDuplicateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedBankFeedRowList>> {
+    async bankFeedBatchDuplicateRaw(requestParameters: BankFeedBatchDuplicateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<BankFeedRow>>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
@@ -427,21 +434,14 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const queryParameters: any = {};
 
-        if (requestParameters['page'] != null) {
-            queryParameters['page'] = requestParameters['page'];
-        }
-
-        if (requestParameters['pageSize'] != null) {
-            queryParameters['page_size'] = requestParameters['pageSize'];
-        }
-
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -454,13 +454,13 @@ export class BankFeedApi extends runtime.BaseAPI {
             body: BatchIdsToJSON(requestParameters['batchIds']),
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedBankFeedRowListFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(BankFeedRowFromJSON));
     }
 
     /**
      * Batch duplicate multiple bank transactions. Creates new BankTransaction copies without journal entries, and answers with the copies made: reconciled rows are not copied, and a transfer with both legs selected is copied once.
      */
-    async bankFeedBatchDuplicate(requestParameters: BankFeedBatchDuplicateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedBankFeedRowList> {
+    async bankFeedBatchDuplicate(requestParameters: BankFeedBatchDuplicateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<BankFeedRow>> {
         const response = await this.bankFeedBatchDuplicateRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -489,9 +489,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -545,9 +546,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -601,9 +603,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -648,9 +651,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -691,10 +695,10 @@ export class BankFeedApi extends runtime.BaseAPI {
             );
         }
 
-        if (requestParameters['bankFeedRow'] == null) {
+        if (requestParameters['createFeedAccountRequest'] == null) {
             throw new runtime.RequiredError(
-                'bankFeedRow',
-                'Required parameter "bankFeedRow" was null or undefined when calling bankFeedCreateAccount().'
+                'createFeedAccountRequest',
+                'Required parameter "createFeedAccountRequest" was null or undefined when calling bankFeedCreateAccount().'
             );
         }
 
@@ -704,9 +708,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -716,7 +721,7 @@ export class BankFeedApi extends runtime.BaseAPI {
             method: 'POST',
             headers: headerParameters,
             query: queryParameters,
-            body: BankFeedRowToJSON(requestParameters['bankFeedRow']),
+            body: CreateFeedAccountRequestToJSON(requestParameters['createFeedAccountRequest']),
         }, initOverrides);
 
         return new runtime.JSONApiResponse(response, (jsonValue) => SimpleAccountFromJSON(jsonValue));
@@ -733,7 +738,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     /**
      * Return feed accounts with up-to-date balances and review counts.
      */
-    async bankFeedFeedAccountsRaw(requestParameters: BankFeedFeedAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedFeedAccountList>> {
+    async bankFeedFeedAccountsRaw(requestParameters: BankFeedFeedAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<FeedAccount>>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
@@ -750,19 +755,12 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const queryParameters: any = {};
 
-        if (requestParameters['page'] != null) {
-            queryParameters['page'] = requestParameters['page'];
-        }
-
-        if (requestParameters['pageSize'] != null) {
-            queryParameters['page_size'] = requestParameters['pageSize'];
-        }
-
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -774,13 +772,13 @@ export class BankFeedApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedFeedAccountListFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(FeedAccountFromJSON));
     }
 
     /**
      * Return feed accounts with up-to-date balances and review counts.
      */
-    async bankFeedFeedAccounts(requestParameters: BankFeedFeedAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedFeedAccountList> {
+    async bankFeedFeedAccounts(requestParameters: BankFeedFeedAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<FeedAccount>> {
         const response = await this.bankFeedFeedAccountsRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -816,9 +814,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -924,9 +923,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -987,9 +987,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1103,9 +1104,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1129,7 +1131,55 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * The book\'s active recurring schedules, soonest first -- the bank feed\'s \"scheduled transactions\" panel. Finished schedules (no next date) are left out.  - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2
+     * What the Inbox\'s and Categorize mode\'s pickers offer: every account a transaction can be categorized to (goal accounts with what they have left), the payees, and the groups a new category can be created in.
+     */
+    async bankFeedPickersRaw(requestParameters: BankFeedPickersRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FeedPickers>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedPickers().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedPickers().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/pickers/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => FeedPickersFromJSON(jsonValue));
+    }
+
+    /**
+     * What the Inbox\'s and Categorize mode\'s pickers offer: every account a transaction can be categorized to (goal accounts with what they have left), the payees, and the groups a new category can be created in.
+     */
+    async bankFeedPickers(requestParameters: BankFeedPickersRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FeedPickers> {
+        const response = await this.bankFeedPickersRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * The book\'s recurring schedules.  - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2 -- the   active ones, soonest first (the bank feed\'s \"scheduled transactions\" panel);   `include_finished=1` adds the finished ones after them (the Recurring page). - DELETE /a/{team_slug}/{book_slug}/bankfeed/api/recurring/{id}/ -- stop one.   The transactions it already wrote stay, as ordinary manual transactions.   Open to any member, as starting one is (creating a feed transaction is).
      */
     async bankFeedRecurringListRaw(requestParameters: BankFeedRecurringListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<RecurringTransaction>>> {
         if (requestParameters['bookSlug'] == null) {
@@ -1152,11 +1202,16 @@ export class BankFeedApi extends runtime.BaseAPI {
             queryParameters['account'] = requestParameters['account'];
         }
 
+        if (requestParameters['includeFinished'] != null) {
+            queryParameters['include_finished'] = requestParameters['includeFinished'];
+        }
+
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1172,11 +1227,65 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * The book\'s active recurring schedules, soonest first -- the bank feed\'s \"scheduled transactions\" panel. Finished schedules (no next date) are left out.  - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2
+     * The book\'s recurring schedules.  - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2 -- the   active ones, soonest first (the bank feed\'s \"scheduled transactions\" panel);   `include_finished=1` adds the finished ones after them (the Recurring page). - DELETE /a/{team_slug}/{book_slug}/bankfeed/api/recurring/{id}/ -- stop one.   The transactions it already wrote stay, as ordinary manual transactions.   Open to any member, as starting one is (creating a feed transaction is).
      */
     async bankFeedRecurringList(requestParameters: BankFeedRecurringListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<RecurringTransaction>> {
         const response = await this.bankFeedRecurringListRaw(requestParameters, initOverrides);
         return await response.value();
+    }
+
+    /**
+     * The book\'s recurring schedules.  - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2 -- the   active ones, soonest first (the bank feed\'s \"scheduled transactions\" panel);   `include_finished=1` adds the finished ones after them (the Recurring page). - DELETE /a/{team_slug}/{book_slug}/bankfeed/api/recurring/{id}/ -- stop one.   The transactions it already wrote stay, as ordinary manual transactions.   Open to any member, as starting one is (creating a feed transaction is).
+     */
+    async bankFeedRecurringStopRaw(requestParameters: BankFeedRecurringStopRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedRecurringStop().'
+            );
+        }
+
+        if (requestParameters['id'] == null) {
+            throw new runtime.RequiredError(
+                'id',
+                'Required parameter "id" was null or undefined when calling bankFeedRecurringStop().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedRecurringStop().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/recurring/{id}/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"id"}}`, encodeURIComponent(String(requestParameters['id']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'DELETE',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * The book\'s recurring schedules.  - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2 -- the   active ones, soonest first (the bank feed\'s \"scheduled transactions\" panel);   `include_finished=1` adds the finished ones after them (the Recurring page). - DELETE /a/{team_slug}/{book_slug}/bankfeed/api/recurring/{id}/ -- stop one.   The transactions it already wrote stay, as ordinary manual transactions.   Open to any member, as starting one is (creating a feed transaction is).
+     */
+    async bankFeedRecurringStop(requestParameters: BankFeedRecurringStopRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedRecurringStopRaw(requestParameters, initOverrides);
     }
 
     /**
@@ -1201,9 +1310,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1308,9 +1418,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1366,9 +1477,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1422,9 +1534,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1478,9 +1591,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1534,9 +1648,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1586,9 +1701,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1642,9 +1758,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1690,9 +1807,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1758,9 +1876,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1795,6 +1914,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         if (requestParameters['categoryMappings'] != null) {
             formParams.append('category_mappings', requestParameters['categoryMappings'] as any);
+        }
+
+        if (requestParameters['dateFormat'] != null) {
+            formParams.append('date_format', requestParameters['dateFormat'] as any);
         }
 
         const response = await this.request({
@@ -1838,9 +1961,10 @@ export class BankFeedApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }

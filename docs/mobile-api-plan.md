@@ -4,6 +4,24 @@ Goal: the browser app and a phone app both consume one API. This document invent
 already API, what is not, what auth needs, and the effort for each piece. Measured against the
 codebase as of 2026-11-01.
 
+## Status (2026-11-19)
+
+The work this assessment called for is planned in `docs/api-first-migration-plan.md` and, for
+Phases 1–3, **done** on the integration branch `claude/django-templates-api-migration-h7weqh`
+(WP1–WP10):
+
+| Phase | State |
+|---|---|
+| 1. Platform | Done (WP1): `X-Session-Token` auth (`SessionTokenMiddleware`, `SessionTokenAuthentication`), `GET /api/me/`, `nav-state`, `apps/api/base.py`, `scripts/build_api_client.sh`. |
+| 2. API parity + frontend switch | Done (WP2–WP8): every area's JSON view is DRF and in the schema; React islands load through `api-client`, not `json_script`. |
+| 3. Enforcement, QA, docs, security | Done (WP9–WP10): `apps/api/tests/test_api_surface.py`; `docs/api-guide.md` (phone auth, endpoint index); security review in `docs/security-log.md`. |
+| 5. Retire Django templates | **Remains.** Server-rendered pages (budget month, goals, reports, dashboard, CRUD pages) have their API but are still templates; replacing them needs the product decisions in §4. |
+
+The risks in §6 are addressed: token writes are audited as the token's user (middleware, tested),
+membership resolves after the token user is set, budget/goal payloads are structured, and every
+book URL is in the isolation tables. Store billing policy (§3.2) is still open. §1 below describes
+the codebase before the migration.
+
 ## 1. Current state
 
 | Layer | State |

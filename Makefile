@@ -126,6 +126,9 @@ build-api-client:  ## Update the JavaScript API client code.
 		-g typescript-fetch \
 		-o /local/
 
+build-api-client-local:  ## Update the JavaScript API client without Docker or a running server (needs OPENAPI_GENERATOR_JAR and Java)
+	@./scripts/build_api_client.sh
+
 .PHONY: help
 .DEFAULT_GOAL := help
 

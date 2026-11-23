@@ -90,7 +90,7 @@ const Reveal = ({ before, after, onClose, reportUrl }) => {
   );
 };
 
-const OpeningBalances = ({ url, reportUrl, csrf, onClose, onSaved }) => {
+const OpeningBalances = ({ api, reportUrl, onClose, onSaved }) => {
   const [accounts, setAccounts] = useState(null);
   const [amounts, setAmounts] = useState({});
   const [before, setBefore] = useState(null);
@@ -99,45 +99,41 @@ const OpeningBalances = ({ url, reportUrl, csrf, onClose, onSaved }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch(url, { headers: { Accept: 'application/json' } })
-      .then((r) => r.json())
+    api
+      .openingBalances()
       .then((data) => {
         if (!data.allowed) {
-          setError(data.error);
+          setError(data.reason);
           setAccounts([]);
           return;
         }
         setAccounts(data.accounts);
-        setBefore(Number(data.net_worth));
+        setBefore(Number(data.netWorth));
       })
       .catch(() => setError(gettext('Could not load your accounts.')));
-  }, [url]);
+  }, [api]);
 
   const save = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-        body: JSON.stringify({
-          rows: Object.entries(amounts).map(([id, amount]) => ({ account_id: Number(id), amount: amountForPayload(amount, '') })),
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setError(data.error || gettext('Could not save those balances.'));
-        return;
-      }
-      setBefore(Number(data.net_worth_before));
-      setAfter(Number(data.net_worth));
+      const data = await api.setOpeningBalances(
+        Object.entries(amounts).map(([id, amount]) => ({
+          accountId: Number(id),
+          amount: amountForPayload(amount, ''),
+        })),
+      );
+      setBefore(Number(data.netWorthBefore));
+      setAfter(Number(data.netWorth));
       onSaved?.();
-    } catch {
-      setError(gettext('Could not save those balances.'));
+    } catch (e) {
+      // A refusal (a locked period, an amount that is not one) says why; a dropped
+      // connection has nothing to say, so it gets the generic line.
+      setError(e.status ? e.message : gettext('Could not save those balances.'));
     } finally {
       setBusy(false);
     }
-  }, [url, csrf, amounts, onSaved]);
+  }, [api, amounts, onSaved]);
 
   const assets = (accounts || []).filter((a) => a.type === 'asset');
   const debts = (accounts || []).filter((a) => a.type === 'liability');
@@ -148,7 +144,7 @@ const OpeningBalances = ({ url, reportUrl, csrf, onClose, onSaved }) => {
         <span className="block truncate text-sm">{account.name}</span>
         <span className="block text-xs text-base-content/70">{account.group}</span>
       </span>
-      {account.has_opening_balance ? (
+      {account.hasOpeningBalance ? (
         <span className="text-xs text-base-content/70">{gettext('already set')}</span>
       ) : (
         <span className="flex items-center gap-1">

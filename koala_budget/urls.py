@@ -23,6 +23,7 @@ from django.views.generic import RedirectView
 from django.views.i18n import JavaScriptCatalog
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
+from apps.api.urls import book_urlpatterns as api_book_urls
 from apps.books.urls import book_urlpatterns as books_book_urls
 from apps.books.urls import team_urlpatterns as books_team_urls
 from apps.books.views import legacy_book_redirect_pattern
@@ -66,6 +67,7 @@ book_urlpatterns = [
     path("data/", include("apps.portability.urls")),
     path("reconcile/", include("apps.reconciliation.urls")),
     path("rules/", include("apps.rules.urls")),
+    path("api/", include(api_book_urls)),
 ]
 
 urlpatterns = [
@@ -92,12 +94,13 @@ urlpatterns = [
     path("teams/", include("apps.teams.urls")),
     path("", include("apps.web.urls")),
     path("support/", include("apps.support.urls")),
-    path("celery-progress/", include("celery_progress.urls")),
     # API docs
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     # Optional UI - you may wish to remove one of these depending on your preference
     path("api/schema/swagger-ui/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     path("api/schema/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
+    # User-level API (`/api/me/`); after the schema routes, which it never shadows.
+    path("api/", include("apps.api.urls")),
     # djstripe urls - for webhooks
     path("stripe/", include("djstripe.urls", namespace="djstripe")),
     # Plaid webhooks (global - Plaid can't know team slugs)

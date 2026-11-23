@@ -9,11 +9,11 @@
   {% if accountgroup.description %}<span>{{ accountgroup.description }}</span>{% endif %}
 {% endblock %}
 {% block detail_actions %}
-  <a href="{{ edit_url }}" class="btn btn-outline btn-sm" data-dialog="edit-dialog" data-testid="edit-btn">
+  <a href="{{ edit_url }}" class="btn btn-outline btn-sm" data-manage-modal="group" data-id="{{ accountgroup.pk }}" data-testid="edit-btn">
     {% icon "pencil" class="inline-block shrink-0 w-4 h-4" %}{% translate "Edit" %}
   </a>
   {% if not accountgroup.is_system %}
-    <a href="{{ delete_url }}" class="btn btn-ghost btn-sm text-error" data-dialog="delete-dialog" data-testid="delete-btn">
+    <a href="{{ delete_url }}" class="btn btn-ghost btn-sm text-error" data-manage-modal="group" data-id="{{ accountgroup.pk }}" data-confirm-delete data-after-delete="{% url 'accounts:accountgroup_list' request.team.slug request.book.slug %}" data-testid="delete-btn">
       {% icon "trash" class="inline-block shrink-0 w-4 h-4" %}{% translate "Delete" %}
     </a>
   {% endif %}
@@ -22,7 +22,7 @@
 <section class="app-card">
   <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
     <h2 class="text-base font-semibold">{% translate "Accounts in this group" %}</h2>
-    <a href="{% return_here add_account_url %}" class="btn btn-ghost btn-sm" data-testid="add-account-link">
+    <a href="{% return_here add_account_url %}" class="btn btn-ghost btn-sm" data-manage-modal="account" data-account-group="{{ accountgroup.pk }}" data-after-save="reload" data-testid="add-account-link">
       {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}{% translate "Add account" %}
     </a>
   </div>
@@ -37,11 +37,6 @@
   {% endif %}
 </section>
 {% endblock %}
-{% block dialogs %}
-  {% translate "Edit group" as edit_title %}
-  {% include "accounts/components/form_dialog.html" with dialog_id="edit-dialog" title=edit_title form=edit_form action=edit_url %}
-  {% if not accountgroup.is_system %}
-    {% translate "Delete group" as delete_title %}
-    {% include "accounts/components/delete_dialog.html" with dialog_id="delete-dialog" title=delete_title name=accountgroup.name action=delete_url blocked_reason=blocked_reason %}
-  {% endif %}
+{% block page_js %}
+  {% include "accounts/components/manage_modals_js.html" %}
 {% endblock %}

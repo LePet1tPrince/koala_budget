@@ -245,6 +245,7 @@
 {% endblock %}
 
 {% block page_js %}
-{{ waterfall|json_script:'dollar-map-data' }}
-{% vite_asset 'assets/javascript/reports/dollar-map-chart.js' %}
+{% comment %}The waterfall draws from the embedded `GET …/reports/api/budget-and-goals/` body (budget-goals-report.js).{% endcomment %}
+{{ report_json|json_script:'budget-goals-report-data' }}
+{% vite_asset 'assets/javascript/reports/budget-goals-report.js' %}
 {% endblock %}

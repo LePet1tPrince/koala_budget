@@ -161,10 +161,6 @@ class TransactionsPage(BasePage):
         # The modal opens on a detail fetch, so its fields arrive a tick later.
         self.page.wait_for_selector("[data-testid='transaction-account'], [data-testid='modal-error']", timeout=15_000)
 
-    def close_editor(self):
-        self.page.locator("[data-testid='modal-cancel-btn']").click()
-        self.page.wait_for_selector("[data-testid='transaction-edit-modal']", state="hidden")
-
     def save_editor(self):
         """Save and wait for the modal to close and the list to settle."""
         self.page.locator("[data-testid='modal-save-btn']").click()
@@ -190,13 +186,6 @@ class TransactionsPage(BasePage):
         box.fill(text)
         self.page.locator("[role='option']").filter(has_text=text).first.click()
 
-    def pick_date(self, testid: str, day: int):
-        """Open a `common/DateField` and click a day in the month on show."""
-        self.page.locator(f"button[data-testid='{testid}']").click()
-        grid = self.page.locator(f"[data-testid='{testid}-grid']")
-        grid.wait_for(timeout=5_000)
-        grid.get_by_role("button", name=str(day), exact=True).click()
-
     def type_date(self, testid: str, text: str):
         """Open a `common/DateField`, type a date into its text box and take it with Enter."""
         self.page.locator(f"button[data-testid='{testid}']").click()
@@ -214,8 +203,17 @@ class TransactionsPage(BasePage):
         self.page.locator("[data-testid='start-split-btn']").click()
         self.page.wait_for_selector("[data-testid='split-editor']")
 
-    def has_split_editor(self) -> bool:
-        return self.page.locator("[data-testid='split-editor']").is_visible()
+    def has_split_editor(self, timeout: int = 5_000) -> bool:
+        """
+        Whether the edit modal shows the split editor. A split row's legs are set by
+        the modal's effect after it first paints, so give the editor a moment to appear
+        rather than reading the DOM the instant the modal is visible.
+        """
+        try:
+            self.page.locator("[data-testid='split-editor']").wait_for(state="visible", timeout=timeout)
+        except PlaywrightTimeoutError:
+            return False
+        return True
 
     def split_leg_count(self) -> int:
         return self.page.locator("[data-testid^='split-category-']").count()
@@ -229,14 +227,6 @@ class TransactionsPage(BasePage):
 
     def split_error(self) -> str:
         return self.page.locator("[data-testid='split-error']").inner_text().strip()
-
-    def expand_split(self, transaction_id: int):
-        self.page.locator(f"[data-testid='split-toggle-{transaction_id}']").click()
-
-    def split_leg_rows(self, transaction_id: int) -> list[str]:
-        return [
-            text.strip() for text in self.page.locator(f"[data-testid='split-leg-{transaction_id}']").all_inner_texts()
-        ]
 
     # --- destructive actions ---------------------------------------------
 

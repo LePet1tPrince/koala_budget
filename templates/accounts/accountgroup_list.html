@@ -4,7 +4,7 @@
 {% block manage_title %}{% translate "Groups" %}{% endblock %}
 {% block manage_subtitle %}{% translate "Groups organise accounts of one type — they are the subtotals on your reports and budget." %}{% endblock %}
 {% block manage_actions %}
-  <a href="{% url 'accounts:accountgroup_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-dialog="create-dialog" data-testid="new-group-btn">
+  <a href="{% url 'accounts:accountgroup_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-manage-modal="group" data-testid="new-group-btn">
     {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}{% translate "New group" %}
   </a>
 {% endblock %}
@@ -31,13 +31,10 @@
   {% empty %}
     <div class="py-10 text-center text-sm text-base-content/70">
       {% translate "No groups yet." %}
-      <a href="{% url 'accounts:accountgroup_create' request.team.slug request.book.slug %}" class="link link-primary" data-dialog="create-dialog">{% translate "Create one" %}</a>
+      <a href="{% url 'accounts:accountgroup_create' request.team.slug request.book.slug %}" class="link link-primary" data-manage-modal="group">{% translate "Create one" %}</a>
     </div>
   {% endfor %}
 {% endblock %}
-{% block dialogs %}
-  {% url 'accounts:accountgroup_create' request.team.slug request.book.slug as create_url %}
-  {% translate "New group" as dialog_title %}
-  {% translate "Create group" as submit_label %}
-  {% include "accounts/components/form_dialog.html" with dialog_id="create-dialog" title=dialog_title form=create_form action=create_url submit_label=submit_label %}
+{% block page_js %}
+  {% include "accounts/components/manage_modals_js.html" %}
 {% endblock %}

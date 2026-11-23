@@ -5,9 +5,16 @@ Provides serializers for BankTransaction and adapter functions for bank feed row
 
 from decimal import Decimal
 
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
-from apps.accounts.serializers import AccountSerializer, SimpleAccountSerializer
+from apps.accounts.serializers import (
+    AccountGroupSerializer,
+    AccountSerializer,
+    PayeeSerializer,
+    PickerAccountSerializer,
+    SimpleAccountSerializer,
+)
 from apps.plaid.models import is_foreign_currency
 
 from .models import BankTransaction
@@ -32,6 +39,9 @@ class FeedAccountSerializer(AccountSerializer):
         ]
 
 
+# Named apart from `apps.journal.serializers.TransactionRowSerializer` (the
+# Transactions table's row), which owns the "TransactionRow" component.
+@extend_schema_serializer(component_name="CategorizeTransactionRow")
 class TransactionRowSerializer(serializers.Serializer):
     """Serializer for a transaction row in categorize request."""
 
@@ -332,7 +342,7 @@ class BankFeedRowSerializer(serializers.Serializer):
 
 
 class RecurringTransactionSerializer(serializers.Serializer):
-    """A recurring schedule as the bank feed's "scheduled transactions" panel shows it: its next occurrence."""
+    """A recurring schedule: what repeats, how often, when next (the feed's panel and the Recurring page)."""
 
     id = serializers.IntegerField()
     account = SimpleAccountSerializer()
@@ -342,9 +352,11 @@ class RecurringTransactionSerializer(serializers.Serializer):
     description = serializers.CharField()
     inflow = serializers.DecimalField(max_digits=15, decimal_places=2)
     outflow = serializers.DecimalField(max_digits=15, decimal_places=2)
-    next_date = serializers.DateField(help_text="The next occurrence's date")
+    next_date = serializers.DateField(allow_null=True, help_text="The next occurrence's date (null once finished)")
+    start_date = serializers.DateField(help_text="The first occurrence's date")
     end_date = serializers.DateField(allow_null=True)
     schedule = serializers.CharField(help_text='The schedule in words, e.g. "Every 2 weeks on Wednesday"')
+    occurrence_count = serializers.IntegerField(help_text="How many transactions the schedule has added so far")
 
 
 # Adapter Functions
@@ -652,3 +664,24 @@ def rule_match_summary(tx, category=None, split_legs=()):
         "split_count": len(match.splits or []),
         "payee_name": match.payee_name,
     }
+
+
+# A suggestion's legs are feed rows; `BankFeedRowSerializer` is defined after
+# `TransferSuggestionSerializer`, so their schema type is attached here.
+extend_schema_field(BankFeedRowSerializer)(TransferSuggestionSerializer.get_outflow)
+extend_schema_field(BankFeedRowSerializer)(TransferSuggestionSerializer.get_inflow)
+
+
+class FeedPickersSerializer(serializers.Serializer):
+    """The bank feed's pickers: categories, payees and the groups a new account can join."""
+
+    accounts = PickerAccountSerializer(many=True, help_text="Every account but budget buckets, by name")
+    payees = PayeeSerializer(many=True, help_text="The book's payees, by name")
+    account_groups = AccountGroupSerializer(many=True, help_text="Account groups (not budget buckets)")
+
+
+class CreateFeedAccountRequestSerializer(serializers.Serializer):
+    """A category created from the upload wizard's or an editor's category picker."""
+
+    name = serializers.CharField(max_length=255)
+    account_group_id = serializers.IntegerField(help_text="An account group of this book (not a budget bucket)")

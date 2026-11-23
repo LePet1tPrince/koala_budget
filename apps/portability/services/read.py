@@ -61,6 +61,13 @@ from .schema import (
     decode_cell,
 )
 
+# The most an archive may hold once decompressed. The upload is capped at 20 MB
+# (`models.MAX_UPLOAD_BYTES`), but deflate packs a run of one byte ~1000:1, so
+# a small upload could otherwise expand into gigabytes in the web worker's memory.
+# A zip member never decompresses past the size it declares (zipfile stops there
+# and fails the CRC), so summing the declared sizes bounds what is read.
+MAX_UNCOMPRESSED_BYTES = 300 * 1024 * 1024
+
 # The entry-level columns that are repeated on every line of a JournalEntry
 # (§3.3) and must therefore agree across all of an entry's rows.
 _REPEATED_ENTRY_COLUMNS = (
@@ -132,6 +139,8 @@ def read_archive(data: bytes) -> Tables:
         raise DocumentError("This file is not a valid Koala Budget export (it is not a zip archive).") from None
 
     with zf:
+        if sum(info.file_size for info in zf.infolist()) > MAX_UNCOMPRESSED_BYTES:
+            raise DocumentError("This export is too large to import.")
         manifest = _read_manifest(zf)
         _check_version(manifest.format_version)
 

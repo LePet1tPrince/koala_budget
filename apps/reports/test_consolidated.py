@@ -90,15 +90,16 @@ class SpendingReportTest(ConsolidatedReportsBase):
         self.assertEqual(stats["savings_rate"], Decimal("50"))
         self.assertEqual(stats["avg_net"], Decimal("750.00"))
         self.assertEqual(report["period"], "month")
-        self.assertEqual(report["chart_data"]["income"], [3000.0, 0.0])
-        self.assertEqual(report["chart_data"]["expenses"], [1200.0, 300.0])
-        self.assertEqual(report["chart_data"]["net"], [1800.0, -300.0])
-        self.assertEqual(len(report["sankey_data"]["expenses"]), 2)
+        data = report["data"]
+        self.assertEqual(data["total_income_per_period"], [Decimal("3000.00"), Decimal("0")])
+        self.assertEqual(data["total_expenses_per_period"], [Decimal("1200.00"), Decimal("300.00")])
+        self.assertEqual(data["net_after_goal_spending_per_period"], [Decimal("1800.00"), Decimal("-300.00")])
+        self.assertEqual(len(data["expenses"]), 2)
+        self.assertTrue(report["has_activity"])
 
     def test_empty_range_has_no_charts(self):
         report = spending_report(self.book, date(2020, 1, 1), date(2020, 1, 31))
-        self.assertIsNone(report["chart_data"])
-        self.assertIsNone(report["sankey_data"])
+        self.assertFalse(report["has_activity"])
         self.assertIsNone(report["stats"]["savings_rate"])
 
     def test_view_renders_and_links_accounts_with_range_and_return_to(self):
@@ -236,7 +237,7 @@ class NetWorthReportTest(ConsolidatedReportsBase):
         self.assertEqual(stats["net_worth"], Decimal("3700.00"))
         self.assertEqual(stats["change"], Decimal("2700.00"))
         self.assertEqual(stats["pct_change"], Decimal("270"))
-        self.assertEqual(report["chart_data"]["net_worth"], [4000.0, 3700.0])
+        self.assertEqual([point["net_worth"] for point in report["trend"]], [Decimal("4000.00"), Decimal("3700.00")])
 
     def test_composition_bands_sum_to_net_worth(self):
         report = net_worth_report(self.book, date(2026, 1, 1), date(2026, 2, 28))
@@ -244,8 +245,8 @@ class NetWorthReportTest(ConsolidatedReportsBase):
         by_name = {g["name"]: g for g in composition["groups"]}
         self.assertEqual(by_name["Zq Bank"]["type"], "asset")
         self.assertEqual(by_name["Zq Cards"]["values"], [0.0, -300.0])  # a debt pulls net worth down
-        for month, worth in enumerate(composition["net_worth"]):
-            self.assertAlmostEqual(sum(g["values"][month] for g in composition["groups"]), worth)
+        for month, point in enumerate(report["trend"]):
+            self.assertAlmostEqual(sum(g["values"][month] for g in composition["groups"]), float(point["net_worth"]))
 
     def test_composition_keeps_the_sign_of_a_group_that_crosses_zero(self):
         # The card is paid 500 on a 300 balance: 200 in credit, which adds to net worth.
@@ -400,23 +401,29 @@ class BudgetPageProgressBarTest(PlanFixture):
         self.assertEqual((salary["width"], salary["income"], salary["over"]), (83, True, False))
 
     def test_unbudgeted_category_shows_no_percentage(self):
-        from apps.budget.views import _meter
+        from apps.budget.figures import meter as budget_meter
 
-        meter = _meter("expense", Decimal("0"), Decimal("40"), Decimal("-40"))
+        meter = budget_meter("expense", Decimal("0"), Decimal("40"), Decimal("-40"))
         self.assertEqual((meter["label"], meter["width"], meter["over"]), ("—", 100, True))
-        self.assertEqual(_meter("expense", Decimal("0"), Decimal("0"), Decimal("0"))["width"], 0)
+        self.assertEqual(budget_meter("expense", Decimal("0"), Decimal("0"), Decimal("0"))["width"], 0)
 
     def test_autosave_returns_the_new_bar(self):
         import json
 
         response = self.client.post(
-            reverse("budget:budget_save_amount", args=self.book.url_args),
-            data=json.dumps({"category_id": self.rent.pk, "month": "2026-06-01", "amount": "2200"}),
+            reverse("budget:api_amount", args=self.book.url_args),
+            data=json.dumps({"category_id": self.rent.pk, "month": "2026-06", "amount": "2200"}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
-        cell = response.json()["cells"][f"row:{self.rent.pk}:meter"]
-        self.assertEqual((cell["width"], cell["value"], cell["tone"]), (50, "50%", ""))
+        rows = [
+            row
+            for section in response.json()["figures"]["sections"]
+            for group in section["groups"]
+            for row in group["rows"]
+        ]
+        meter = next(row["meter"] for row in rows if row["category_id"] == self.rent.pk)
+        self.assertEqual((meter["width"], meter["label"], meter["over"]), (50, "50%", False))
 
 
 class ReturnToLabelTest(ConsolidatedReportsBase):

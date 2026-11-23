@@ -1,11 +1,9 @@
 import contextlib
 
 from django.db import models
-from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
-from djstripe.enums import SubscriptionStatus
 from djstripe.models import Customer, Subscription
 
 from apps.subscriptions.wrappers import SubscriptionWrapper
@@ -66,13 +64,6 @@ class SubscriptionModelBase(models.Model):
 
     def has_active_subscription(self) -> bool:
         return self.active_stripe_subscription is not None
-
-    @classmethod
-    def get_items_needing_sync(cls):
-        return cls.objects.filter(
-            Q(last_synced_with_stripe__isnull=True) | Q(last_synced_with_stripe__lt=F("billing_details_last_changed")),
-            subscription__status=SubscriptionStatus.active,
-        )
 
     def get_quantity(self) -> int:
         # if you use "per-seat" billing, override this accordingly

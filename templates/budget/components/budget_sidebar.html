@@ -36,23 +36,24 @@
        {% if section.key != budget_tab %}hidden{% endif %}>
     <!-- Monthly Summary -->
     <div class="bg-base-100 rounded-lg shadow p-5">
-      <h3 class="font-bold text-lg mb-4">{{ section.label }} · {{ month|date:"F" }}</h3>
+      <h3 class="font-bold text-lg mb-4">{{ section.label }} · <span data-budget-month-name>{{ month|date:"F" }}</span></h3>
       <div class="flex flex-col gap-2">
         <div class="flex justify-between items-center">
           <span class="text-sm">{% translate "Left Over from Last Month" %}</span>
-          <span class="font-mono text-sm font-semibold {{ section.summary.leftover_last_month|available_class:section.income }}">
+          <span class="font-mono text-sm font-semibold {{ section.summary.leftover_last_month|available_class:section.income }}"
+                data-budget-cell="sidebar:{{ section.key }}:leftover">
             {{ section.summary.leftover_last_month|available_text:section.income }}
           </span>
         </div>
         <div class="flex justify-between items-center">
-          <span class="text-sm">{% translate "Assigned in" %} {{ month|date:"F" }}</span>
+          <span class="text-sm">{% translate "Assigned in" %} <span data-budget-month-name>{{ month|date:"F" }}</span></span>
           <span class="font-mono text-sm font-semibold" data-budget-cell="sidebar:{{ section.key }}:assigned">
             {{ section.summary.assigned_this_month|currency }}
           </span>
         </div>
         <div class="flex justify-between items-center">
           <span class="text-sm">{% if section.key == "income" %}{% translate "Received" %}{% else %}{% translate "Spent" %}{% endif %}</span>
-          <span class="font-mono text-sm font-semibold">
+          <span class="font-mono text-sm font-semibold" data-budget-cell="sidebar:{{ section.key }}:activity">
             {{ section.summary.activity_this_month|currency }}
           </span>
         </div>

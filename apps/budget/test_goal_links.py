@@ -552,28 +552,35 @@ class GoalLinkViewsTest(LinkedFixture):
         self.assertContains(response, "Feeds Trip")
 
     def test_preview(self):
-        response = self.client.get(
-            self.url("budget:goal_link_preview"),
+        response = self.client.post(
+            self.url("budget:api_goal_link_preview"),
             {
-                "goal": self.goal.pk,
+                "goal_id": self.goal.pk,
                 "outflow": "withdraw",
-                "link_account": self.savings.pk,
-                f"link_start_{self.savings.pk}": timezone.localdate().isoformat(),
-                f"link_include_{self.savings.pk}": "on",
+                "links": [
+                    {
+                        "account_id": self.savings.pk,
+                        "start_date": timezone.localdate().isoformat(),
+                        "include_starting_balance": True,
+                    }
+                ],
             },
+            content_type="application/json",
         )
+        self.assertEqual(response.status_code, 200, response.content)
         data = response.json()
-        self.assertTrue(data["ok"])
-        self.assertEqual(data["adds"], 1000.0)
+        self.assertEqual(data["adds"], "1000.00")
         self.assertFalse(GoalAccountLink.objects.exists())
 
     def test_preview_refusal(self):
         self.link(account=self.vault, goal=self.other_goal)
-        response = self.client.get(
-            self.url("budget:goal_link_preview"), {"goal": self.goal.pk, "link_account": self.vault.pk}
+        response = self.client.post(
+            self.url("budget:api_goal_link_preview"),
+            {"goal_id": self.goal.pk, "links": [{"account_id": self.vault.pk}]},
+            content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertIn("already feeds", response.json()["error"])
+        self.assertIn("already feeds", response.json()["links"][0])
 
     def test_unlink(self):
         link = self.link()
@@ -604,5 +611,7 @@ class GoalLinkViewsTest(LinkedFixture):
 
     def test_anonymous_is_redirected(self):
         self.client.logout()
-        response = self.client.get(self.url("budget:goal_link_preview"))
+        response = self.client.get(self.url("budget:goal_create"))
         self.assertEqual(response.status_code, 302)
+        response = self.client.post(self.url("budget:api_goal_link_preview"), {}, content_type="application/json")
+        self.assertIn(response.status_code, (401, 403))

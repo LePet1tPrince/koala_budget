@@ -2,12 +2,14 @@
 import Chart from 'chart.js/auto';
 import {GRID, MONEY, currency, getInk, getSurface, observeTheme} from './chart-theme';
 
-document.addEventListener('DOMContentLoaded', () => {
-  const dataEl = document.getElementById('account-balance-data');
-  const canvas = document.getElementById('account-balance-chart');
-  if (!dataEl || !canvas) return;
-
-  const data = JSON.parse(dataEl.textContent);
+/**
+ * Draw the balance-over-time chart on `canvas`.
+ *
+ * `data` is the charts API's `balance` (apps/accounts/api.py): ISO dates and
+ * decimal strings as `{start_date, end_date, starting_balance, ending_balance,
+ * points: [{date, balance}]}`.
+ */
+export function drawBalanceChart(canvas, data) {
 
   // Parse ISO dates as UTC parts so a timezone offset can't shift the day.
   const parseDay = (iso) => {
@@ -27,13 +29,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // A balance is a step function: it holds until the next transaction. Anchor
   // the line at the period's start (starting balance) and end (ending balance).
-  const points = data.points.map((point) => ({x: dayOffset(point.date), y: point.balance}));
+  const points = data.points.map((point) => ({x: dayOffset(point.date), y: Number(point.balance)}));
   if (points.length === 0 || points[0].x > 0) {
-    points.unshift({x: 0, y: data.starting_balance});
+    points.unshift({x: 0, y: Number(data.starting_balance)});
   }
   const endOffset = dayOffset(data.end_date);
   if (points[points.length - 1].x < endOffset) {
-    points.push({x: endOffset, y: data.ending_balance});
+    points.push({x: endOffset, y: Number(data.ending_balance)});
   }
 
   const ink = getInk(canvas);
@@ -106,4 +108,5 @@ document.addEventListener('DOMContentLoaded', () => {
     themedChart.options.scales.y.ticks.color = newInk;
     themedChart.data.datasets[0].pointBorderColor = newSurface;
   });
-});
+  return chart;
+}

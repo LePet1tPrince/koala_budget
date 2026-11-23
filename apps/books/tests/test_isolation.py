@@ -37,15 +37,23 @@ def month_query(**extra):
 READS = {
     "web_book:home": {},
     "books:settings": {},
+    "books:api_settings": {},
     "accounts:accounts_home": {},
     "accounts:accountgroup_list": {},
     "accounts:payee_list": {},
     "accounts:institution_list": {},
+    "accounts:api-root": {},
+    "accounts:board": {},
+    "accounts:account-list": {},
+    "accounts:account-group-list": {},
+    "accounts:payee-list": {},
+    "accounts:institution-list": {},
     "journal:transactions_home": {},
     "journal:journal-entry-list": {},
     "journal:line-list": lambda a, b: {"account": b.groceries.id},
     "journal:transaction-list": {},
     "journal:transaction-facets": {"column": "payee"},
+    "journal:transaction-pickers": {},
     "journal:api-root": {},
     "audit:audit-event-list": {},
     "audit:api-root": {},
@@ -53,17 +61,24 @@ READS = {
     "budget:budget_home": month_query(),
     "budget:budget_grid": {"start": "2026-01-01"},
     "budget:api_unassigned": {},
-    "budget:budget_figures": month_query(),
+    "budget:api_month": {"month": "2026-03"},
+    "budget:api_grid": {"start": "2026-01"},
     "budget:goals_list": month_query(),
+    "budget:api_goals": {"month": "2026-03"},
     "reports:reports_home": {},
     "reports:spending": {"start_date": "2026-03-01", "end_date": "2026-03-31"},
     "reports:net_worth": {"start_month": "2026-01", "end_month": "2026-06"},
     "reports:budget_goals": {"month": "2026-03"},
+    "reports:api_home": {},
+    "reports:api_spending": {"start_date": "2026-03-01", "end_date": "2026-03-31", "columns": "month"},
+    "reports:api_net_worth": {"start_month": "2026-01", "end_month": "2026-06"},
+    "reports:api_budget_goals": {"month": "2026-03"},
     "reports:export_income_statement": {"start_date": "2026-03-01", "end_date": "2026-03-31"},
     "reports:export_balance_sheet": {"as_of_date": "2026-03-31"},
     "reports:export_transactions": {"start_date": "2026-03-01", "end_date": "2026-03-31"},
     "monthly_review:home": month_query(),
     "monthly_review:export": month_query(),
+    "monthly_review:api_review": {"month": "2026-03"},
     "plaid:plaid-item-list": {},
     "plaid:plaid-account-list": {},
     "plaid:imported-transaction-list": {},
@@ -74,6 +89,7 @@ READS = {
     "bank_feed:bank-feed-account-groups": {},
     "bank_feed:bank-feed-category-suggestions": {},
     "bank_feed:bank-feed-feed-accounts": {},
+    "bank_feed:bank-feed-pickers": {},
     "bank_feed:bank-feed-sample-csv": {},
     "bank_feed:bank-feed-similar-categories": lambda a, b: {"ids": f"{b.uncategorized_tx.id},{a.uncategorized_tx.id}"},
     "bank_feed:bank-feed-transfer-suggestions": {},
@@ -82,12 +98,19 @@ READS = {
     "bank_feed:bank-feed-locate": lambda a, b: {"row": b.uncategorized_tx.id},
     "bank_feed:api-root": {},
     "bank_feed:recurring_list": {},
-    "bank_feed:recurring-schedule-list": lambda a, b: {"account": f"{a.chequing.id},{b.chequing.id}"},
+    "bank_feed:recurring-schedule-list": lambda a, b: {
+        "account": f"{a.chequing.id},{b.chequing.id}",
+        "include_finished": "1",
+    },
     "onboarding:home": {},
+    "onboarding:api_catalog": {},
+    "onboarding:api_state": {},
     "onboarding:api_tasks": {},
     "onboarding:api_opening_balances": {},
     "ynab_import:home": {},
+    "ynab_import:api_state": {},
     "portability:home": {},
+    "portability:api_state": {},
     "portability:export": {},
     "reconciliation:hub": {},
     "reconciliation:reconciliation-list": lambda a, b: {"account": b.savings.id},
@@ -97,20 +120,22 @@ READS = {
     "rules:api-root": {},
     "rules:rule-list": {},
     "rules:rule-prompts": {},
+    "rules:rule-page": {},
     "rules:rule-proposal-list": {},
+    "book_api:nav_state": {},
+    "book_api:home": {},
     "accounts:accountgroup_create": {},
     "accounts:account_create": {},
     "accounts:payee_create": {},
     "accounts:institution_create": {},
     "budget:goal_create": {},
-    # Book B's goal is a 404; book B's account is refused like any unknown id.
-    "budget:goal_link_preview": lambda a, b: {"link_account": b.savings.id, "outflow": "withdraw"},
 }
 
 # Looked up by an id in the query string rather than the path: B's id is a 404.
 QUERY_OBJECTS = {
     "ynab_import:api_status": lambda b: {"import_id": b.ynab_import.id},
     "portability:api_status": lambda b: {"import_id": b.data_import.id},
+    "reconciliation:reconciliation-page": lambda b: {"account": b.savings.id},
 }
 
 # name -> (kind of B's object passed as the URL kwarg, kwarg name, method)
@@ -128,6 +153,13 @@ OBJECTS = {
     "accounts:institution_update": ("institution", "pk", "get"),
     "accounts:institution_accounts": ("institution", "pk", "post"),
     "accounts:institution_delete": ("institution", "pk", "post"),
+    "accounts:account-detail": ("account", "pk", "get"),
+    "accounts:account-activity": ("account", "pk", "get"),
+    "accounts:account-charts": ("account", "pk", "get"),
+    "accounts:account-group-detail": ("group", "pk", "delete"),
+    "accounts:payee-detail": ("payee", "pk", "patch"),
+    "accounts:institution-detail": ("institution", "pk", "delete"),
+    "accounts:institution-accounts": ("institution", "pk", "post"),
     "journal:journal-entry-detail": ("entry", "pk", "get"),
     "journal:journal-entry-audit": ("entry", "pk", "get"),
     "journal:journal-entry-post-entry": ("entry", "pk", "post"),
@@ -141,13 +173,22 @@ OBJECTS = {
     "budget:goal_delete": ("goal", "pk", "post"),
     "budget:goal_destroy": ("goal", "pk", "post"),
     "budget:goal_allocate": ("goal", "pk", "post"),
-    "budget:goal_assign_available": ("goal", "pk", "post"),
-    "budget:goal_withdraw": ("goal", "pk", "post"),
     "budget:goal_complete": ("goal", "pk", "post"),
     "budget:goal_close": ("goal", "pk", "post"),
     "budget:goal_unlink": ("goal_link", "link_pk", "post"),
     "budget:goal_contribution_edit": ("goal_allocation", "line_pk", "post"),
+    "budget:api_goal": ("goal", "pk", "get"),
+    "budget:api_goal_activity": ("goal", "pk", "get"),
+    "budget:api_goal_allocate": ("goal", "pk", "post"),
+    "budget:api_goal_assign": ("goal", "pk", "post"),
+    "budget:api_goal_withdraw": ("goal", "pk", "post"),
+    "budget:api_goal_complete": ("goal", "pk", "post"),
+    "budget:api_goal_close": ("goal", "pk", "post"),
+    "budget:api_goal_archive": ("goal", "pk", "post"),
+    "budget:api_goal_unlink": ("goal_link", "link_pk", "post"),
+    "budget:api_goal_contribution": ("goal_allocation", "line_pk", "post"),
     "budget:category_visibility": ("account", "pk", "post"),
+    "budget:api_category_visibility": ("account", "pk", "post"),
     "reports:export_account_activity": ("account", "account_id", "get"),
     "plaid:plaid-item-detail": ("plaid_item", "pk", "get"),
     "plaid:plaid-item-sync": ("plaid_item", "pk", "post"),
@@ -157,10 +198,9 @@ OBJECTS = {
     "plaid:plaid-account-detail": ("plaid_account", "pk", "get"),
     "plaid:imported-transaction-detail": ("plaid_transaction", "pk", "get"),
     "bank_feed:bank-feed-detail": ("bank_transaction", "pk", "put"),
-    "bank_feed:recurring_delete": ("recurring", "pk", "post"),
+    "bank_feed:recurring-schedule-detail": ("recurring", "pk", "delete"),
     "reconciliation:account": ("asset_account", "account_id", "get"),
     "reconciliation:statement": ("reconciliation", "pk", "get"),
-    "reconciliation:statement_undo": ("reconciliation", "pk", "post"),
     "reconciliation:reconciliation-detail": ("reconciliation", "pk", "get"),
     "reconciliation:reconciliation-finish": ("reconciliation", "pk", "post"),
     "reconciliation:reconciliation-tick": ("reconciliation", "pk", "post"),
@@ -179,35 +219,43 @@ OBJECTS = {
 # name -> JSON body naming book B's rows (a callable taking (a, b) BookData).
 # The request may succeed on book A or be refused; book B must not change.
 WRITES = {
-    "accounts:api_reorder_accounts": lambda a, b: {
+    "accounts:board-reorder-accounts": lambda a, b: {
         "groups": [{"group_id": b.expense_group.id, "account_ids": [b.groceries.id]}]
     },
-    "accounts:api_reorder_groups": lambda a, b: {"account_type": "expense", "group_ids": [b.expense_group.id]},
-    "accounts:api_create_account": lambda a, b: {"name": "Sneaky", "group_id": b.expense_group.id},
-    "accounts:api_create_group": lambda a, b: {"name": "New group", "account_type": "expense"},
-    "accounts:api_set_hidden": lambda a, b: {"account_id": b.chequing.id, "is_hidden": True},
+    "accounts:board-reorder-groups": lambda a, b: {"account_type": "expense", "group_ids": [b.expense_group.id]},
+    "accounts:board-create-account": lambda a, b: {"name": "Sneaky", "group_id": b.expense_group.id},
+    "accounts:board-create-group": lambda a, b: {"name": "New group", "account_type": "expense"},
+    "accounts:board-set-hidden": lambda a, b: {"account_id": b.chequing.id, "is_hidden": True},
     "journal:journal-entry-list": None,  # placeholder, see WRITE_OVERRIDES
     # The Transactions page's editor. Every write takes a list of ids, so book B's
     # entry is named the same way a selection would name it.
     "journal:transaction-edit": lambda a, b: {"ids": [b.entry.id], "description": "moved"},
     "journal:transaction-batch-delete": lambda a, b: {"ids": [b.entry.id]},
     "journal:transaction-batch-status": lambda a, b: {"ids": [b.entry.id], "status": "void"},
-    "budget:budget_save_amount": lambda a, b: {"category_id": b.groceries.id, "month": "2026-03-01", "amount": "999"},
-    "budget:budget_grid_save": lambda a, b: {
-        "changes": [{"category_id": b.groceries.id, "month": "2026-03-01", "amount": "999"}]
+    "budget:api_amount": lambda a, b: {"category_id": b.groceries.id, "month": "2026-03", "amount": "999"},
+    "budget:api_grid_save": lambda a, b: {
+        "changes": [{"category_id": b.groceries.id, "month": "2026-03", "amount": "999"}]
+    },
+    # Book B's category ids select nothing in book A.
+    "budget:api_autofill": lambda a, b: {
+        "action": "assign_zero",
+        "month": "2026-03",
+        "category_ids": [b.groceries.id],
     },
     # Book A's category covered from book B's goal: the goal is the row that must not move.
     # (B's category from Unassigned is BudgetCoverIsolationTest's.)
-    "budget:budget_cover": lambda a, b: {
+    "budget:api_cover": lambda a, b: {
         "category_id": a.groceries.id,
-        "month": "2026-03-01",
+        "month": "2026-03",
         "amount": "10",
         "source": "goal",
         "goal_id": b.goal.id,
     },
-    "monthly_review:api_step": lambda a, b: {"month": "2026-03-01", "step": 2},
-    "monthly_review:api_complete": lambda a, b: {"month": "2026-03-01"},
-    "monthly_review:api_dismiss": lambda a, b: {"month": "2026-03-01"},
+    # Book B's account is refused like any unknown id (B's goal: GoalApiIsolationTest).
+    "budget:api_goal_link_preview": lambda a, b: {"links": [{"account_id": b.savings.id}], "outflow": "withdraw"},
+    "monthly_review:api_step": lambda a, b: {"month": "2026-03", "step": 2},
+    "monthly_review:api_complete": lambda a, b: {"month": "2026-03"},
+    "monthly_review:api_dismiss": lambda a, b: {"month": "2026-03"},
     "bank_feed:bank-feed-batch-void": lambda a, b: {"ids": [b.categorized_tx.id]},
     "bank_feed:bank-feed-batch-restore": lambda a, b: {"ids": [b.categorized_tx.id]},
     "bank_feed:bank-feed-batch-delete": lambda a, b: {"ids": [b.categorized_tx.id]},
@@ -234,6 +282,7 @@ WRITES = {
     "onboarding:api_complete": lambda a, b: {"answers": {}},
     "onboarding:api_task": lambda a, b: {"slug": "net_worth"},
     "onboarding:api_skip": lambda a, b: {},
+    "onboarding:skip": lambda a, b: {},
     "reconciliation:reconciliation-list": None,  # placeholder, see WRITE_OVERRIDES
     "rules:rule-reorder": lambda a, b: {"ids": [b.rule.id, a.rule.id]},
     # Book B's account, category and row are unknown to book A: refused or read as nothing.
@@ -344,13 +393,21 @@ class ReadIsolationTest(TwoBooksTestCase):
     def test_the_pages_do_show_book_a(self):
         """Guards the test itself: a page that renders nothing would pass the check above."""
         for name in (
-            "accounts:accounts_home",
+            "accounts:board",
+            "accounts:account-list",
+            "accounts:payee-list",
             "journal:transaction-list",
             "bank_feed:bank-feed-list",
             "budget:goals_list",
+            "budget:api_goals",
             "reports:spending",
             "reports:export_transactions",
             "portability:export",
+            "book_api:nav_state",
+            "book_api:home",
+            "reports:api_spending",
+            "reports:api_net_worth",
+            "monthly_review:api_review",
         ):
             query = READS[name]
             params = {"account": self.a.chequing.id} if callable(query) else query
@@ -447,11 +504,33 @@ class BudgetCoverIsolationTest(TwoBooksTestCase):
     def test_a_book_b_category_cannot_be_covered(self):
         before = snapshot(self.b.book)
         response = self.client.post(
-            self.url("budget:budget_cover"),
-            data=json.dumps({"category_id": self.b.groceries.id, "month": "2026-03-01", "amount": "10"}),
+            self.url("budget:api_cover"),
+            data=json.dumps({"category_id": self.b.groceries.id, "month": "2026-03", "amount": "10"}),
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
+        self.assertEqual(snapshot(self.b.book), before)
+
+
+class GoalApiIsolationTest(TwoBooksTestCase):
+    def post(self, name, body, **kwargs):
+        return self.client.post(self.url(name, **kwargs), data=json.dumps(body), content_type="application/json")
+
+    def test_a_goal_cannot_be_created_with_a_book_b_account(self):
+        before = snapshot(self.b.book)
+        response = self.post(
+            "budget:api_goals", {"name": "Sneaky", "target_amount": "10", "links": [{"account_id": self.b.savings.id}]}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(snapshot(self.b.book), before)
+
+    def test_a_book_b_goal_cannot_be_previewed_edited_or_deleted(self):
+        before = snapshot(self.b.book)
+        response = self.post("budget:api_goal_link_preview", {"goal_id": self.b.goal.id, "links": []})
+        self.assertEqual(response.status_code, 404)
+        url = self.url("budget:api_goal", pk=self.b.goal.id)
+        self.assertEqual(self.client.patch(url, {"name": "x"}, content_type="application/json").status_code, 404)
+        self.assertEqual(self.client.delete(url).status_code, 404)
         self.assertEqual(snapshot(self.b.book), before)
 
 

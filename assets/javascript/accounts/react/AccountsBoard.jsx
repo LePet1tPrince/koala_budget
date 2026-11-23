@@ -17,10 +17,12 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import Cookies from 'js-cookie';
 
 import Icon from '../../common/Icon';
 import { formatCurrency } from '../../utilities/currency';
+import { accountsUrls, apiErrorMessage, callApi, getAccountsApi } from '../accountsApi';
+import AccountModal from './manage/AccountModal';
+import GroupModal from './manage/GroupModal';
 
 // Tabs over the type sections: one account type on screen at a time. Goals
 // also shows plain equity, which is the same stored type.
@@ -55,28 +57,31 @@ function storeTab(key) {
 // ---------------------------------------------------------------------------
 const accountDndId = (id) => `account-${id}`;
 const groupDndId = (id) => `group-${id}`;
-const groupDropId = (id) => `group-drop-${id}`;
 
-async function postJson(url, body) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': Cookies.get('csrftoken'),
-    },
-    body: JSON.stringify(body),
-  });
-  let data = {};
-  try {
-    data = await response.json();
-  } catch {
-    // non-JSON error page; fall through to the generic message
-  }
-  if (!response.ok) {
-    throw new Error(data.error || gettext('Something went wrong. Please try again.'));
-  }
-  return data;
-}
+// ---------------------------------------------------------------------------
+// The board API's rows (apps/accounts/api.py) with the page links the board
+// draws, built from the book's base URL.
+// ---------------------------------------------------------------------------
+const toAccountRow = (account, urls) => ({
+  ...account,
+  institution: account.institutionName,
+  url: urls.account(account.id),
+});
+
+const toGroupCard = (group, urls) => ({
+  ...group,
+  url: urls.group(group.id),
+  accounts: group.accounts.map((account) => toAccountRow(account, urls)),
+});
+
+const toSection = (section, urls) => ({
+  key: section.key,
+  accountType: section.accountType,
+  label: section.label,
+  // Goals are created on the Goals page, which makes their account.
+  newGoalUrl: section.createsGoals ? urls.newGoal : null,
+  groups: section.groups.map((group) => toGroupCard(group, urls)),
+});
 
 const GripIcon = () => (
   <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true">
@@ -95,7 +100,7 @@ const PlusIcon = () => (
 // ---------------------------------------------------------------------------
 // Inline "+" form used for both new accounts and new groups
 // ---------------------------------------------------------------------------
-function InlineCreateForm({ placeholder, onSubmit, onCancel, extraAction }) {
+function InlineCreateForm({ placeholder, onSubmit, onCancel, onMoreOptions }) {
   const [name, setName] = useState('');
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -153,7 +158,16 @@ function InlineCreateForm({ placeholder, onSubmit, onCancel, extraAction }) {
         ) : (
           <span className="text-xs text-base-content/70">{gettext('Enter to add · Esc to close')}</span>
         )}
-        {extraAction}
+        {onMoreOptions && (
+          <button
+            type="button"
+            className="text-xs link link-hover text-base-content/70"
+            onClick={() => onMoreOptions(name.trim())}
+            data-testid="more-options-btn"
+          >
+            {gettext('More options…')}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -188,7 +202,28 @@ function VisibilityToggle({ account, onToggleHidden }) {
   );
 }
 
-function AccountRowContent({ account, dragHandleProps, dragging, overlay, onToggleHidden }) {
+// A pencil that opens the item's editor; it appears on hover, like the drag handle.
+function EditButton({ label, onClick, testId, scope }) {
+  return (
+    <button
+      type="button"
+      className={[
+        'shrink-0 rounded p-1 text-base-content/40 transition-all hover:bg-base-300 hover:text-base-content',
+        scope === 'row'
+          ? 'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100'
+          : 'opacity-0 group-hover/hdr:opacity-100 focus-visible:opacity-100',
+      ].join(' ')}
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      data-testid={testId}
+    >
+      <Icon name="pencil" className="block h-4 w-4" />
+    </button>
+  );
+}
+
+function AccountRowContent({ account, dragHandleProps, dragging, overlay, onToggleHidden, onEdit }) {
   return (
     <div
       className={[
@@ -225,11 +260,19 @@ function AccountRowContent({ account, dragHandleProps, dragging, overlay, onTogg
         {formatCurrency(account.balance)}
         {account.isGoal && <span className="ml-1 font-sans text-xs text-base-content/70">{gettext('left')}</span>}
       </span>
+      {onEdit && (
+        <EditButton
+          label={interpolate(gettext('Edit %s'), [account.name])}
+          onClick={() => onEdit(account)}
+          testId="account-edit-btn"
+          scope="row"
+        />
+      )}
     </div>
   );
 }
 
-function SortableAccountRow({ account, groupId, accountType, onToggleHidden }) {
+function SortableAccountRow({ account, groupId, accountType, onToggleHidden, onEdit }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: accountDndId(account.id),
     data: { kind: 'account', account, groupId, accountType },
@@ -242,6 +285,7 @@ function SortableAccountRow({ account, groupId, accountType, onToggleHidden }) {
         dragging={isDragging}
         dragHandleProps={{ ...attributes, ...listeners }}
         onToggleHidden={onToggleHidden}
+        onEdit={onEdit}
       />
     </li>
   );
@@ -255,9 +299,11 @@ function GroupCard({
   accountType,
   serverType,
   newGoalUrl,
-  urls,
   onCreateAccount,
   onToggleHidden,
+  onEditAccount,
+  onEditGroup,
+  onMoreOptions,
   isDropTarget,
   draggingAccount,
 }) {
@@ -268,7 +314,6 @@ function GroupCard({
   });
 
   const subtotal = group.accounts.reduce((sum, a) => sum + parseFloat(a.balance || 0), 0);
-  const createPageUrl = `${urls.accountCreatePage}?account_type=${serverType}&account_group=${group.id}`;
 
   return (
     <div
@@ -302,6 +347,12 @@ function GroupCard({
         <span className="ml-auto font-mono text-sm text-base-content/70 tabular-nums shrink-0">
           {formatCurrency(subtotal)}
         </span>
+        <EditButton
+          label={interpolate(gettext('Edit %s'), [group.name])}
+          onClick={() => onEditGroup(group)}
+          testId="group-edit-btn"
+          scope="header"
+        />
       </div>
 
       <SortableContext items={group.accounts.map((a) => accountDndId(a.id))} strategy={verticalListSortingStrategy}>
@@ -313,6 +364,7 @@ function GroupCard({
               groupId={group.id}
               accountType={accountType}
               onToggleHidden={onToggleHidden}
+              onEdit={onEditAccount}
             />
           ))}
           {group.accounts.length === 0 && (
@@ -345,11 +397,10 @@ function GroupCard({
             placeholder={gettext('New account name')}
             onSubmit={(name) => onCreateAccount(group.id, name)}
             onCancel={() => setAdding(false)}
-            extraAction={
-              <a href={createPageUrl} className="text-xs link link-hover text-base-content/70">
-                {gettext('More options…')}
-              </a>
-            }
+            onMoreOptions={(name) => {
+              setAdding(false);
+              onMoreOptions({ name, accountType: serverType, accountGroup: group.id });
+            }}
           />
         ) : (
           <button
@@ -373,10 +424,12 @@ function GroupCard({
 // ---------------------------------------------------------------------------
 function TypeSection({
   section,
-  urls,
   onCreateAccount,
   onCreateGroup,
   onToggleHidden,
+  onEditAccount,
+  onEditGroup,
+  onMoreOptions,
   dropTargetGroupId,
   draggingAccount,
   dimmed,
@@ -402,9 +455,11 @@ function TypeSection({
               accountType={section.key}
               serverType={section.accountType || section.key}
               newGoalUrl={section.newGoalUrl}
-              urls={urls}
               onCreateAccount={onCreateAccount}
               onToggleHidden={onToggleHidden}
+              onEditAccount={onEditAccount}
+              onEditGroup={onEditGroup}
+              onMoreOptions={onMoreOptions}
               isDropTarget={dropTargetGroupId === group.id}
               draggingAccount={draggingAccount}
             />
@@ -450,7 +505,50 @@ function TypeSection({
 // ---------------------------------------------------------------------------
 // Board
 // ---------------------------------------------------------------------------
-export default function AccountsBoard({ types: initialTypes, urls }) {
+/**
+ * Loads the board, then hands it to the drag-and-drop board. Until the first
+ * request answers, the page's skeleton stays in place.
+ */
+export default function AccountsBoard({ book }) {
+  const api = useMemo(() => getAccountsApi(), []);
+  const urls = useMemo(() => accountsUrls(book.base), [book.base]);
+  const [sections, setSections] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .accountsBoardRetrieve({ ...book.params })
+      .then((board) => {
+        if (!cancelled) setSections(board.sections.map((section) => toSection(section, urls)));
+      })
+      .catch(async (error) => {
+        if (!cancelled) setLoadError(await apiErrorMessage(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, book, urls]);
+
+  if (loadError) {
+    return (
+      <div className="alert alert-error" role="alert" data-testid="accounts-board-error">
+        <span>{loadError}</span>
+      </div>
+    );
+  }
+  if (!sections) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8" aria-busy="true" data-testid="accounts-board-loading">
+        <div className="skeleton h-64 w-full"></div>
+        <div className="skeleton h-64 w-full"></div>
+      </div>
+    );
+  }
+  return <Board initialTypes={sections} urls={urls} api={api} book={book} />;
+}
+
+function Board({ initialTypes, urls, api, book }) {
   const [types, setTypes] = useState(initialTypes);
   const [active, setActive] = useState(null); // {kind, account|group, accountType, groupId?}
   const [overGroupId, setOverGroupId] = useState(null);
@@ -609,7 +707,12 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
 
     try {
       const accountType = types.find((section) => section.key === activeData.accountType)?.accountType;
-      await postJson(urls.reorderGroups, { account_type: accountType || activeData.accountType, group_ids: orderedIds });
+      await callApi(() =>
+        api.accountsBoardReorderGroups({
+          ...book.params,
+          reorderGroups: { accountType: accountType || activeData.accountType, groupIds: orderedIds },
+        })
+      );
       showToast(gettext('Order saved'));
     } catch (e) {
       revert();
@@ -657,13 +760,15 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
     for (const section of finalState) {
       for (const group of section.groups) {
         if (changedGroupIds.has(group.id)) {
-          groupsPayload.push({ group_id: group.id, account_ids: group.accounts.map((a) => a.id) });
+          groupsPayload.push({ groupId: group.id, accountIds: group.accounts.map((a) => a.id) });
         }
       }
     }
 
     try {
-      await postJson(urls.reorderAccounts, { groups: groupsPayload });
+      await callApi(() =>
+        api.accountsBoardReorderAccounts({ ...book.params, reorderAccounts: { groups: groupsPayload } })
+      );
       showToast(
         sourceGroupId !== finalLocation.group.id
           ? interpolate(gettext('Moved to %s'), [finalLocation.group.name])
@@ -677,27 +782,33 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
 
   // ----- inline creates -------------------------------------------------------
   const createAccount = async (groupId, name) => {
-    const data = await postJson(urls.createAccount, { name, group_id: groupId });
+    const created = await callApi(() =>
+      api.accountsBoardCreateAccount({ ...book.params, boardCreateAccount: { name, groupId } })
+    );
+    const account = toAccountRow(created, urls);
     setTypes((state) =>
       state.map((section) => ({
         ...section,
         groups: section.groups.map((group) =>
-          group.id === groupId ? { ...group, accounts: [...group.accounts, data.account] } : group
+          group.id === groupId ? { ...group, accounts: [...group.accounts, account] } : group
         ),
       }))
     );
-    showToast(interpolate(gettext('Account "%s" created'), [data.account.name]));
+    showToast(interpolate(gettext('Account "%s" created'), [account.name]));
   };
 
   const createGroup = async (sectionKey, name) => {
     const accountType = types.find((section) => section.key === sectionKey)?.accountType || sectionKey;
-    const data = await postJson(urls.createGroup, { name, account_type: accountType });
+    const created = await callApi(() =>
+      api.accountsBoardCreateGroup({ ...book.params, boardCreateGroup: { name, accountType } })
+    );
+    const group = toGroupCard(created, urls);
     setTypes((state) =>
       state.map((section) =>
-        section.key === sectionKey ? { ...section, groups: [...section.groups, data.group] } : section
+        section.key === sectionKey ? { ...section, groups: [...section.groups, group] } : section
       )
     );
-    showToast(interpolate(gettext('Group "%s" created'), [data.group.name]));
+    showToast(interpolate(gettext('Group "%s" created'), [group.name]));
   };
 
   // ----- Eye toggle ----------------------------------------------------------
@@ -715,7 +826,9 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
   const toggleHidden = async (account, isHidden) => {
     setAccountHidden(account.id, isHidden);
     try {
-      await postJson(urls.setHidden, { account_id: account.id, is_hidden: isHidden });
+      await callApi(() =>
+        api.accountsBoardSetHidden({ ...book.params, setHidden: { accountId: account.id, isHidden } })
+      );
       showToast(
         interpolate(
           isHidden
@@ -729,6 +842,26 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
       showToast(e.message, 'error');
     }
   };
+
+  // ----- Editors --------------------------------------------------------------
+  // {kind: 'account' | 'group', id, defaults}: the open modal. After a save or a
+  // delete the board is read again, since either can move rows between groups.
+  const [editor, setEditor] = useState(null);
+  const refresh = () =>
+    api
+      .accountsBoardRetrieve({ ...book.params })
+      .then((board) => setTypes(board.sections.map((section) => toSection(section, urls))))
+      .catch(async (error) => showToast(await apiErrorMessage(error), 'error'));
+  const closeEditor = (message) => {
+    setEditor(null);
+    if (message) {
+      refresh();
+      showToast(message);
+    }
+  };
+  const editAccount = (account) => setEditor({ kind: 'account', id: account.id });
+  const editGroup = (group) => setEditor({ kind: 'group', id: group.id });
+  const moreOptions = (defaults) => setEditor({ kind: 'account', id: null, defaults });
 
   // ----- Tabs -----------------------------------------------------------------
   const [tab, setTab] = useState(readStoredTab);
@@ -807,10 +940,12 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
           <TypeSection
             key={section.key}
             section={section}
-            urls={urls}
             onCreateAccount={createAccount}
             onCreateGroup={createGroup}
             onToggleHidden={toggleHidden}
+            onEditAccount={editAccount}
+            onEditGroup={editGroup}
+            onMoreOptions={moreOptions}
             showHeading={visibleSections.length > 1}
             dropTargetGroupId={draggingAccount ? overGroupId : null}
             draggingAccount={draggingAccount}
@@ -820,6 +955,32 @@ export default function AccountsBoard({ types: initialTypes, urls }) {
       </div>
 
       <DragOverlay dropAnimation={{ duration: 180 }}>{overlayContent}</DragOverlay>
+
+      {editor?.kind === 'account' && (
+        <AccountModal
+          book={book}
+          api={api}
+          accountId={editor.id}
+          defaults={editor.defaults}
+          onSaved={(account) =>
+            closeEditor(
+              interpolate(editor.id ? gettext('"%s" saved') : gettext('Account "%s" created'), [account.name])
+            )
+          }
+          onDeleted={() => closeEditor(gettext('Account deleted'))}
+          onClose={() => closeEditor()}
+        />
+      )}
+      {editor?.kind === 'group' && (
+        <GroupModal
+          book={book}
+          api={api}
+          groupId={editor.id}
+          onSaved={(group) => closeEditor(interpolate(gettext('"%s" saved'), [group.name]))}
+          onDeleted={() => closeEditor(gettext('Group deleted'))}
+          onClose={() => closeEditor()}
+        />
+      )}
 
       {toast && (
         <div className="toast toast-end z-50">

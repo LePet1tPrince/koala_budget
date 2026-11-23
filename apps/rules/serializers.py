@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from apps.accounts.guards import assert_category_allowed
 from apps.accounts.models import Account
+from apps.accounts.serializers import PickerAccountSerializer
 from apps.bank_feed.services.splits import MAX_LEGS, MIN_LEGS
 
 from . import constants
@@ -351,3 +352,19 @@ class RuleProposalSerializer(serializers.ModelSerializer):
             "status",
         ]
         read_only_fields = fields
+
+
+class RulesFeedAccountSerializer(serializers.Serializer):
+    """A feed account a rule can be limited to."""
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    account_group_name = serializers.CharField()
+
+
+class RulesPageSerializer(serializers.Serializer):
+    """What the Rules page (and the feed's rule builder) open on."""
+
+    can_edit = serializers.BooleanField(help_text="Whether the user may create, edit, reorder or delete rules")
+    categories = PickerAccountSerializer(many=True, help_text="Every account a rule can categorize to")
+    feed_accounts = RulesFeedAccountSerializer(many=True, help_text="The visible feed accounts, by group then name")

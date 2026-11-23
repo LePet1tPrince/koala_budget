@@ -4,6 +4,7 @@ from django.db.models import Max
 from django.urls import URLResolver
 from django.utils.text import slugify
 
+from apps.teams.helpers import get_default_team_from_request
 from apps.utils.slug import get_next_slug
 
 from .models import DEFAULT_BOOK_NAME, DEFAULT_BOOK_SLUG, Book
@@ -119,6 +120,21 @@ def last_book_for_team(request, team) -> Book | None:
         if book:
             return book
     return team.default_book
+
+
+def landing_team_and_book(request):
+    """
+    The team and book the web app opens for this user at `/`: the team last worked
+    in (else their first), and in it the book last opened (else its default book).
+    `(None, None)` for a user with no team; the book is None when every book of the
+    team is archived.
+
+    The same two steps `web:home` and `web_team:home` take one redirect each; the
+    phone app gets the answer from `/api/me/`. Takes a DRF request too, whose user
+    may have come from an API key rather than the Django request.
+    """
+    team = get_default_team_from_request(request)
+    return team, last_book_for_team(request, team)
 
 
 def get_nav_book(request) -> Book | None:

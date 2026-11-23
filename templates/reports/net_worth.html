@@ -10,7 +10,7 @@
 {% endblock %}
 
 {% block app %}
-<section class="app-card" data-testid="net-worth-report">
+<section class="app-card" id="net-worth-report" data-testid="net-worth-report">
   <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
     <div>
       <a href="{% url 'reports:reports_home' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm -ml-3 mb-1" data-back-link>
@@ -118,7 +118,7 @@
   </div>
   {% endif %}
 
-  {% if chart_data %}
+  {% if trend %}
   <div class="rounded-box border border-base-300 p-4 mb-4" x-data="{ view: '{% if composition_data %}groups{% else %}totals{% endif %}' }">
     {% if composition_data %}
     <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
@@ -208,12 +208,9 @@
 {% block page_js %}
 {% vite_react_refresh %}
 {% vite_asset 'assets/javascript/reports/NetWorthTrendMonthPicker.jsx' %}
-{% if chart_data %}
-{{ chart_data|json_script:'net-worth-data' }}
-{% vite_asset 'assets/javascript/reports/net-worth-chart.js' %}
-{% endif %}
-{% if composition_data %}
-{{ composition_data|json_script:'net-worth-composition-data' }}
-{% vite_asset 'assets/javascript/reports/net-worth-composition-chart.js' %}
+{% if trend %}
+{% comment %}Both charts draw from the embedded `GET …/reports/api/net-worth/` body for this page's months (net-worth-report.js).{% endcomment %}
+{{ report_json|json_script:'net-worth-report-data' }}
+{% vite_asset 'assets/javascript/reports/net-worth-report.js' %}
 {% endif %}
 {% endblock %}

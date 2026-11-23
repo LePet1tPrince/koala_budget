@@ -3,7 +3,7 @@
 {% load django_vite %}
 
 {% block settings_content %}
-  {{ portability_props|json_script:'portability-props' }}
+  {{ request.book.base_url|json_script:'book-base' }}
 
   <div>
     <div id="data-transfer-app"></div>

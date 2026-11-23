@@ -88,7 +88,7 @@ const TaskRow = ({ task, index, current, onOpenDialog }) => {
 };
 
 const TaskRail = ({ props }) => {
-  const { tasksUrl, taskUrl, openingBalancesUrl, path, csrf } = props;
+  const { api, path } = props;
 
   const [tasks, setTasks] = useState([]);
   const [active, setActive] = useState(true);
@@ -99,33 +99,30 @@ const TaskRail = ({ props }) => {
 
   const post = useCallback(
     async (body) => {
-      const response = await fetch(taskUrl, {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) return null;
-      const data = await response.json();
+      let data;
+      try {
+        data = await api.task(body);
+      } catch {
+        return null;
+      }
       if (data.finished) {
         setFinish(data.summary || {});
       }
       return data;
     },
-    [taskUrl, csrf],
+    [api],
   );
 
   const load = useCallback(async () => {
     try {
-      const response = await fetch(tasksUrl, { headers: { Accept: 'application/json' } });
-      if (!response.ok) return;
-      const data = await response.json();
+      const data = await api.tasks();
       setTasks(data.tasks);
       setActive(data.active);
     } catch {
       // The rail is an overlay on a working app. If it cannot reach the server it
       // stays as it is rather than surfacing an error over whatever the user is doing.
     }
-  }, [tasksUrl]);
+  }, [api]);
 
   useEffect(() => {
     load();
@@ -230,9 +227,8 @@ const TaskRail = ({ props }) => {
 
       {dialog === 'opening_balances' && (
         <OpeningBalances
-          url={openingBalancesUrl}
+          api={api}
           reportUrl={tasks.find((t) => t.dialog === 'opening_balances')?.url}
-          csrf={csrf}
           onClose={() => setDialog(null)}
           onSaved={load}
         />

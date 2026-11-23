@@ -17,18 +17,18 @@ import * as runtime from '../runtime';
 import type {
   BankFeedRow,
   JournalEntry,
+  NavState,
   PatchedBankFeedRow,
-  RuleProposal,
 } from '../models/index';
 import {
     BankFeedRowFromJSON,
     BankFeedRowToJSON,
     JournalEntryFromJSON,
     JournalEntryToJSON,
+    NavStateFromJSON,
+    NavStateToJSON,
     PatchedBankFeedRowFromJSON,
     PatchedBankFeedRowToJSON,
-    RuleProposalFromJSON,
-    RuleProposalToJSON,
 } from '../models/index';
 
 export interface ABankfeedApiFeedPartialUpdateRequest {
@@ -52,7 +52,7 @@ export interface AJournalApiJournalEntriesVoidEntryCreateRequest {
     journalEntry: Omit<JournalEntry, 'id'|'payee_name'|'total_debits'|'total_credits'|'is_balanced'|'created_at'|'updated_at'>;
 }
 
-export interface ARulesApiProposalsListRequest {
+export interface NavStateRetrieveRequest {
     bookSlug: string;
     teamSlug: string;
 }
@@ -93,9 +93,10 @@ export class AApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -157,9 +158,10 @@ export class AApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -221,9 +223,10 @@ export class AApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -248,20 +251,20 @@ export class AApi extends runtime.BaseAPI {
     }
 
     /**
-     * Rules the book\'s history proposes (`services.learning`).
+     * What the app chrome shows for this book: the Inbox badge, the Inbox submenu\'s feed accounts, the Unassigned pill (always this month) and whether the guided task rail is on. The same figures the sidebar\'s context processors put in every server-rendered page, from the same functions -- for a client that draws its own chrome, and for refreshing it after a write.
      */
-    async aRulesApiProposalsListRaw(requestParameters: ARulesApiProposalsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<RuleProposal>>> {
+    async navStateRetrieveRaw(requestParameters: NavStateRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<NavState>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling aRulesApiProposalsList().'
+                'Required parameter "bookSlug" was null or undefined when calling navStateRetrieve().'
             );
         }
 
         if (requestParameters['teamSlug'] == null) {
             throw new runtime.RequiredError(
                 'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling aRulesApiProposalsList().'
+                'Required parameter "teamSlug" was null or undefined when calling navStateRetrieve().'
             );
         }
 
@@ -269,28 +272,29 @@ export class AApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
 
         const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/rules/api/proposals/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            path: `/a/{team_slug}/{book_slug}/api/nav-state/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
             method: 'GET',
             headers: headerParameters,
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(RuleProposalFromJSON));
+        return new runtime.JSONApiResponse(response, (jsonValue) => NavStateFromJSON(jsonValue));
     }
 
     /**
-     * Rules the book\'s history proposes (`services.learning`).
+     * What the app chrome shows for this book: the Inbox badge, the Inbox submenu\'s feed accounts, the Unassigned pill (always this month) and whether the guided task rail is on. The same figures the sidebar\'s context processors put in every server-rendered page, from the same functions -- for a client that draws its own chrome, and for refreshing it after a write.
      */
-    async aRulesApiProposalsList(requestParameters: ARulesApiProposalsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<RuleProposal>> {
-        const response = await this.aRulesApiProposalsListRaw(requestParameters, initOverrides);
+    async navStateRetrieve(requestParameters: NavStateRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<NavState> {
+        const response = await this.navStateRetrieveRaw(requestParameters, initOverrides);
         return await response.value();
     }
 

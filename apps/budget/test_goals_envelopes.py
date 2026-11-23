@@ -209,45 +209,38 @@ class UnassignedInvariantTest(GoalsFixture):
 
 
 class AssignWithdrawTest(GoalsFixture):
-    def url(self, name):
-        return reverse(f"budget:{name}", args=[*self.book.url_args, self.car.pk])
+    """The goal API's assign and withdraw (`apps/budget/api/goals.py`) on a goal with spending."""
+
+    def call(self, name, body):
+        url = reverse(f"budget:{name}", args=[*self.book.url_args, self.car.pk])
+        return self.client.post(url, body, content_type="application/json")
 
     def test_withdraw_caps_at_left(self):
         self.spend_from_car(date(2026, 9, 5), "4500")
-        response = self.client.post(
-            self.url("goal_withdraw"), {"month": "2026-09-01", "amount": "600"}, content_type="application/json"
-        )
+        response = self.call("api_goal_withdraw", {"month": "2026-09", "amount": "600"})
         self.assertEqual(response.status_code, 400)
-        self.assertIn("$500.00 left", response.json()["error"])
+        self.assertIn("$500.00 left", response.json()["non_field_errors"][0])
 
     def test_withdraw_all_takes_left_and_reports_it(self):
         self.spend_from_car(date(2026, 9, 5), "4500")
-        response = self.client.post(self.url("goal_withdraw"), {"month": "2026-09-01"}, content_type="application/json")
+        response = self.call("api_goal_withdraw", {"month": "2026-09"})
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["withdrawn"], 500.0)
-        self.assertEqual(data["spent"], 4500.0)
-        self.assertEqual(data["left"], 0.0)
+        self.assertEqual(data["amount"], "500.00")
+        self.assertEqual(data["goal"]["spent"], "4500.00")
+        self.assertEqual(data["goal"]["left"], "0.00")
 
     def test_assign_reports_spent_and_left(self):
         self.spend_from_car(date(2026, 9, 5), "1000")
-        response = self.client.post(
-            self.url("goal_assign_available"), {"month": "2026-09-01", "amount": "100"}, content_type="application/json"
-        )
+        response = self.call("api_goal_assign", {"month": "2026-09", "amount": "100"})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["left"], 4100.0)
+        self.assertEqual(response.json()["goal"]["left"], "4100.00")
 
     def test_a_funded_goal_takes_an_explicit_amount_but_not_quick_assign(self):
         self.car.is_complete = True
         self.car.save()
-        quick = self.client.post(
-            self.url("goal_assign_available"), {"month": "2026-09-01"}, content_type="application/json"
-        )
-        self.assertEqual(quick.status_code, 400)
-        explicit = self.client.post(
-            self.url("goal_assign_available"), {"month": "2026-09-01", "amount": "50"}, content_type="application/json"
-        )
-        self.assertEqual(explicit.status_code, 200)
+        self.assertEqual(self.call("api_goal_assign", {"month": "2026-09"}).status_code, 400)
+        self.assertEqual(self.call("api_goal_assign", {"month": "2026-09", "amount": "50"}).status_code, 200)
 
     def test_dashboard_to_reach_all_goals_is_target_minus_allocated(self):
         self.spend_from_car(date(2026, 9, 5), "1000")
@@ -530,13 +523,22 @@ class CoverOverspendingTest(GoalsFixture):
             "category_id": self.groceries.pk,
             "source": "goal",
             "goal_id": self.car.pk,
-            "month": "2026-09-01",
+            "month": "2026-09",
             "amount": "150",
             **overrides,
         }
         return self.client.post(
-            reverse("budget:budget_cover", args=self.book.url_args), body, content_type="application/json"
+            reverse("budget:api_cover", args=self.book.url_args), body, content_type="application/json"
         )
+
+    def groceries_available(self, response):
+        rows = {
+            row["category_id"]: row
+            for section in response.json()["figures"]["sections"]
+            for group in section["groups"]
+            for row in group["rows"]
+        }
+        return rows[self.groceries.pk]["available"]
 
     def groceries_budget(self):
         return budget_amount(self.book, self.groceries, SEPT)
@@ -550,7 +552,8 @@ class CoverOverspendingTest(GoalsFixture):
         self.assertEqual(self.numbers()["allocated"], Decimal("4850"))
         # The 150 overspent already came out of Unassigned; the goal gives it back.
         self.assertEqual(self.unassigned(), before + Decimal("150"))
-        self.assertEqual(response.json()["cells"][f"row:{self.groceries.pk}:available"]["value"], "$0.00")
+        self.assertEqual(self.groceries_available(response), "0.00")
+        self.assertEqual(response.json()["goal_id"], self.car.pk)
         self.assertTrue(AuditEvent.objects.filter(event_type=AuditEvent.GOAL_COVERED_BUDGET).exists())
 
     def test_from_unassigned_filling_the_hole_leaves_unassigned_alone(self):
@@ -564,7 +567,7 @@ class CoverOverspendingTest(GoalsFixture):
         self.assertEqual(self.groceries_budget(), Decimal("550"))
         self.assertEqual(self.numbers()["allocated"], Decimal("5000"))  # the goal is untouched
         self.assertEqual(self.unassigned(), before)
-        self.assertEqual(data["cells"][f"row:{self.groceries.pk}:available"]["value"], "$0.00")
+        self.assertEqual(self.groceries_available(response), "0.00")
 
     def test_from_unassigned_sets_a_budget_when_there_is_none(self):
         set_budget(self.book, self.groceries, SEPT, Decimal("0"))
@@ -604,7 +607,8 @@ class CoverOverspendingTest(GoalsFixture):
         page = self.client.get(reverse("budget:budget_home", args=self.book.url_args) + "?month=2026-09-01")
         self.assertContains(page, 'data-testid="cover-btn"')
         self.assertContains(page, 'data-testid="cover-source-unassigned"')
-        self.assertNotContains(page, 'data-testid="cover-source-goal"')
+        # The goal choice is there for the script to offer once a month has goals, but hidden.
+        self.assertContains(page, "data-cover-goal-option hidden>")
 
 
 # ---------------------------------------------------------------------------
@@ -648,11 +652,12 @@ class GoalReportsTest(GoalsFixture):
         page = self.client.get(reverse("reports:spending", args=self.book.url_args) + qs)
         self.assertContains(page, 'data-testid="spending-goals"')
         self.assertContains(page, 'data-testid="spending-goal-spending"')
-        self.assertEqual(page.context["sankey_data"]["goal_spending"], 19400.0)
+        # The charts read goal spending from the embedded API body.
+        self.assertEqual(page.context["report_json"]["goal_spending"]["total"], "19400.00")
         # Savings rate reads the operating net; the net shown is after goal spending.
         self.assertEqual(round(page.context["stats"]["savings_rate"]), 30)
         self.assertEqual(page.context["stats"]["net_after_goals"], Decimal("-17600"))
-        self.assertEqual(page.context["chart_data"]["goal_spending"], [19400.0])
+        self.assertEqual(page.context["report_json"]["goal_spending"]["per_period"], ["19400.00"])
         csv = self.client.get(reverse("reports:export_income_statement", args=self.book.url_args) + qs)
         body = csv.content.decode()
         self.assertIn("GOAL SPENDING", body)
@@ -695,10 +700,10 @@ class GoalReportsTest(GoalsFixture):
         self.assertNotIn("Goal: Car", [row["name"] for row in review["net_worth"]["by_account"]])
 
     def test_accounts_board_shows_left_and_splits_goals_from_equity(self):
-        page = self.client.get(reverse("accounts:accounts_home", args=self.book.url_args))
-        types = {section["key"]: section for section in page.context["manage_props"]["types"]}
+        board = self.client.get(reverse("accounts:board", args=self.book.url_args)).json()
+        types = {section["key"]: section for section in board["sections"]}
         goal_rows = [a for g in types["goal"]["groups"] for a in g["accounts"]]
-        self.assertEqual([a["balance"] for a in goal_rows if a["isGoal"]], ["-14400.00"])
+        self.assertEqual([a["balance"] for a in goal_rows if a["is_goal"]], ["-14400.00"])
         equity_names = {g["name"] for g in types["equity"]["groups"]}
         self.assertIn("Opening Balances", equity_names)
         self.assertNotIn(GOALS_GROUP_NAME, equity_names)

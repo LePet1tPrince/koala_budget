@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.accounts.models import Account
 from apps.budget.models import Goal
@@ -39,6 +40,8 @@ class OnboardingViewTestCase(TestCase):
         self.complete_url = reverse("onboarding:api_complete", args=[self.team.slug, self.book.slug])
         self.skip_url = reverse("onboarding:api_skip", args=[self.team.slug, self.book.slug])
         self.preview_url = reverse("onboarding:api_preview_coa", args=[self.team.slug, self.book.slug])
+        self.catalog_url = reverse("onboarding:api_catalog", args=[self.team.slug, self.book.slug])
+        self.state_url = reverse("onboarding:api_state", args=[self.team.slug, self.book.slug])
 
     def post_json(self, url, payload=None):
         return self.client.post(
@@ -58,18 +61,24 @@ class TakeoverPageTest(OnboardingViewTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(OnboardingState.objects.filter(book=self.book).exists())
 
-    def test_props_carry_the_catalog(self):
+    def test_the_page_carries_no_data_props(self):
+        """The app loads the catalog and the state through the API; the page names only its book."""
         response = self.client.get(self.home_url)
-        props = response.context["onboarding_props"]
 
-        self.assertEqual(len(props["questions"]), len(QUESTION_CATALOG))
-        self.assertEqual(props["teamSlug"], self.team.slug)
+        self.assertContains(response, 'id="book-base"')
+        self.assertNotContains(response, "onboarding-props")
 
-    def test_props_carry_no_chart_of_accounts_rules(self):
+    def test_the_catalog_endpoint_carries_every_question(self):
+        payload = self.client.get(self.catalog_url).json()
+
+        self.assertEqual(len(payload["questions"]), len(QUESTION_CATALOG))
+        self.assertTrue(payload["phases"])
+
+    def test_the_catalog_carries_no_chart_of_accounts_rules(self):
         """What an answer creates is the server's business, not the client's."""
-        response = self.client.get(self.home_url)
+        response = self.client.get(self.catalog_url)
 
-        for question in response.context["onboarding_props"]["questions"]:
+        for question in response.json()["questions"]:
             for option in question["options"]:
                 with self.subTest(option=option["value"]):
                     self.assertEqual(set(option), {"value", "label", "help_text", "catch_all"})
@@ -115,9 +124,24 @@ class SaveAnswersTest(OnboardingViewTestCase):
 
         self.assertEqual(OnboardingState.objects.get(book=self.book).answers, {})
 
-    def test_malformed_body_is_tolerated(self):
+    def test_malformed_body_is_a_400(self):
         response = self.client.post(self.answers_url, data="not json", content_type="application/json")
-        self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(OnboardingState.objects.filter(book=self.book).exclude(answers={}).exists())
+
+    def test_answers_that_are_not_an_object_are_a_400(self):
+        response = self.post_json(self.answers_url, {"answers": ["housing", "rent"]})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("answers", response.json())
+
+    def test_a_finished_book_is_a_409(self):
+        OnboardingState.objects.create(book=self.book, completed_at=timezone.now())
+
+        response = self.post_json(self.answers_url, {"answers": {"housing": "rent"}})
+        self.assertEqual(response.status_code, 409)
+        self.assertTrue(response.json()["detail"])
 
     def test_reports_what_is_still_missing(self):
         response = self.post_json(self.answers_url, {"answers": {"housing": "rent"}})
@@ -209,9 +233,15 @@ class SkipTest(OnboardingViewTestCase):
         self.assertTrue(Account.objects.filter(book=self.book).exists())
         self.assertTrue(OnboardingState.objects.get(book=self.book).skipped_at)
 
+    def test_the_api_answers_the_skipped_state(self):
+        state = self.post_json(self.skip_url).json()["state"]
+
+        self.assertTrue(state["is_finished"])
+        self.assertEqual(state["phase"], OnboardingState.PHASE_DONE)
+
     def test_a_plain_form_post_redirects_rather_than_returning_json(self):
         """The no-JS fallback posts a form; landing on raw JSON would be a dead end."""
-        response = self.client.post(self.skip_url)
+        response = self.client.post(reverse("onboarding:skip", args=[self.team.slug, self.book.slug]))
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], reverse("web_book:home", args=[self.team.slug, self.book.slug]))
@@ -250,6 +280,50 @@ class PermissionTest(OnboardingViewTestCase):
         self.post_json(self.skip_url)
 
         self.assertFalse(OnboardingState.objects.filter(book=self.book, skipped_at__isnull=False).exists())
+
+
+class StateEndpointTest(OnboardingViewTestCase):
+    """`api/state/`: what the takeover opens on."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.user.first_name = "Robin"
+        cls.user.save()
+
+    def test_answers_the_state_and_the_greeting(self):
+        self.post_json(self.answers_url, {"answers": {"housing": "rent"}, "question_phase": "household"})
+
+        payload = self.client.get(self.state_url).json()
+
+        self.assertEqual(payload["state"]["phase"], OnboardingState.PHASE_QUESTIONS)
+        self.assertEqual(payload["state"]["question_phase"], "household")
+        self.assertEqual(payload["state"]["answers"], {"housing": ["rent"]})
+        self.assertIn("income_sources", payload["unanswered_required"])
+        self.assertEqual(payload["first_name"], "Robin")
+        self.assertEqual(payload["book_name"], self.book.name)
+
+    def test_creates_the_state_lazily(self):
+        self.assertEqual(self.client.get(self.state_url).status_code, 200)
+        self.assertTrue(OnboardingState.objects.filter(book=self.book).exists())
+
+    @override_settings(YNAB_IMPORT_ENABLED=False)
+    def test_says_whether_to_offer_the_ynab_import(self):
+        self.assertFalse(self.client.get(self.state_url).json()["ynab_import_enabled"])
+
+    def test_anonymous_is_refused(self):
+        self.client.logout()
+        self.assertIn(self.client.get(self.state_url).status_code, (401, 403))
+        self.assertIn(self.client.get(self.catalog_url).status_code, (401, 403))
+
+    def test_a_non_member_is_refused(self):
+        outsider = CustomUser.objects.create_user(username="state-outsider", password="pass")
+        self.client.force_login(outsider)
+        self.assertIn(self.client.get(self.state_url).status_code, (403, 404))
+
+    def test_a_book_the_team_does_not_have_is_a_404(self):
+        url = reverse("onboarding:api_state", args=[self.team.slug, "no-such-book"])
+        self.assertEqual(self.client.get(url).status_code, 404)
 
 
 class TeamHomeRedirectTest(OnboardingViewTestCase):
@@ -316,7 +390,7 @@ class PreviewCoaTest(OnboardingViewTestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertTrue(response.json()["error"])
+        self.assertTrue(response.json()["non_field_errors"])
 
     def test_non_member_is_refused(self):
         outsider = CustomUser.objects.create_user(username="nosy", password="pass")

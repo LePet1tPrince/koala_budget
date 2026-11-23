@@ -1,20 +1,17 @@
 import re
-from datetime import date
 
 from django.contrib import messages
-from django.db import transaction
 from django.http import Http404, HttpResponsePermanentRedirect, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
 from django.urls import re_path, reverse
 from django.utils.translation import gettext as _
 
-from apps.audit.models import AuditEvent
-from apps.audit.utils import log_event
 from apps.teams.decorators import login_and_team_required, team_admin_required
 
+from . import services
 from .decorators import book_admin_required
 from .forms import START_EXPORT, START_YNAB, BookCreateForm, BookSettingsForm, ConfirmNameForm
-from .helpers import create_book, remember_book, url_segments
+from .helpers import remember_book, url_segments
 from .models import Book
 
 # --- Legacy URLs ------------------------------------------------------------------
@@ -96,17 +93,9 @@ def book_create(request, team_slug):
     """
     form = BookCreateForm(request.POST or None, team=request.team)
     if request.method == "POST" and form.is_valid():
-        with transaction.atomic():
-            book = create_book(request.team, form.cleaned_data["name"])
-        log_event(
-            AuditEvent.BOOK_CREATED,
-            request=request,
-            team=request.team,
-            book=book,
-            metadata={"name": book.name, "start": form.cleaned_data["start"]},
-        )
-        remember_book(request, book)
         start = form.cleaned_data["start"]
+        book = services.create_team_book(request, request.team, form.cleaned_data["name"], start)
+        remember_book(request, book)
         if start == START_YNAB:
             return HttpResponseRedirect(reverse("ynab_import:home", args=book.url_args))
         if start == START_EXPORT:
@@ -131,10 +120,6 @@ def _team_book(request, slug):
     return get_object_or_404(Book, team=request.team, slug=slug)
 
 
-def _open_books(team):
-    return Book.objects.filter(team=team, is_archived=False)
-
-
 def _back_to_list(request):
     return HttpResponseRedirect(reverse("books_team:list", args=[request.team.slug]))
 
@@ -147,15 +132,16 @@ def book_archive(request, team_slug, slug):
     book = _team_book(request, slug)
     if book.is_archived:
         return _back_to_list(request)
-    if not _open_books(request.team).exclude(pk=book.pk).exists():
-        messages.error(request, _("This is the team's only set of books, so it can't be archived."))
+    try:
+        services.ensure_can_archive(book)
+    except services.LastOpenBookError as error:
+        messages.error(request, str(error))
         return _back_to_list(request)
     form = ConfirmNameForm(request.POST, book=book)
     if not form.is_valid():
         messages.error(request, form.errors["confirm"][0])
         return _back_to_list(request)
-    book.archive()
-    log_event(AuditEvent.BOOK_ARCHIVED, request=request, team=request.team, book=book)
+    services.archive_book(request, book)
     messages.success(request, _("%(name)s was archived.") % {"name": book.name})
     return _back_to_list(request)
 
@@ -165,8 +151,7 @@ def book_restore(request, team_slug, slug):
     if request.method != "POST":
         raise Http404
     book = _team_book(request, slug)
-    book.restore()
-    log_event(AuditEvent.BOOK_RESTORED, request=request, team=request.team, book=book)
+    services.restore_book(request, book)
     messages.success(request, _("%(name)s was restored.") % {"name": book.name})
     return _back_to_list(request)
 
@@ -176,38 +161,23 @@ def book_delete(request, team_slug, slug):
     """Delete the book and every row in it. Type-the-name confirmed; never the last open book."""
     if request.method != "POST":
         raise Http404
-    from apps.portability.services.wipe import wipe_book
-
     book = _team_book(request, slug)
-    if not _open_books(request.team).exclude(pk=book.pk).exists():
-        messages.error(request, _("This is the team's only set of books, so it can't be deleted."))
+    try:
+        services.ensure_can_delete(book)
+    except services.LastOpenBookError as error:
+        messages.error(request, str(error))
         return _back_to_list(request)
     form = ConfirmNameForm(request.POST, book=book)
     if not form.is_valid():
         messages.error(request, form.errors["confirm"][0])
         return _back_to_list(request)
 
-    name = book.name
-    with transaction.atomic():
-        wipe_book(book)
-        # Audit rows outlive the book (their FK is SET_NULL); the event says which one it was.
-        log_event(AuditEvent.BOOK_DELETED, request=request, team=request.team, book=None, metadata={"name": name})
-        book.delete()
+    name = services.delete_book(request, book)
     messages.success(request, _("%(name)s was deleted.") % {"name": name})
     return _back_to_list(request)
 
 
 # --- Book level -------------------------------------------------------------------
-
-
-def _unassigned_both_ways(book):
-    """This month's Unassigned with the future-income setting as it is, and flipped."""
-    from apps.budget.unassigned import compute_unassigned
-
-    month = date.today().replace(day=1)
-    current = compute_unassigned(book, month)
-    flipped = compute_unassigned(book, month, future_income=not book.budget_future_income)
-    return current, flipped
 
 
 @book_admin_required
@@ -222,46 +192,28 @@ def book_settings(request, team_slug, book_slug):
     book = request.book
     old_slug = book.slug
     # Read before validating: `is_valid()` copies the posted values onto the instance.
-    before = book.budget_future_income
-    timeframe_before = book.report_timeframe
-    lock_before = book.locked_through
+    before = services.settings_snapshot(book)
     # Not `request.POST or None` alone: an unticked checkbox sends nothing, and
     # the form must still bind.
     form = BookSettingsForm(request.POST if request.method == "POST" else None, instance=book)
     if request.method == "POST" and form.is_valid():
         book = form.save()
-        changed = {}
-        if before != book.budget_future_income:
-            changed["budget_future_income"] = book.budget_future_income
-        if timeframe_before != book.report_timeframe:
-            changed["report_timeframe"] = book.report_timeframe
-        if lock_before != book.locked_through:
-            # Both ends, so the audit trail says which period was closed or reopened.
-            changed["locked_through"] = book.locked_through.isoformat() if book.locked_through else None
-            changed["locked_through_before"] = lock_before.isoformat() if lock_before else None
-        if changed:
-            log_event(
-                AuditEvent.BOOK_SETTINGS_CHANGED,
-                request=request,
-                team=request.team,
-                book=book,
-                metadata=changed,
-            )
+        services.record_settings_change(request, book, before)
         messages.success(request, _("Saved."))
         if book.slug != old_slug:
             messages.info(request, _("The address changed. Links to the old one no longer work."))
         return HttpResponseRedirect(reverse("books:settings", args=book.url_args))
     # An invalid post has copied its values onto the instance; the consequence is
     # stated for the setting as saved.
-    book.budget_future_income = before
-    book.locked_through = lock_before
-    current, flipped = _unassigned_both_ways(book)
+    book.budget_future_income = before["budget_future_income"]
+    book.locked_through = before["locked_through"]
+    current, flipped = services.unassigned_both_ways(book)
     return render(
         request,
         "books/book_settings.html",
         {
             "form": form,
-            "future_income": before,
+            "future_income": before["budget_future_income"],
             "unassigned_now": current,
             "unassigned_flipped": flipped,
             "active_tab": "settings",

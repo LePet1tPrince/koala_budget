@@ -165,6 +165,45 @@ class ApiHappyPathTests(ReconciliationTestCase):
         resp = self.api("get", f"{API}accounts/")
         names = {a["name"] for a in resp.json()["accounts"]}
         self.assertEqual(names, {"Chequing", "Savings", "Cash", "Visa"})
+        self.assertFalse(resp.json()["all_intact"])
+
+    def test_hub_says_all_intact_once_every_account_holds(self):
+        for account in (self.chequing, self.savings, self.cash, self.card):
+            rec = session.start(account, date(2026, 8, 31), Decimal("0"), self.user)
+            session.finish(rec, self.user)
+        resp = self.api("get", f"{API}accounts/")
+        self.assertTrue(resp.json()["all_intact"])
+        self.assertTrue(all(a["last_statement"]["intact"] for a in resp.json()["accounts"]))
+
+    def test_page_is_what_the_account_page_opens_on(self):
+        line = self.entry(self.chequing, self.salary, "10.00")
+        draft = session.start(self.chequing, date(2026, 8, 31), Decimal("10.00"), self.user, [line.id])
+        resp = self.api("get", f"{API}page/?account={self.chequing.id}", user=self.member)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["account"]["id"], self.chequing.id)
+        self.assertEqual(data["draft_id"], draft.id)
+        self.assertIsNone(data["previous"])
+        self.assertEqual(data["history"], [])
+        self.assertIn("default_statement_date", data)
+        self.assertIn("reconciled_balance", data)
+        # The feed's pickers ride along only for an account with a feed.
+        self.assertEqual(bool(data["all_accounts"]), self.chequing.has_feed)
+
+    def test_page_for_a_non_reconcilable_or_missing_account_is_a_404(self):
+        self.assertEqual(self.api("get", f"{API}page/?account={self.salary.id}").status_code, 404)
+        self.assertEqual(self.api("get", f"{API}page/?account=nope").status_code, 404)
+        self.assertEqual(self.api("get", f"{API}page/").status_code, 404)
+
+    def test_statement_detail_via_api(self):
+        line = self.entry(self.chequing, self.salary, "10.00")
+        rec = session.start(self.chequing, date(2026, 8, 31), Decimal("10.00"), self.user, [line.id])
+        session.finish(rec, self.user)
+        resp = self.api("get", f"{API}{rec.id}/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "completed")
+        self.assertTrue(resp.json()["intact"])
+        self.assertEqual([row["id"] for row in resp.json()["lines"]], [line.id])
 
     def test_bad_start_is_a_400(self):
         resp = self.api(
@@ -234,27 +273,29 @@ class PageTests(ReconciliationTestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Chequing")
 
-    def test_account_page_renders_with_props(self):
+    def test_account_page_renders_its_mount(self):
         resp = self.web.get(
             reverse("reconciliation:account", args=[self.team.slug, self.book.slug, self.card.id]) + "?lines=4,5"
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'id="reconcile-props"')
-        self.assertContains(resp, "preselect_line_ids")
+        self.assertContains(resp, f'data-account-id="{self.card.id}"')
+        self.assertContains(resp, 'id="book-base"')
+        self.assertNotContains(resp, "reconcile-props")
 
     def test_income_account_page_is_a_404(self):
         resp = self.web.get(reverse("reconciliation:account", args=[self.team.slug, self.book.slug, self.salary.id]))
         self.assertEqual(resp.status_code, 404)
 
-    def test_statement_page_and_undo_form(self):
+    def test_statement_page_undoes_through_the_api(self):
         line = self.entry(self.chequing, self.salary, "10.00")
         rec = session.start(self.chequing, date(2026, 8, 31), Decimal("10.00"), self.user, [line.id])
         session.finish(rec, self.user)
         resp = self.web.get(reverse("reconciliation:statement", args=[self.team.slug, self.book.slug, rec.id]))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Intact")
-        resp = self.web.post(reverse("reconciliation:statement_undo", args=[self.team.slug, self.book.slug, rec.id]))
-        self.assertEqual(resp.status_code, 302)
+        self.assertContains(resp, f'data-statement-undo="{rec.id}"')
+        resp = self.api("post", f"{API}{rec.id}/undo/")
+        self.assertEqual(resp.status_code, 200)
         rec.refresh_from_db()
         self.assertEqual(rec.status, Reconciliation.STATUS_UNDONE)
 

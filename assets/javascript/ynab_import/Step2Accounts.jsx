@@ -40,7 +40,7 @@ const otherType = (type) => (type === 'asset' ? 'liability' : 'asset');
 
 const Step2Accounts = ({ accounts, groups, choices, onChange, groupEdits, onGroupEditsChange }) => {
   const choiceFor = (account) => choices[account.name] || {};
-  const typeOf = (account) => choiceFor(account).account_type ?? account.account_type;
+  const typeOf = (account) => choiceFor(account).account_type ?? account.accountType;
   const groupOf = (account) => choiceFor(account).group ?? account.group;
 
   const update = (account, patch) => onChange({ ...choices, [account.name]: { ...choiceFor(account), ...patch } });
@@ -54,7 +54,7 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, groupEdits, onGrou
   const groupsByType = useMemo(() => {
     const byType = {};
     TYPES.forEach(({ key }) => {
-      const suggested = groups.filter((group) => group.account_type === key).map((group) => group.name);
+      const suggested = groups.filter((group) => group.accountType === key).map((group) => group.name);
       const inUse = accounts.filter((account) => typeOf(account) === key).map(groupOf);
       byType[key] = listNames(suggested, inUse, editsFor(key));
     });
@@ -114,7 +114,7 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, groupEdits, onGrou
   // group we suggested if it is returning to its suggested type, otherwise into
   // the first group of the new type.
   const setType = (account, type) => {
-    const group = account.account_type === type ? account.group : groupsByType[type][0];
+    const group = account.accountType === type ? account.group : groupsByType[type][0];
     update(account, { account_type: type, group });
   };
 
@@ -173,7 +173,7 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, groupEdits, onGrou
             {accounts.map((account) => {
               const choice = choiceFor(account);
               const skip = Boolean(choice.skip);
-              const hasFeed = choice.has_feed ?? account.has_feed;
+              const hasFeed = choice.has_feed ?? account.hasFeed;
               return (
                 <tr
                   key={account.name}
@@ -191,7 +191,7 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, groupEdits, onGrou
                       aria-label={gettext('Account name')}
                     />
                     <div className="mt-1 text-xs text-base-content/70">
-                      {account.on_budget ? gettext('Everyday account') : gettext('Tracking account')}
+                      {account.onBudget ? gettext('Everyday account') : gettext('Tracking account')}
                       {' · '}
                       {account.reason}
                     </div>
@@ -220,7 +220,7 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, groupEdits, onGrou
                     />
                   </td>
                   <td className="money text-right">{account.rows.toLocaleString()}</td>
-                  <td className="money text-right">{money(account.closing_balance)}</td>
+                  <td className="money text-right">{money(account.closingBalance)}</td>
                   <td className="text-center">
                     <input
                       type="checkbox"

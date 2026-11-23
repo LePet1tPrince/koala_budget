@@ -91,7 +91,7 @@ class ReservedSlugsTest(TestCase):
         segments = url_segments(team_level_urlpatterns) | url_segments(book_urlpatterns)
         self.assertLessEqual(segments, reserved_book_slugs())
         # Spot-check the ones the plan names, on both levels.
-        for slug in ("team", "subscription", "settings", "books", "budget", "bankfeed", "ynab-import", "data"):
+        for slug in ("team", "subscription", "settings", "books", "budget", "bankfeed", "ynab-import", "data", "api"):
             self.assertIn(slug, reserved_book_slugs())
 
 
@@ -507,14 +507,14 @@ class FutureIncomeTest(TestCase):
     def test_saving_an_income_budget_is_refused_while_off(self):
         self.set_future_income(False)
         response = self.client.post(
-            reverse("budget:budget_save_amount", args=self.book.url_args),
-            data={"category_id": self.salary.id, "month": self.MONTH.isoformat(), "amount": "1"},
+            reverse("budget:api_amount", args=self.book.url_args),
+            data={"category_id": self.salary.id, "month": self.MONTH.strftime("%Y-%m"), "amount": "1"},
             content_type="application/json",
         )
         self.assertGreaterEqual(response.status_code, 400)
         response = self.client.post(
-            reverse("budget:budget_grid_save", args=self.book.url_args),
-            data={"changes": [{"category_id": self.salary.id, "month": self.MONTH.isoformat(), "amount": "1"}]},
+            reverse("budget:api_grid_save", args=self.book.url_args),
+            data={"changes": [{"category_id": self.salary.id, "month": self.MONTH.strftime("%Y-%m"), "amount": "1"}]},
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)

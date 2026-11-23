@@ -1,7 +1,9 @@
 """Page Object Model for the Accounts section.
 
 The accounts home is a React drag-and-drop board (requires the Vite dev
-server); the create/edit forms are Django-template rendered.
+server). Accounts, groups, payees and institutions are created and edited in
+the shared React editors (`accounts/react/manage/`), opened from the board and
+from the Manage pages; the Django form pages are the no-JS path.
 """
 
 from .base import BasePage
@@ -58,10 +60,6 @@ class AccountsPage(BasePage):
         self.account_row(name).locator("[data-testid='account-visibility-toggle']").click()
         self.page.wait_for_selector("[data-testid='board-toast']")
 
-    def click_new_account(self):
-        self.page.locator("[data-testid='new-account-btn']").click()
-        self.page.wait_for_selector("[data-testid='account-form']")
-
     def fill_account_form(self, name: str, account_group_name: str, account_type: str = "expense"):
         self.page.locator("[name='name']").fill(name)
         # The create form uses Alpine button pickers (not <select>s): choose the
@@ -75,9 +73,6 @@ class AccountsPage(BasePage):
     def click_cancel(self):
         self.page.locator("[data-testid='cancel-btn']").click()
 
-    def click_account(self, name: str):
-        self.page.locator("[data-testid='account-name']", has_text=name).first.click()
-
     def create_account(self, name: str, account_group_name: str, book, account_type: str = "expense"):
         """High-level helper: navigate to create form, fill, and submit."""
         self.goto_create(book)
@@ -85,3 +80,30 @@ class AccountsPage(BasePage):
         self.submit_form()
         # After save, Django redirects to the account detail page
         self.page.wait_for_url(f"**{book.base_url}accounts/**", timeout=10_000)
+
+    # ------------------------------------------------------------------
+    # Editors (the shared Manage modals)
+    # ------------------------------------------------------------------
+
+    def editor(self, kind: str):
+        """The open editor: kind is account, group, payee or institution."""
+        return self.page.locator(f"dialog[open][data-testid='{kind}-modal']")
+
+    def open_account_editor(self, name: str):
+        """Hover an account's row on the board and click its pencil."""
+        row = self.account_row(name)
+        row.hover()
+        row.locator("[data-testid='account-edit-btn']").click()
+        self.editor("account").locator("[data-testid='account-name-input']").wait_for()
+
+    def save_editor(self, kind: str):
+        self.editor(kind).locator("[data-testid='modal-save-btn']").click()
+
+    def delete_in_editor(self, kind: str):
+        """Confirm the editor's Delete (asking first when it is not already asked)."""
+        editor = self.editor(kind)
+        # The item loads first; its Delete controls appear with the form.
+        editor.locator("[data-autofocus]").wait_for()
+        if editor.locator("[data-testid='modal-delete-confirm']").count() == 0:
+            editor.locator("[data-testid='modal-delete-btn']").click()
+        editor.locator("[data-testid='modal-delete-confirm']").click()

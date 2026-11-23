@@ -5,15 +5,17 @@
 // browser dropped the reader at the top again. On a long chart of accounts that
 // meant scrolling back down to where you were after every single month change.
 //
-// Instead we fetch the very same URL a full navigation would have loaded and
-// replace only `#budget-swap` with the matching element from the response. The
-// markup is therefore exactly what the server would have rendered anyway —
-// there is no second rendering path to drift out of step with `budget_month_view`,
-// which is the same reason `budget_save_amount` recomputes `_budget_figures`
-// rather than patching figures by hand.
+// Instead the month's figures come from the budget API (`budgetMonthRetrieve`)
+// and are painted into the markup already on screen (budget-api.js `applyMonth`):
+// the table's rows and groups are the book's, not the month's, so only figures,
+// month names and the month carried by forms and links change. When the rows
+// themselves differ (a category was added or hidden since the page was drawn),
+// the region is redrawn from the server-rendered page instead (`redraw`), so the
+// template stays the one place the table's structure is rendered.
 //
 // Anything outside that element which still names the month (the "Edit Multiple
 // Months" link, the picker's own `data-month`) is synced across afterwards.
+import { applyMonth, fetchMonth, sameStructure } from './budget-api';
 
 const SWAP_ID = 'budget-swap';
 
@@ -23,7 +25,7 @@ const SWAP_ID = 'budget-swap';
 // showing once the wait is long enough to look like nothing happened.
 const BUSY_AFTER_MS = 400;
 
-/** Elements outside the swapped region that still carry the month. */
+/** Elements outside the swapped region that still carry the month (synced after a redraw). */
 const SYNC_ATTR = [
   ['[data-testid="budget-grid-link"]', 'href'],
   ['#budget-month-picker', 'data-month'],
@@ -46,11 +48,11 @@ export const urlForMonth = (month) => {
 let ticket = 0;
 
 /**
- * Replace the budget content with another month's, in place.
+ * Show another month's budget, in place.
  *
  * @param {string}  month        'yyyy-MM-dd', the first of the target month.
  * @param {boolean} opts.push    Add a history entry (false when *handling* one).
- * @returns {Promise<boolean>}   Whether the swap happened.
+ * @returns {Promise<boolean>}   Whether the page now shows that month.
  */
 export async function swapToMonth(month, { push = true } = {}) {
   const root = swapRoot();
@@ -60,14 +62,9 @@ export async function swapToMonth(month, { push = true } = {}) {
   const mine = ++ticket;
   const busy = markBusy(root);
 
-  let html;
+  let figures;
   try {
-    const response = await fetch(url, {
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      credentials: 'same-origin',
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    html = await response.text();
+    figures = await fetchMonth(month);
   } catch {
     // A superseded request owns nothing: the newer one is still holding the
     // busy state, and navigating would take the reader to a month they have
@@ -79,22 +76,77 @@ export async function swapToMonth(month, { push = true } = {}) {
     window.location.href = url;
     return false;
   }
-
   if (mine !== ticket) return false;
-  busy.clear();
 
-  if (!applySwap(html, month)) {
-    window.location.href = url;
-    return false;
+  if (sameStructure(figures, root)) {
+    busy.clear();
+    applyMonth(figures, root);
+    syncMonthOutside(month);
+  } else {
+    // The rows changed since the page was drawn: draw it again, for this month.
+    const drawn = await redraw(month, { owner: mine });
+    if (mine !== ticket) return false;
+    busy.clear();
+    if (!drawn) {
+      window.location.href = url;
+      return false;
+    }
   }
+  rememberMonth(month);
   if (push) window.history.pushState({ budgetMonth: month }, '', url);
   return true;
 }
 
 /**
+ * Redraw the whole `#budget-swap` region for `month` from the server-rendered
+ * page (the same URL a navigation would load) — for a change to the table's
+ * structure (hiding a category), which figures can't be painted into.
+ *
+ * @returns {Promise<boolean>} Whether the region was replaced.
+ */
+export async function redraw(month, { owner = null } = {}) {
+  let html;
+  try {
+    const response = await window.fetch(urlForMonth(month), {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'same-origin',
+    });
+    if (!response.ok) return false;
+    html = await response.text();
+  } catch {
+    return false;
+  }
+  // A month change started since: it owns the region now.
+  if (owner !== null && owner !== ticket) return false;
+  return applySwap(html, month);
+}
+
+// The page remembers the month on screen for the next visit to Budget or Goals
+// (`views._month_from_request`): a navigation with ?month= tells the server, an
+// in-place change writes this cookie. The suffix makes every change a new value,
+// so the server can tell a change it hasn't seen yet from one it has.
+const MONTH_COOKIE = 'budget_month';
+
+function rememberMonth(month) {
+  const stamp = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  document.cookie = `${MONTH_COOKIE}=${encodeURIComponent(`${month}.${stamp}`)}; path=/; SameSite=Lax`;
+}
+
+/** The parts of the header that name the month, after an in-place change. */
+function syncMonthOutside(month) {
+  const picker = document.getElementById('budget-month-picker');
+  if (picker) picker.dataset.month = month;
+  const grid = document.querySelector('[data-testid="budget-grid-link"]');
+  if (grid) {
+    const href = new URL(grid.getAttribute('href'), window.location.href);
+    href.searchParams.set('start', `${month.slice(0, 4)}-01-01`);
+    grid.setAttribute('href', `${href.pathname}${href.search}`);
+  }
+}
+
+/**
  * Replace the budget content with `html`, markup the server already rendered —
- * a whole budget page, or just the `#budget-swap` partial (what hiding a
- * category answers with, saving the second round trip a fetch would cost).
+ * the whole budget page, of which only `#budget-swap` is taken.
  *
  * The caller owns ordering: a month swap still in flight would paint over this.
  *

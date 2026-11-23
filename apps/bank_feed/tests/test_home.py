@@ -69,29 +69,25 @@ class BankFeedHomeViewTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
         self.assertIn("/accounts/login/", response.url)
 
-    def test_bank_feed_home_context_contains_accounts(self):
-        """Test that context contains accounts with bank feeds."""
+    def test_bank_feed_home_sends_no_data_props(self):
+        """The page carries only its book; the app loads accounts and pickers from the API."""
         response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("accounts", response.context)
-        # Should only include accounts with has_feed=True
-        account_names = [a["name"] for a in response.context["accounts"]]
+        self.assertContains(response, 'id="book-base"')
+        for prop in ("all-accounts", "all-payees", "all-account-groups", "api-urls", 'id="accounts"'):
+            self.assertNotContains(response, prop)
+
+    def test_feed_accounts_lists_only_accounts_with_a_feed(self):
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/feed_accounts/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        account_names = [a["name"] for a in response.json()]
         self.assertIn("Checking", account_names)
         self.assertNotIn("Savings", account_names)
 
-    def test_bank_feed_home_context_contains_api_urls(self):
-        """Test that context contains api_urls."""
-        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/")
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("api_urls", response.context)
-        api_urls = response.context["api_urls"]
-        self.assertIn("feed_list", api_urls)
-        self.assertIn(self.team.slug, api_urls["feed_list"])
-
-    def test_bank_feed_home_context_contains_latest_reconciled_date(self):
-        """Test that the initial page-load context includes latest_reconciled_date."""
+    def test_feed_accounts_carry_latest_reconciled_date(self):
+        """The feed accounts the page opens on include latest_reconciled_date."""
         today = date.today()
 
         entry = JournalEntry.objects.create(book=self.book, entry_date=today)
@@ -112,10 +108,10 @@ class BankFeedHomeViewTest(TestCase):
             journal_entry=entry,
         )
 
-        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/")
+        response = self.client.get(f"/a/{self.team.slug}/{self.book.slug}/bankfeed/api/feed/feed_accounts/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        accounts_by_name = {a["name"]: a for a in response.context["accounts"]}
+        accounts_by_name = {a["name"]: a for a in response.json()}
         self.assertEqual(accounts_by_name["Checking"]["latest_reconciled_date"], str(today))
 
 

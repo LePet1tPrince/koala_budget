@@ -420,7 +420,7 @@ class ReportService:
 
         Returns:
             dict | None: {
-                'labels': ['Jan 2026', ...],
+                'labels': ['Jan 2026', ...], 'months': [date, ...],  # first of each month
                 'budgeted': [float, ...], 'actual': [float, ...], 'available': [float, ...],
                 'account_type': 'income' | 'expense',
             }
@@ -430,14 +430,12 @@ class ReportService:
 
         from apps.budget import ledger as budget_ledger
 
-        account_type = account.account_group.account_type
-        if account.pk in self.goal_account_ids():
+        kind = self.budget_chart_kind(account)
+        if kind is None:
+            return None
+        if kind == "goal":
             return self._goal_chart_data(account, start_date, end_date)
-        if account_type not in (ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_EXPENSE):
-            return None
-        # Income isn't budgeted in a book that counts money only once it lands.
-        if account_type == ACCOUNT_TYPE_INCOME and not self.book.budget_future_income:
-            return None
+        account_type = kind
 
         months = self._period_range(start_date, end_date, "month")
         if not months:
@@ -506,11 +504,27 @@ class ReportService:
 
         return {
             "labels": [self._period_label(bucket, "month") for bucket in months],
+            "months": months,
             "budgeted": budgeted_series,
             "actual": actual_series,
             "available": available_series,
             "account_type": account_type,
         }
+
+    def budget_chart_kind(self, account):
+        """
+        Which budget chart an account's activity page draws: "goal" (Allocated vs
+        Spent), "income" or "expense" (Budget vs Actual), or None for none.
+        """
+        if account.pk in self.goal_account_ids():
+            return "goal"
+        account_type = account.account_group.account_type
+        if account_type not in (ACCOUNT_TYPE_INCOME, ACCOUNT_TYPE_EXPENSE):
+            return None
+        # Income isn't budgeted in a book that counts money only once it lands.
+        if account_type == ACCOUNT_TYPE_INCOME and not self.book.budget_future_income:
+            return None
+        return account_type
 
     def _goal_chart_data(self, account, start_date, end_date):
         """
@@ -548,6 +562,7 @@ class ReportService:
 
         return {
             "labels": [self._period_label(bucket, "month") for bucket in months],
+            "months": months,
             "budgeted": allocated_series,
             "actual": spent_series,
             "available": left_series,
@@ -670,6 +685,7 @@ class ReportService:
         for line in transactions:
             contra_accounts = [
                 {
+                    "id": contra.account_id,
                     "name": contra.account.name,
                     "url": reverse("accounts:account_detail", args=[*url_args, contra.account_id]),
                 }
@@ -679,6 +695,7 @@ class ReportService:
             transaction = {
                 "date": line.journal_entry.entry_date,
                 "payee": line.journal_entry.payee.name if line.journal_entry.payee else "",
+                "payee_id": line.journal_entry.payee_id,
                 "payee_url": (
                     reverse("accounts:payee_detail", args=[*url_args, line.journal_entry.payee_id])
                     if line.journal_entry.payee_id
@@ -687,6 +704,7 @@ class ReportService:
                 "memo": line.journal_entry.description,
                 "amount": line.signed_amount,
                 "source": line.journal_entry.get_source_display(),
+                "source_code": line.journal_entry.source,
                 "contra_accounts": contra_accounts,
                 # The account page opens the Transactions edit modal on this entry.
                 # Budget entries are not transactions (`transaction_entries`), so not editable.

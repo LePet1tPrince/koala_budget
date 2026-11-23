@@ -54,9 +54,6 @@ class OnboardingPage(BasePage):
     def continue_disabled(self) -> bool:
         return self.page.locator("[data-testid='onboarding-continue']").is_disabled()
 
-    def continue_label(self) -> str:
-        return self.page.locator("[data-testid='onboarding-continue']").inner_text()
-
     def click_continue(self):
         self.page.locator("[data-testid='onboarding-continue']").click()
 
@@ -134,18 +131,12 @@ class TaskRailPage(BasePage):
     def dismiss(self):
         self.page.locator("[data-testid='task-rail-dismiss']").click()
 
-    def is_finish_card_visible(self) -> bool:
-        return self.page.locator("[data-testid='onboarding-finish']").count() > 0
-
     # ------------------------------------------------------------------
     # Opening balances (Task 5's dialog)
     # ------------------------------------------------------------------
 
     def wait_for_opening_balances(self):
         self.page.wait_for_selector("[data-testid='opening-balances']", timeout=15_000)
-
-    def opening_balance_inputs(self) -> int:
-        return self.page.locator("input[data-testid^='opening-']").count()
 
     def fill_opening_balance(self, account_id: int, amount: str):
         self.page.locator(f"[data-testid='opening-{account_id}']").fill(amount)

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Spinner from '../../common/Spinner';
+import { apiJson } from '../../api';
+import { getJournalApiClient } from '../bank_feed';
 
 /* globals gettext */
 
@@ -82,16 +84,14 @@ const TransactionHistory = ({ book, journalEntryId }) => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch(`${book.base}journal/api/journal-entries/${journalEntryId}/audit/`, {
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-    })
-      .then((r) => {
-        if (!r.ok) throw new Error(gettext('Failed to load history'));
-        return r.json();
+    apiJson(
+      getJournalApiClient(window.location.origin).journalEntriesAuditRaw({
+        ...book.params,
+        id: Number(journalEntryId),
       })
+    )
       .then((data) => { if (!cancelled) setLogs(data); })
-      .catch((err) => { if (!cancelled) setError(err.message); })
+      .catch(() => { if (!cancelled) setError(gettext('Failed to load history')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [book, journalEntryId]);

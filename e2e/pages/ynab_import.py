@@ -50,9 +50,6 @@ class YnabImportPage(BasePage):
         self.page.locator("[data-testid='ynab-upload-btn']").click()
         self.page.wait_for_selector("[data-testid='ynab-accounts-table']", timeout=timeout)
 
-    def upload_error(self) -> str:
-        return self.page.locator("[data-testid='ynab-error']").inner_text()
-
     def choose_files(self, paths: list[str]):
         """Pick the files without submitting them."""
         self.page.locator("[data-testid='ynab-file-input']").set_input_files(paths)
@@ -163,9 +160,6 @@ class YnabImportPage(BasePage):
         chips = self.page.locator(f"[data-testid='{bank}-chip']")
         return [chips.nth(i).get_attribute("data-name") for i in range(chips.count())]
 
-    def income_account(self, payee: str) -> str:
-        return self.income_row(payee).locator("[data-testid='ynab-income-account']").get_attribute("data-value")
-
     def set_income_account(self, payee: str, name: str):
         chip = self.income_row(payee).locator("[data-testid='ynab-income-account']")
         self._choose(chip, "ynab-income-account", name)
@@ -195,9 +189,6 @@ class YnabImportPage(BasePage):
     def click_next(self):
         self.page.locator("[data-testid='ynab-next']").click()
 
-    def click_back(self):
-        self.page.locator("[data-testid='ynab-back']").click()
-
     def continue_to_preview(self, timeout: int = 60_000):
         """
         Click Continue until the review screen is up, whatever sits in between.
@@ -222,17 +213,6 @@ class YnabImportPage(BasePage):
     # ------------------------------------------------------------------
 
     def preview_text(self) -> str:
-        return self.page.locator("[data-testid='ynab-preview']").inner_text()
-
-    def checks(self) -> dict[str, str]:
-        """Each reconciliation check's heading mapped to the detail under it."""
-        rows = self.page.locator("[data-testid='ynab-reconciliation'] li")
-        return {
-            rows.nth(index).locator("div div").first.inner_text(): rows.nth(index).inner_text()
-            for index in range(rows.count())
-        }
-
-    def chart_text(self) -> str:
         return self.page.locator("[data-testid='ynab-preview']").inner_text()
 
     # ------------------------------------------------------------------

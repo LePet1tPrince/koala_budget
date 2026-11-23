@@ -20,6 +20,13 @@ import {
     ConditionToJSON,
     ConditionToJSONTyped,
 } from './Condition';
+import type { RuleDirectionEnum } from './RuleDirectionEnum';
+import {
+    RuleDirectionEnumFromJSON,
+    RuleDirectionEnumFromJSONTyped,
+    RuleDirectionEnumToJSON,
+    RuleDirectionEnumToJSONTyped,
+} from './RuleDirectionEnum';
 import type { RuleActionEnum } from './RuleActionEnum';
 import {
     RuleActionEnumFromJSON,
@@ -48,13 +55,6 @@ import {
     RuleMatchEnumToJSON,
     RuleMatchEnumToJSONTyped,
 } from './RuleMatchEnum';
-import type { DirectionE31Enum } from './DirectionE31Enum';
-import {
-    DirectionE31EnumFromJSON,
-    DirectionE31EnumFromJSONTyped,
-    DirectionE31EnumToJSON,
-    DirectionE31EnumToJSONTyped,
-} from './DirectionE31Enum';
 import type { OriginEnum } from './OriginEnum';
 import {
     OriginEnumFromJSON,
@@ -101,10 +101,10 @@ export interface Rule {
     mode?: ModeEnum;
     /**
      * 
-     * @type {DirectionE31Enum}
+     * @type {RuleDirectionEnum}
      * @memberof Rule
      */
-    direction?: DirectionE31Enum;
+    direction?: RuleDirectionEnum;
     /**
      * 
      * @type {Array<number>}
@@ -263,7 +263,7 @@ export function RuleFromJSONTyped(json: any, ignoreDiscriminator: boolean): Rule
         'isActive': json['is_active'] == null ? undefined : json['is_active'],
         'priority': json['priority'] == null ? undefined : json['priority'],
         'mode': json['mode'] == null ? undefined : ModeEnumFromJSON(json['mode']),
-        'direction': json['direction'] == null ? undefined : DirectionE31EnumFromJSON(json['direction']),
+        'direction': json['direction'] == null ? undefined : RuleDirectionEnumFromJSON(json['direction']),
         'accounts': json['accounts'] == null ? undefined : json['accounts'],
         'match': json['match'] == null ? undefined : RuleMatchEnumFromJSON(json['match']),
         'conditions': json['conditions'] == null ? undefined : ((json['conditions'] as Array<any>).map(ConditionFromJSON)),
@@ -302,7 +302,7 @@ export function RuleFromJSONTyped(json: any, ignoreDiscriminator: boolean): Rule
         'is_active': value['isActive'],
         'priority': value['priority'],
         'mode': ModeEnumToJSON(value['mode']),
-        'direction': DirectionE31EnumToJSON(value['direction']),
+        'direction': RuleDirectionEnumToJSON(value['direction']),
         'accounts': value['accounts'],
         'match': RuleMatchEnumToJSON(value['match']),
         'conditions': value['conditions'] == null ? undefined : ((value['conditions'] as Array<any>).map(ConditionToJSON)),

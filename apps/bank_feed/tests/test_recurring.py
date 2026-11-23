@@ -312,26 +312,45 @@ class RecurringPageTest(RecurringFixture):
         self.assertContains(response, 'data-testid="nav-accounts-recurring"')
         self.assertContains(response, 'aria-selected="true" data-testid="manage-tab-recurring"')
 
-    def test_a_member_stops_a_schedule_and_keeps_its_transactions(self):
+    def stop_url(self, pk=None):
+        return reverse("bank_feed:recurring-schedule-detail", args=[*self.book.url_args, pk or self.r.pk])
+
+    def test_the_page_stops_through_the_api(self):
         self.client.force_login(self.member)
-        url = reverse("bank_feed:recurring_delete", args=[*self.book.url_args, self.r.pk])
-        response = self.client.post(url)
-        self.assertRedirects(response, reverse("bank_feed:recurring_list", args=self.book.url_args))
+        response = self.client.get(reverse("bank_feed:recurring_list", args=self.book.url_args))
+        self.assertContains(response, f'data-recurring-stop="{self.r.pk}"')
+        self.assertContains(response, "recurring-list.js")
+
+    def test_a_member_stops_a_schedule_and_keeps_its_transactions(self):
+        self.api.force_authenticate(user=self.member)
+        response = self.api.delete(self.stop_url())
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(RecurringTransaction.objects.exists())
         self.assertEqual(BankTransaction.objects.filter(recurring__isnull=True).count(), 2)
+
+    def test_a_finished_schedule_can_be_stopped(self):
+        finished = self.make_rule(start_date=date(2026, 10, 1), end_date=date(2026, 10, 2))
+        with current_book(self.book):
+            recurring.materialize(finished)
+        finished.refresh_from_db()
+        self.assertIsNone(finished.next_date)
+        self.assertEqual(self.api.delete(self.stop_url(finished.pk)).status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(RecurringTransaction.objects.filter(pk=finished.pk).exists())
 
     def test_someone_outside_the_team_cannot_see_or_stop_a_schedule(self):
         outsider = CustomUser.objects.create_user(username="outsider", password="pass")
         self.client.force_login(outsider)
         self.assertEqual(self.client.get(reverse("bank_feed:recurring_list", args=self.book.url_args)).status_code, 404)
-        url = reverse("bank_feed:recurring_delete", args=[*self.book.url_args, self.r.pk])
-        self.assertEqual(self.client.post(url).status_code, 404)
+        self.api.force_authenticate(user=outsider)
+        self.assertIn(self.api.delete(self.stop_url()).status_code, (403, 404))
         self.assertTrue(RecurringTransaction.objects.exists())
 
-    def test_stop_is_post_only(self):
-        self.client.force_login(self.user)
-        url = reverse("bank_feed:recurring_delete", args=[*self.book.url_args, self.r.pk])
-        self.assertEqual(self.client.get(url).status_code, 405)
+    def test_anonymous_cannot_stop_a_schedule(self):
+        self.assertIn(APIClient().delete(self.stop_url()).status_code, (401, 403))
+        self.assertTrue(RecurringTransaction.objects.exists())
+
+    def test_an_unknown_schedule_is_a_404(self):
+        self.assertEqual(self.api.delete(self.stop_url(self.r.pk + 999)).status_code, status.HTTP_404_NOT_FOUND)
         self.assertTrue(RecurringTransaction.objects.exists())
 
 
@@ -374,6 +393,17 @@ class ScheduledListApiTest(RecurringFixture):
         self.assertEqual(first["inflow"], "0.00")
         self.assertEqual(first["category"]["id"], self.fun.id)
         self.assertEqual(first["schedule"], "Every month on day 1")
+
+    def test_include_finished_adds_them_last_with_their_counts(self):
+        response = self.get(include_finished="1")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([r["id"] for r in response.data], [self.save_rule.id, self.rent_rule.id, self.finished.id])
+        last = response.data[-1]
+        self.assertIsNone(last["next_date"])
+        self.assertEqual(last["start_date"], "2026-10-01")
+        counts = {r["id"]: r["occurrence_count"] for r in response.data}
+        for rule in (self.save_rule, self.rent_rule, self.finished):
+            self.assertEqual(counts[rule.id], BankTransaction.objects.filter(recurring=rule).count())
 
     def test_filters_by_account(self):
         response = self.get(account=str(self.savings.id))

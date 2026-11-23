@@ -86,7 +86,7 @@ const YnabImportWizard = ({ props }) => {
       setError(null);
       try {
         const result = await api.upload(files);
-        setImportId(result.import_id);
+        setImportId(result.importId);
         setAnalysis(result);
         setGroupEdits({});
         setIncomeEdits(EMPTY_EDITS);
@@ -246,8 +246,8 @@ const YnabImportWizard = ({ props }) => {
         {current.key === 'income' && (
           <Step3Income
             income={analysis.income}
-            suggestions={analysis.income_accounts}
-            otherIncome={analysis.other_income}
+            suggestions={analysis.incomeAccounts}
+            otherIncome={analysis.otherIncome}
             choices={choices.income}
             onChange={(income) => setChoices({ ...choices, income })}
             edits={incomeEdits}

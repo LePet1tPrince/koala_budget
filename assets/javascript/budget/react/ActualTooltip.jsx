@@ -1,11 +1,16 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { JournalApi } from 'api-client';
 import Combobox from '../../common/Combobox';
 import PickerPopover from '../../common/PickerPopover';
 import Spinner from '../../common/Spinner';
 import { Toast } from '../../common/Toast';
-import Cookies from 'js-cookie';
 import { formatCurrency } from '../../utilities/currency';
 import { buildCategoryOptions } from '../../common/categoryOptions';
+import { getApiConfiguration } from '../../api';
+import { errorMessage } from '../budget-api';
+
+let journalApi = null;
+const journal = () => (journalApi ??= new JournalApi(getApiConfiguration(window.location.origin)));
 
 /* globals gettext */
 
@@ -13,15 +18,7 @@ import { buildCategoryOptions } from '../../common/categoryOptions';
  * ActualTooltip component - displays transaction details for a budget category
  * When clicked, shows a popover with a table of transactions and recategorize options.
  */
-const ActualTooltip = ({
-  categoryId,
-  categoryName,
-  amount,
-  month,
-  allAccounts,
-  apiUrls,
-  book,
-}) => {
+const ActualTooltip = ({ categoryId, categoryName, amount, month, allAccounts, book }) => {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
@@ -33,7 +30,7 @@ const ActualTooltip = ({
     const handleTransactionMoved = (event) => {
       const { toCategoryId, amount: movedAmount } = event.detail;
       if (parseInt(categoryId) === toCategoryId) {
-        setCurrentAmount(prev => prev + movedAmount);
+        setCurrentAmount((prev) => prev + movedAmount);
       }
     };
 
@@ -49,19 +46,8 @@ const ActualTooltip = ({
   const fetchTransactions = async () => {
     setLoading(true);
     try {
-      const response = await fetch(
-        `${apiUrls.lines}?account=${categoryId}&month=${month}`,
-        {
-          credentials: 'same-origin',
-        }
-      );
-      if (!response.ok) {
-        throw new Error(`Failed to load transactions (${response.status})`);
-      }
-      const data = await response.json();
-      // Handle both paginated and non-paginated responses
-      const rows = Array.isArray(data) ? data : data.results;
-      setTransactions(Array.isArray(rows) ? rows : []);
+      const data = await journal().simpleLinesList({ ...book.params, account: parseInt(categoryId), month });
+      setTransactions(data.results ?? []);
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
       setSnackbar({ open: true, message: gettext('Failed to load transactions'), severity: 'error' });
@@ -70,43 +56,49 @@ const ActualTooltip = ({
     }
   };
 
+  const recategorize = (lineId, newCategoryId) =>
+    journal().simpleLinesRecategorize({
+      ...book.params,
+      id: lineId,
+      simpleLinesRecategorizeRequest: { newCategoryId: parseInt(newCategoryId) },
+    });
+
   const handleRecategorize = async (lineId, newCategoryId) => {
     try {
-      const response = await fetch(`${apiUrls.lines}${lineId}/recategorize/`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': Cookies.get('csrftoken'),
-        },
-        body: JSON.stringify({ new_category_id: newCategoryId }),
+      await recategorize(lineId, newCategoryId);
+      // Update the displayed amount by subtracting the moved transaction
+      const removedTx = transactions.find((t) => (t.line_id || t.lineId) === lineId);
+      const movedAmount = getAmount(removedTx);
+      setCurrentAmount((prev) => prev - movedAmount);
+      // Remove the recategorized transaction from local state
+      setTransactions(transactions.filter((t) => (t.line_id || t.lineId) !== lineId));
+      // Notify the destination category to update its amount
+      window.dispatchEvent(
+        new CustomEvent('transaction-moved', {
+          detail: { toCategoryId: parseInt(newCategoryId), amount: movedAmount },
+        }),
+      );
+      // Available, the meters, the totals and Unassigned all follow actuals.
+      document.dispatchEvent(new CustomEvent('budget:actuals-changed'));
+      // Store undo info and show success message
+      const destCategory = allAccounts.find((a) => a.id === parseInt(newCategoryId));
+      const destName = destCategory?.name || gettext('another category');
+      setUndoInfo({
+        lineId,
+        fromCategoryId: parseInt(categoryId),
+        toCategoryId: parseInt(newCategoryId),
+        amount: movedAmount,
+        transaction: removedTx,
       });
-
-      if (response.ok) {
-        // Update the displayed amount by subtracting the moved transaction
-        const removedTx = transactions.find(t => (t.line_id || t.lineId) === lineId);
-        const movedAmount = getAmount(removedTx);
-        setCurrentAmount(prev => prev - movedAmount);
-        // Remove the recategorized transaction from local state
-        setTransactions(transactions.filter(t => (t.line_id || t.lineId) !== lineId));
-        // Notify the destination category to update its amount
-        window.dispatchEvent(new CustomEvent('transaction-moved', {
-          detail: { toCategoryId: parseInt(newCategoryId), amount: movedAmount }
-        }));
-        // Available, the meters, the totals and Unassigned all follow actuals.
-        document.dispatchEvent(new CustomEvent('budget:actuals-changed'));
-        // Store undo info and show success message
-        const destCategory = allAccounts.find(a => a.id === parseInt(newCategoryId));
-        const destName = destCategory?.name || gettext('another category');
-        setUndoInfo({ lineId, fromCategoryId: parseInt(categoryId), toCategoryId: parseInt(newCategoryId), amount: movedAmount, transaction: removedTx });
-        setSnackbar({ open: true, message: `${formatCurrency(Math.abs(movedAmount))} ${gettext('recategorized to')} ${destName}`, severity: 'success' });
-      } else {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || gettext('Failed to recategorize'));
-      }
+      setSnackbar({
+        open: true,
+        message: `${formatCurrency(Math.abs(movedAmount))} ${gettext('recategorized to')} ${destName}`,
+        severity: 'success',
+      });
     } catch (error) {
       console.error('Failed to recategorize:', error);
-      setSnackbar({ open: true, message: error.message || gettext('Failed to recategorize'), severity: 'error' });
+      const message = await errorMessage(error, gettext('Failed to recategorize'));
+      setSnackbar({ open: true, message, severity: 'error' });
     }
   };
 
@@ -114,30 +106,19 @@ const ActualTooltip = ({
     if (!undoInfo) return;
 
     try {
-      const response = await fetch(`${apiUrls.lines}${undoInfo.lineId}/recategorize/`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': Cookies.get('csrftoken'),
-        },
-        body: JSON.stringify({ new_category_id: undoInfo.fromCategoryId }),
-      });
-
-      if (response.ok) {
-        // Add the transaction back to this category
-        setCurrentAmount(prev => prev + undoInfo.amount);
-        setTransactions(prev => [...prev, undoInfo.transaction]);
-        // Notify the other category to subtract the amount
-        window.dispatchEvent(new CustomEvent('transaction-moved', {
-          detail: { toCategoryId: undoInfo.toCategoryId, amount: -undoInfo.amount }
-        }));
-        document.dispatchEvent(new CustomEvent('budget:actuals-changed'));
-        setUndoInfo(null);
-        setSnackbar({ open: true, message: gettext('Undo successful'), severity: 'success' });
-      } else {
-        throw new Error('Failed to undo');
-      }
+      await recategorize(undoInfo.lineId, undoInfo.fromCategoryId);
+      // Add the transaction back to this category
+      setCurrentAmount((prev) => prev + undoInfo.amount);
+      setTransactions((prev) => [...prev, undoInfo.transaction]);
+      // Notify the other category to subtract the amount
+      window.dispatchEvent(
+        new CustomEvent('transaction-moved', {
+          detail: { toCategoryId: undoInfo.toCategoryId, amount: -undoInfo.amount },
+        }),
+      );
+      document.dispatchEvent(new CustomEvent('budget:actuals-changed'));
+      setUndoInfo(null);
+      setSnackbar({ open: true, message: gettext('Undo successful'), severity: 'success' });
     } catch (error) {
       console.error('Failed to undo:', error);
       setSnackbar({ open: true, message: gettext('Failed to undo'), severity: 'error' });
@@ -145,19 +126,19 @@ const ActualTooltip = ({
   };
 
   function formatWeekDayDate(date) {
-  // Dates here are date-only values parsed as UTC midnight, so read them in
-  // UTC — local getters would show the previous day west of UTC.
-  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' }).format(date);
-  const day = date.getUTCDate();
+    // Dates here are date-only values parsed as UTC midnight, so read them in
+    // UTC — local getters would show the previous day west of UTC.
+    const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' }).format(date);
+    const day = date.getUTCDate();
 
-  // Determine ordinal suffix
-  let suffix = 'th';
-  if (day === 1 || day === 21 || day === 31) suffix = 'st';
-  else if (day === 2 || day === 22) suffix = 'nd';
-  else if (day === 3 || day === 23) suffix = 'rd';
+    // Determine ordinal suffix
+    let suffix = 'th';
+    if (day === 1 || day === 21 || day === 31) suffix = 'st';
+    else if (day === 2 || day === 22) suffix = 'nd';
+    else if (day === 3 || day === 23) suffix = 'rd';
 
-  return `${weekday}, ${day}${suffix}`;
-}
+    return `${weekday}, ${day}${suffix}`;
+  }
 
   // Calculate amount display based on inflow/outflow
   const getAmount = (tx) => {

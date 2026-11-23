@@ -12,6 +12,5 @@ urlpatterns = [
     path("", views.hub, name="hub"),
     path("<int:account_id>/", views.account_page, name="account"),
     path("statement/<int:pk>/", views.statement_page, name="statement"),
-    path("statement/<int:pk>/undo/", views.statement_undo, name="statement_undo"),
     path("api/", include(router.urls)),
 ]

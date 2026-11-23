@@ -19,9 +19,7 @@ const GoalCard = ({ question, value, onChange }) => {
   return (
     <div className="onboarding-question" data-testid={`onboarding-question-${question.id}`}>
       <h2 className="text-xl font-semibold tracking-tight">{question.prompt}</h2>
-      {question.help_text && (
-        <p className="mt-1 text-sm text-base-content/70">{question.help_text}</p>
-      )}
+      {question.helpText && <p className="mt-1 text-sm text-base-content/70">{question.helpText}</p>}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <label className="sm:col-span-2">

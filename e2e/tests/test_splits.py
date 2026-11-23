@@ -174,7 +174,7 @@ def test_remove_split_collapses_to_the_largest_leg(requires_vite, authenticated_
     feed.open_row(split_fixture["split"].id)
 
     feed.remove_split()
-    assert not feed.has_split_editor()
+    assert feed.split_editor_closed()
     feed.save_modal()
 
     assert not feed.has_split_badge(split_fixture["split"].id)

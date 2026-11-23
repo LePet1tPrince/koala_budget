@@ -1,7 +1,8 @@
 """
 E2E tests for the Chart of Accounts feature.
 
-Covers: the drag-and-drop accounts board (home), create account, edit account.
+Covers: the drag-and-drop accounts board (home), create account, edit account,
+and the shared editors for accounts, groups and payees.
 The board is a React component, so these tests need the Vite dev server
 (`make start-bg`) like the other React-mounted pages.
 """
@@ -235,3 +236,90 @@ def test_hidden_account_leaves_the_inbox(authenticated_page: Page, live_server, 
     cards = " ".join(page.locator("[data-testid^='account-card']").all_inner_texts())
     assert "Zed Chequing" in cards
     assert "Zed Savings" not in cards
+
+
+@pytest.mark.django_db(transaction=True)
+def test_rename_account_in_its_editor_from_the_board(authenticated_page: Page, live_server, team):
+    """A row's pencil opens the account editor; saving renames it on the board without leaving the page."""
+    group = AccountGroupFactory(team=team, name="Spending")
+    AccountFactory(team=team, account_group=group, name="Grocries")
+
+    accounts = AccountsPage(authenticated_page, live_server.url)
+    accounts.goto_home(team.default_book)
+    accounts.select_tab("expense")
+    accounts.open_account_editor("Grocries")
+    accounts.editor("account").locator("[data-testid='account-name-input']").fill("Groceries")
+    accounts.save_editor("account")
+
+    authenticated_page.wait_for_selector("[data-testid='account-name']:has-text('Groceries')")
+    assert accounts.editor("account").count() == 0
+    assert "Grocries" not in accounts.get_account_names()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_more_options_carries_the_typed_name_into_the_editor(authenticated_page: Page, live_server, team):
+    """ "More options…" in a group's quick add opens the full editor with the name and group already chosen."""
+    AccountGroupFactory(team=team, name="Spending")
+
+    accounts = AccountsPage(authenticated_page, live_server.url)
+    accounts.goto_home(team.default_book)
+    accounts.select_tab("expense")
+    authenticated_page.locator("[data-testid='add-account-btn']").first.click()
+    authenticated_page.locator("input[placeholder='New account name']").fill("Dining out")
+    authenticated_page.locator("[data-testid='more-options-btn']").click()
+
+    editor = accounts.editor("account")
+    assert editor.locator("[data-testid='account-name-input']").input_value() == "Dining out"
+    assert editor.locator("[data-testid='group-btn'][aria-checked='true']").inner_text() == "Spending"
+    accounts.save_editor("account")
+    authenticated_page.wait_for_selector("[data-testid='account-name']:has-text('Dining out')")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_duplicate_name_is_shown_under_the_field(authenticated_page: Page, live_server, team):
+    """The server's validation message appears under the field and the editor stays open."""
+    group = AccountGroupFactory(team=team, name="Spending")
+    AccountFactory(team=team, account_group=group, name="Rent")
+    AccountFactory(team=team, account_group=group, name="Utilities")
+
+    accounts = AccountsPage(authenticated_page, live_server.url)
+    accounts.goto_home(team.default_book)
+    accounts.select_tab("expense")
+    accounts.open_account_editor("Utilities")
+    accounts.editor("account").locator("[data-testid='account-name-input']").fill("Rent")
+    accounts.save_editor("account")
+
+    error = accounts.editor("account").locator("[data-testid='field-error']")
+    error.wait_for()
+    assert "Rent" in error.inner_text()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_new_group_opens_its_page(authenticated_page: Page, live_server, team):
+    """The Groups page's New group opens the editor; creating the group lands on the group's page."""
+    book = team.default_book
+    accounts = AccountsPage(authenticated_page, live_server.url)
+    accounts.goto(f"{book.base_url}accounts/account-groups/", wait_for="[data-testid='new-group-btn']")
+    authenticated_page.locator("[data-testid='new-group-btn']").click()
+    editor = accounts.editor("group")
+    editor.locator("[data-testid='group-name-input']").fill("Real Estate")
+    editor.locator("[data-testid='type-btn-asset']").click()
+    accounts.save_editor("group")
+
+    authenticated_page.wait_for_url("**/accounts/account-groups/*/")
+    assert authenticated_page.locator("[data-testid='detail-title']").inner_text() == "Real Estate"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_delete_account_from_its_page(authenticated_page: Page, live_server, team):
+    """An account page's Delete opens its editor with the question asked; confirming returns to the board."""
+    group = AccountGroupFactory(team=team, name="Spending")
+    account = AccountFactory(team=team, account_group=group, name="Old Category")
+
+    accounts = AccountsPage(authenticated_page, live_server.url)
+    accounts.goto(account.get_absolute_url(), wait_for="[data-testid='delete-account-btn']")
+    authenticated_page.locator("[data-testid='delete-account-btn']").click()
+    accounts.delete_in_editor("account")
+
+    authenticated_page.wait_for_url(f"**{team.default_book.base_url}accounts/")
+    assert not account.__class__.objects.filter(pk=account.pk).exists()

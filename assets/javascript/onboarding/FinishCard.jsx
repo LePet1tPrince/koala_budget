@@ -56,7 +56,7 @@ const FinishCard = ({ summary, onClose }) => {
               <p className="finish-stat-label">{gettext('transactions')}</p>
             </div>
             <div>
-              <p className="finish-stat money">{money(summary.net_worth)}</p>
+              <p className="finish-stat money">{money(summary.netWorth)}</p>
               <p className="finish-stat-label">{gettext('net worth')}</p>
             </div>
           </div>

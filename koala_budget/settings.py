@@ -121,6 +121,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Signs in an `X-Session-Token` request (the phone app). Before everything that
+    # reads `request.user` -- the audit middleware above all.
+    "apps.api.middleware.SessionTokenMiddleware",
     "apps.audit.middleware.AuditUserMiddleware",
     "allauth.account.middleware.AccountMiddleware",
     "apps.teams.middleware.TeamsMiddleware",
@@ -130,6 +133,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "hijack.middleware.HijackUserMiddleware",
+    # After hijack: allauth's `app` endpoints must re-read the user from the token's session.
+    "apps.api.middleware.HeadlessAppUserMiddleware",
     "waffle.middleware.WaffleMiddleware",
 ]
 
@@ -248,6 +253,10 @@ AUTH_PASSWORD_VALIDATORS = [
 
 ACCOUNT_ADAPTER = "apps.teams.adapter.AcceptInvitationAdapter"
 HEADLESS_ADAPTER = "apps.users.adapter.CustomHeadlessAdapter"
+# `browser` is the auth SPA (cookie session + CSRF); `app` is a native client, which
+# gets a session token from `/_allauth/app/v1/auth/...` and sends it as
+# `X-Session-Token` (see `apps.api.middleware.SessionTokenMiddleware`).
+HEADLESS_CLIENTS = ("browser", "app")
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*"]
 
@@ -429,8 +438,12 @@ SITE_ID = 1
 # DRF config
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
+        # First, so a bad `X-Session-Token` is a 401 (see the class).
+        "apps.api.authentication.SessionTokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
-        "rest_framework.authentication.BasicAuthentication",
+        # No `BasicAuthentication`: an email and password on every request skips MFA and
+        # the sign-in rate limit (security log, WP10). Programs use an API key; the phone
+        # a session token.
     ],
     "DEFAULT_PERMISSION_CLASSES": ("apps.api.permissions.IsAuthenticatedOrHasUserAPIKey",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -443,6 +456,8 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": "100/hour",
         "user": "1000/hour",
+        # Endpoints that check the account password (`throttle_scope`): not a guessing oracle.
+        "password_check": "10/hour",
     },
 }
 
@@ -458,6 +473,43 @@ SPECTACULAR_SETTINGS = {
     "PREPROCESSING_HOOKS": [
         "apps.api.schema.filter_schema_apis",
     ],
+    # A choice field that allows "" (or null) references its enum directly, rather than
+    # `oneOf: [Enum, BlankEnum]`: openapi-generator 7.9.0's typescript-fetch emits a
+    # oneOf-of-enums model that doesn't compile (a missing `...ToJSONTyped`). The blank
+    # value is documented in the field's description instead.
+    "ENUM_ADD_EXPLICIT_BLANK_NULL_CHOICE": False,
+    # Choice sets whose field name (`status`, `state`, `kind`...) other components
+    # share: named here so they neither collide nor rename another component's enum.
+    "ENUM_NAME_OVERRIDES": {
+        "ImportStatusEnum": "apps.utils.progress_serializers.STATUS_CHOICES",
+        "OnboardingPhaseEnum": "apps.onboarding.serializers.PHASES",
+        "OnboardingQuestionKindEnum": "apps.onboarding.serializers.QUESTION_KINDS",
+        "OnboardingTaskStateEnum": "apps.onboarding.serializers.TASK_STATES",
+        "OnboardingTaskActionEnum": "apps.onboarding.serializers.TASK_ACTIONS",
+        "OpeningBalanceAccountTypeEnum": "apps.onboarding.serializers.OPENING_ACCOUNT_TYPES",
+        # nav-state's Unassigned pill (apps.budget.unassigned), under the name it had first.
+        "StateEnum": ["positive", "zero", "negative"],
+        # Every type the model stores (budget buckets included), and the ones a user may pick.
+        "AccountTypeEnum": "apps.accounts.models.ALL_ACCOUNT_TYPE_CHOICES",
+        "PickableAccountTypeEnum": "apps.accounts.models.ACCOUNT_TYPE_CHOICES",
+        # The budget API's choice sets (apps/budget/api/serializers.py).
+        "BudgetSectionEnum": "apps.budget.api.serializers.SECTION_KEYS",
+        "BudgetAutofillActionEnum": "apps.budget.figures.AUTOFILL_ACTIONS",
+        "BudgetCoverSourceEnum": "apps.budget.api.serializers.COVER_SOURCES",
+        "BudgetGridActualModeEnum": "apps.budget.grid.GRID_ACTUAL_MODES",
+        # Reports and the monthly review (apps/reports/serializers.py, apps/monthly_review/serializers.py).
+        "ReportColumnsEnum": "apps.reports.serializers.COLUMN_CHOICES",
+        "NetWorthSectionKeyEnum": "apps.reports.serializers.NET_WORTH_SECTION_KEYS",
+        "WaterfallStepKeyEnum": "apps.reports.serializers.WATERFALL_KEYS",
+        "ReviewBaselineEnum": "apps.monthly_review.serializers.BASELINE_IDS",
+        # The goal API's (apps/budget/api/goal_serializers.py).
+        "GoalStateEnum": "apps.budget.api.goal_serializers.GOAL_STATES",
+        "GoalOutflowEnum": "apps.budget.api.goal_serializers.GOAL_OUTFLOWS",
+        "GoalPlanStatusEnum": "apps.budget.api.goal_serializers.GOAL_PLAN_STATUSES",
+        "GoalActivityKindEnum": "apps.budget.api.goal_serializers.GOAL_ACTIVITY_KINDS",
+        # A rule's stored direction (the rule builder's draft keeps its own `RuleDraftDirectionEnum`).
+        "RuleDirectionEnum": "apps.rules.models.Rule.DIRECTION_CHOICES",
+    },
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}
     },

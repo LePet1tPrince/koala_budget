@@ -26,9 +26,13 @@
       </a>
     </section>
   {% else %}
-    {{ monthly_review_props|json_script:'monthly-review-props' }}
+    {{ request.book.base_url|json_script:'book-base' }}
 
-    <div id="monthly-review-app">
+    {% comment %}
+      The app loads the review from `api/review/?month=` (monthly-review-app.jsx);
+      the skeleton stands in until React mounts.
+    {% endcomment %}
+    <div id="monthly-review-app" data-month="{{ month|date:'Y-m' }}">
       <div class="skeleton h-96 w-full"></div>
     </div>
 

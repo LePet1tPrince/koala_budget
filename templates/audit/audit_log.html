@@ -1,5 +1,6 @@
 {% extends "web/settings/settings_base.html" %}
 {% load i18n %}
+{% load django_vite %}
 
 {% block settings_content %}
 <section class="app-card">
@@ -39,91 +40,9 @@
   </div>
 </section>
 
-<script>
-(function () {
-  const API_BASE = "{{ api_base_url }}";
-  const EVENT_LABELS = {
-    {% for value, label in event_type_choices %}
-    "{{ value }}": "{{ label }}",
-    {% endfor %}
-  };
+{{ request.book.base_url|json_script:'book-base' }}
+{% endblock %}
 
-  let currentUrl = API_BASE;
-  let prevUrl = null;
-  let nextUrl = null;
-
-  const tbody = document.getElementById("audit-log-tbody");
-  const prevBtn = document.getElementById("audit-prev");
-  const nextBtn = document.getElementById("audit-next");
-  const pageInfo = document.getElementById("audit-page-info");
-  const pagination = document.getElementById("audit-pagination");
-  const filterType = document.getElementById("audit-filter-type");
-  const filterClear = document.getElementById("audit-filter-clear");
-
-  function formatTimestamp(ts) {
-    return new Date(ts).toLocaleString();
-  }
-
-  function formatMetadata(meta) {
-    if (!meta || !Object.keys(meta).length) return "—";
-    return Object.entries(meta)
-      .map(([k, v]) => `${k}: ${v}`)
-      .join(", ");
-  }
-
-  function renderRows(events) {
-    if (!events.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-base-content/70">{% translate "No events found." %}</td></tr>';
-      return;
-    }
-    tbody.innerHTML = events.map((ev) => `
-      <tr>
-        <td class="whitespace-nowrap text-sm">${formatTimestamp(ev.timestamp)}</td>
-        <td class="text-sm">${ev.user_display}</td>
-        <td><span class="badge badge-sm badge-ghost">${EVENT_LABELS[ev.event_type] || ev.event_type}</span></td>
-        <td class="text-sm text-base-content/70">${formatMetadata(ev.metadata)}</td>
-      </tr>
-    `).join("");
-  }
-
-  function load(url) {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-base-content/70" id="audit-loading">{% translate "Loading…" %}</td></tr>';
-    fetch(url, { credentials: "include", headers: { Accept: "application/json" } })
-      .then((r) => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-      .then((data) => {
-        prevUrl = data.previous;
-        nextUrl = data.next;
-        const count = data.count || 0;
-        renderRows(data.results || []);
-        prevBtn.disabled = !prevUrl;
-        nextBtn.disabled = !nextUrl;
-        pageInfo.textContent = count ? `${count} {% translate "events" %}` : "";
-        pagination.style.removeProperty("display");
-      })
-      .catch(() => {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-error">{% translate "Failed to load events." %}</td></tr>';
-      });
-  }
-
-  filterType.addEventListener("change", () => {
-    const val = filterType.value;
-    filterClear.classList.toggle("hidden", !val);
-    const url = val ? `${API_BASE}?event_type=${encodeURIComponent(val)}` : API_BASE;
-    currentUrl = url;
-    load(url);
-  });
-
-  filterClear.addEventListener("click", () => {
-    filterType.value = "";
-    filterClear.classList.add("hidden");
-    currentUrl = API_BASE;
-    load(API_BASE);
-  });
-
-  prevBtn.addEventListener("click", () => { if (prevUrl) load(prevUrl); });
-  nextBtn.addEventListener("click", () => { if (nextUrl) load(nextUrl); });
-
-  load(API_BASE);
-})();
-</script>
+{% block page_js %}
+  {% vite_asset 'assets/javascript/audit/audit-log.js' %}
 {% endblock %}

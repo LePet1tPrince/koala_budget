@@ -5,12 +5,12 @@
 {% block manage_title %}{% translate "Accounts" %}{% endblock %}
 {% block manage_subtitle %}{% translate "Drag accounts to reorder them or move them between groups — this order is used across reports and budgets." %}{% endblock %}
 {% block manage_actions %}
-  <a href="{% url 'accounts:account_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-testid="new-account-btn">
+  <a href="{% url 'accounts:account_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-manage-modal="account" data-after-save="reload" data-testid="new-account-btn">
     {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}{% translate "New account" %}
   </a>
 {% endblock %}
 {% block manage_content %}
-  {{ manage_props|json_script:'accounts-board-props' }}
+  {{ request.book.base_url|json_script:'book-base' }}
   <div id="accounts-board">
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
       <div class="skeleton h-64 w-full"></div>
@@ -28,4 +28,5 @@
 {% block page_js %}
   {% vite_react_refresh %}
   {% vite_asset 'assets/javascript/accounts/accounts-board-app.jsx' %}
+  {% vite_asset 'assets/javascript/accounts/manage-modals.jsx' %}
 {% endblock %}

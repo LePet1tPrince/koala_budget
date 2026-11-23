@@ -9,7 +9,7 @@
   {% include "books/components/period_lock_note.html" %}
 
   <div id="line-app">
-    <section class="app-card">
+    <section class="app-card" data-testid="bank-feed-skeleton">
       <h2 class="text-xl mb-1">{% translate "Bank Feed" %}</h2>
       <p class="text-sm text-base-content/70 mb-4">{% translate "Loading your accounts and transactions…" %}</p>
       <div class="space-y-4" aria-hidden="true">
@@ -25,11 +25,6 @@
     </section>
   </div>
 
-  {{ accounts|json_script:'accounts' }}
-  {{ all_accounts|json_script:'all-accounts' }}
-  {{ all_payees|json_script:'all-payees' }}
-  {{ all_account_groups|json_script:'all-account-groups' }}
-  {{ api_urls|json_script:'api-urls' }}
   {{ request.book.base_url|json_script:'book-base' }}
 {% endblock %}
 

@@ -20,7 +20,6 @@ team_urlpatterns = (
         path("", views.manage_team, name="manage_team"),
         path("members/<int:membership_id>/", views.team_membership_details, name="team_membership_details"),
         path("members/<int:membership_id>/remove/", views.remove_team_membership, name="remove_team_membership"),
-        path("invite/<slug:invitation_id>/", views.resend_invitation, name="resend_invitation"),
     ],
     "single_team",
 )
@@ -30,8 +29,11 @@ router = routers.DefaultRouter()
 router.register("api/teams", views.TeamViewSet)
 urlpatterns += router.urls + [
     path("api/user-invitations/", views.UserInvitations.as_view(), name="user_invitations_api"),
+    # An invitation for the signed-in user to read and accept, by the id in the emailed link.
+    path("api/invitations/<uuid:invitation_id>/", views.InvitationAcceptView.as_view(), name="invitation_api"),
 ]
 
 single_team_router = routers.DefaultRouter()
 single_team_router.register("api/invitations", views.InvitationViewSet)
+single_team_router.register("api/memberships", views.MembershipViewSet, basename="membership")
 team_urlpatterns[0].extend(single_team_router.urls)

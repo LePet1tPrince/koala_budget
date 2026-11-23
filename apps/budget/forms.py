@@ -7,6 +7,14 @@ from django.utils.translation import gettext_lazy as _
 
 from apps.utils.amounts import evaluate_amount
 
+from .goal_validation import (
+    NO_PLAN,
+    GoalNameClash,
+    clean_goal_name,
+    clean_outflow,
+    clean_target_amount,
+    goal_plan_errors,
+)
 from .models import Goal
 
 # budget_amount is max_digits=15 / decimal_places=2, so 13 integer digits
@@ -169,36 +177,30 @@ class GoalForm(forms.ModelForm):
             self.initial["target_amount"] = None
 
     def clean_name(self):
-        name = self.cleaned_data["name"].strip()
         book = self.book or (self.instance.book if self.instance.book_id else None)
-        if book is None:
-            return name
-        taken = Goal.objects.filter(book=book, name=name).exclude(pk=self.instance.pk).first()
-        if taken is None:
-            return name
-        # The template links to it: deleting it is the other way to free the name.
-        self.name_clash = taken
-        if taken.is_archived:
-            message = _("You have an archived goal named “%(name)s”. Pick another name, or delete that goal.")
-        elif taken.is_closed:
-            message = _("You have a closed goal named “%(name)s”. Pick another name, or delete that goal.")
-        else:
-            message = _("You already have a goal named “%(name)s”. Pick another name.")
-        raise forms.ValidationError(message % {"name": name})
+        try:
+            return clean_goal_name(book, self.cleaned_data["name"], exclude_pk=self.instance.pk)
+        except GoalNameClash as clash:
+            # The template links to it: deleting it is the other way to free the name.
+            self.name_clash = clash.goal
+            raise
 
     def clean_target_amount(self):
-        return self.cleaned_data.get("target_amount") or Decimal("0")
+        return clean_target_amount(self.cleaned_data.get("target_amount"))
 
     def clean_outflow(self):
-        return self.cleaned_data.get("outflow") or self.instance.outflow or Goal.OUTFLOW_WITHDRAW
+        return clean_outflow(self.cleaned_data.get("outflow"), self.instance)
 
     def clean(self):
         cleaned = super().clean()
-        target = cleaned.get("target_amount")
-        monthly = cleaned.get("monthly_contribution")
-        # Only when both fields parsed: a field with its own error has said enough.
-        if "target_amount" in cleaned and "monthly_contribution" in cleaned and not target and not monthly:
-            raise forms.ValidationError(_("Set a target amount, a monthly contribution, or both."), code="no_plan")
-        if not target and cleaned.get("target_date"):
-            self.add_error("target_date", _("A target date needs a target amount."))
+        errors = goal_plan_errors(
+            cleaned.get("target_amount"), cleaned.get("monthly_contribution"), cleaned.get("target_date")
+        )
+        for field, message, code in errors:
+            if code == NO_PLAN and not ("target_amount" in cleaned and "monthly_contribution" in cleaned):
+                # Only when both fields parsed: a field with its own error has said enough.
+                continue
+            if field is None:
+                raise forms.ValidationError(message, code=code)
+            self.add_error(field, forms.ValidationError(message, code=code))
         return cleaned

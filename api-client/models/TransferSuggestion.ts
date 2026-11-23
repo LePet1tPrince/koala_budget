@@ -20,6 +20,13 @@ import {
     TransferProposalToJSON,
     TransferProposalToJSONTyped,
 } from './TransferProposal';
+import type { BankFeedRow } from './BankFeedRow';
+import {
+    BankFeedRowFromJSON,
+    BankFeedRowFromJSONTyped,
+    BankFeedRowToJSON,
+    BankFeedRowToJSONTyped,
+} from './BankFeedRow';
 
 /**
  * A suggested pair of bank transactions that look like two legs of one transfer.
@@ -29,16 +36,16 @@ import {
 export interface TransferSuggestion {
     /**
      * The source-account leg (money out)
-     * @type {string}
+     * @type {BankFeedRow}
      * @memberof TransferSuggestion
      */
-    readonly outflow: string;
+    readonly outflow: BankFeedRow;
     /**
      * The destination-account leg (money in)
-     * @type {string}
+     * @type {BankFeedRow}
      * @memberof TransferSuggestion
      */
-    readonly inflow: string;
+    readonly inflow: BankFeedRow;
     /**
      * Transfer amount (magnitude)
      * @type {string}
@@ -81,8 +88,8 @@ export function TransferSuggestionFromJSONTyped(json: any, ignoreDiscriminator: 
     }
     return {
         
-        'outflow': json['outflow'],
-        'inflow': json['inflow'],
+        'outflow': BankFeedRowFromJSON(json['outflow']),
+        'inflow': BankFeedRowFromJSON(json['inflow']),
         'amount': json['amount'],
         'dateGapDays': json['date_gap_days'],
         'proposal': TransferProposalFromJSON(json['proposal']),

@@ -21,7 +21,7 @@ import Step4Apply from './Step4Apply';
  * just starts over -- harmless, since nothing has been written yet either way.
  */
 const DataTransferWizard = ({ props }) => {
-  const { api, urls, bookName, uncategorizedCount, bankFeedUrl, homeUrl, resume } = props;
+  const { api, bookName, uncategorizedCount, bankFeedUrl, homeUrl, resume } = props;
 
   const [screen, setScreen] = useState(resume?.status === 'running' ? 'apply' : 'export');
   const [uploadResult, setUploadResult] = useState(null);
@@ -31,7 +31,7 @@ const DataTransferWizard = ({ props }) => {
   const showError = (error) => setToast({ message: error.message || String(error), severity: 'error' });
 
   const handleUploaded = (payload) => {
-    setImportId(payload.import_id);
+    setImportId(payload.importId);
     setUploadResult(payload);
     setScreen('confirm');
   };
@@ -51,7 +51,7 @@ const DataTransferWizard = ({ props }) => {
     <div className="space-y-6">
       {screen === 'export' && (
         <Step1Export
-          exportUrl={urls.export}
+          exportUrl={api.exportUrl}
           uncategorizedCount={uncategorizedCount}
           bankFeedUrl={bankFeedUrl}
           onStartImport={() => setScreen('upload')}
@@ -76,21 +76,10 @@ const DataTransferWizard = ({ props }) => {
       )}
 
       {screen === 'apply' && importId && (
-        <Step4Apply
-          api={api}
-          importId={importId}
-          safetyExportUrl={urls.safetyExport}
-          homeUrl={homeUrl}
-          onStartOver={startOver}
-        />
+        <Step4Apply api={api} importId={importId} homeUrl={homeUrl} onStartOver={startOver} />
       )}
 
-      <Toast
-        open={Boolean(toast)}
-        message={toast?.message}
-        severity={toast?.severity}
-        onClose={() => setToast(null)}
-      />
+      <Toast open={Boolean(toast)} message={toast?.message} severity={toast?.severity} onClose={() => setToast(null)} />
     </div>
   );
 };

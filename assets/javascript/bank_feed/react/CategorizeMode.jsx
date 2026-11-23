@@ -1,8 +1,7 @@
 /* globals gettext, interpolate */
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
-import { getApiHeaders } from '../../api';
 import { createConfetti } from '../../common/confetti';
-import { getBatchOperationsApi, getTransactionApi, getUploadApiHelpers } from '../bank_feed';
+import { getBatchOperationsApi, getFeedPageApi, getTransactionApi, getUploadApiHelpers } from '../bank_feed';
 import CreateAccountModal from './CSVUploadWizard/CreateAccountModal';
 import EditTransactionModal from './EditTransactionModal';
 import Combobox from '../../common/Combobox';
@@ -1057,7 +1056,7 @@ export default function CategorizeMode({
   const [error, setError] = useState(null);
   const [cardHeight, setCardHeight] = useState(220);
   const topCardRef = useRef(null);
-  const headers = getApiHeaders();
+  const pageApi = useMemo(() => getFeedPageApi(book.base), [book]);
   const uploadApi = useMemo(() => getUploadApiHelpers(book.base), [book]);
   const batchApi = useMemo(() => getBatchOperationsApi(book.base), [book]);
   const transactionApi = useMemo(() => getTransactionApi(book.base), [book]);
@@ -1084,21 +1083,9 @@ export default function CategorizeMode({
   const fetchUncategorized = useCallback(async (forScope) => {
     setLoading(true);
     try {
-      let allRows = [];
       // The server narrows to uncategorized rows (and to the scope); walking
       // the whole feed to filter it here cost one request per 200 rows of history.
-      const params = new URLSearchParams({ uncategorized: '1' });
-      if (forScope.accounts.length) params.set('account', forScope.accounts.join(','));
-      if (forScope.startDate) params.set('start_date', forScope.startDate);
-      if (forScope.endDate) params.set('end_date', forScope.endDate);
-      let url = `${book.base}bankfeed/api/feed/?${params}`;
-      while (url) {
-        const resp = await fetch(url, { credentials: 'include', headers });
-        if (!resp.ok) throw new Error(`Feed request failed: ${resp.status}`);
-        const data = await resp.json();
-        allRows = allRows.concat(data.results || []);
-        url = data.next || null;
-      }
+      const allRows = await pageApi.uncategorized(forScope);
       setTransactions(allRows);
       setTotalCount(allRows.length);
     } catch (err) {
@@ -1106,7 +1093,7 @@ export default function CategorizeMode({
     } finally {
       setLoading(false);
     }
-  }, [book]);
+  }, [pageApi]);
 
   // Ask the server which categories were used on transactions similar to these.
   // An id that comes back with nothing is cached as an empty list, so a
@@ -1115,16 +1102,10 @@ export default function CategorizeMode({
     const grouped = {};
     ids.forEach(id => { grouped[id] = []; });
     try {
-      const resp = await fetch(
-        `${book.base}bankfeed/api/feed/similar_categories/?ids=${ids.join(',')}`,
-        { credentials: 'include', headers }
-      );
-      if (resp.ok) {
-        (await resp.json()).forEach(row => {
-          if (grouped[row.transaction_id]) grouped[row.transaction_id].push(row);
-          else grouped[row.transaction_id] = [row];
-        });
-      }
+      (await pageApi.similarCategories(ids)).forEach(row => {
+        if (grouped[row.transaction_id]) grouped[row.transaction_id].push(row);
+        else grouped[row.transaction_id] = [row];
+      });
     } catch (err) {
       // Suggestions are a shortcut, not the feature — a failed lookup leaves the
       // full category list, and the empty cache entries keep it from retrying in
@@ -1134,7 +1115,7 @@ export default function CategorizeMode({
       setSuggestionsByTransaction(prev => ({ ...prev, ...grouped }));
       ids.forEach(id => suggestionsInFlight.current.delete(id));
     }
-  }, [book]);
+  }, [pageApi]);
 
   // Only the cards about to be seen are looked up, so a queue of a thousand
   // transactions still costs one small request at a time.
@@ -1265,19 +1246,9 @@ export default function CategorizeMode({
         ),
         ...(plain.length
           ? [
-              fetch(`${book.base}bankfeed/api/feed/categorize/`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { ...headers, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  rows: plain.map(t => ({ id: transactionId(t) })),
-                  category_id: account.id,
-                }),
-              }).then(resp => {
-                // A refusal must not let the card slide away as though it had
-                // been filed.
-                if (!resp.ok) throw new Error('Could not categorize that transaction.');
-              }),
+              // A refusal throws, so the card does not slide away as though it
+              // had been filed.
+              pageApi.categorize(plain.map(transactionId), account.id),
             ]
           : []),
       ]);
@@ -1289,7 +1260,7 @@ export default function CategorizeMode({
       setError(err.message || 'Could not categorize that transaction.');
       setIsExiting(false);
     }
-  }, [transactions, book, headers, drafts, batchApi, advanceQueue]);
+  }, [transactions, pageApi, drafts, batchApi, advanceQueue]);
 
   // Categorizing the top transaction: if other uncategorized transactions
   // share its home account and description, offer to categorize them the

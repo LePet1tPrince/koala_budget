@@ -3,8 +3,8 @@
 {% load django_vite %}
 
 {% block app %}
-  {{ reconcile_props|json_script:'reconcile-props' }}
-  <div id="reconcile-app">
+  {{ request.book.base_url|json_script:'book-base' }}
+  <div id="reconcile-app" data-account-id="{{ account.id }}">
     <div class="app-card animate-pulse h-40" aria-hidden="true"></div>
   </div>
   <noscript>

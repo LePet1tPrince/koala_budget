@@ -3,6 +3,7 @@ from rest_framework.validators import UniqueValidator
 
 from apps.subscriptions.serializers import SubscriptionSerializer
 
+from . import roles
 from .helpers import get_next_unique_team_slug
 from .models import Invitation, Membership, Team
 from .roles import is_admin
@@ -26,6 +27,35 @@ class InvitationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invitation
         fields = ("id", "team", "email", "role", "invited_by", "is_accepted")
+        # Accepting is the invitee's (`InvitationAcceptView`), never an edit.
+        read_only_fields = ("is_accepted",)
+
+
+class InvitationDetailSerializer(serializers.Serializer):
+    """
+    An invitation as the person it was sent to sees it, before accepting: which team,
+    from whom, and whether they can accept it now (`cannot_accept_reason` says why not).
+    """
+
+    id = serializers.UUIDField()
+    team_name = serializers.CharField()
+    invited_by = serializers.CharField()
+    email = serializers.EmailField()
+    role = serializers.ChoiceField(choices=roles.ROLE_CHOICES)
+    is_accepted = serializers.BooleanField()
+    is_member = serializers.BooleanField(help_text="The signed-in user already belongs to the team.")
+    can_accept = serializers.BooleanField()
+    cannot_accept_reason = serializers.CharField(allow_null=True)
+
+
+class AcceptedInvitationSerializer(serializers.Serializer):
+    """The team an accepted invitation joined (or that the user already belonged to: `joined` false)."""
+
+    team_id = serializers.IntegerField()
+    team_slug = serializers.SlugField()
+    team_name = serializers.CharField()
+    role = serializers.ChoiceField(choices=roles.ROLE_CHOICES)
+    joined = serializers.BooleanField()
 
 
 class OpenInvitationSerializer(serializers.Serializer):

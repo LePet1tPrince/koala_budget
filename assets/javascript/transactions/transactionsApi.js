@@ -1,63 +1,93 @@
-/* globals gettext */
+import { JournalApi } from 'api-client';
 
-import { getApiHeaders } from '../api';
+import { apiDate, apiJson, getApiConfiguration } from '../api';
+import { bookFromBase } from '../common/book';
 
 /**
- * The Transactions page's write endpoints.
- *
- * Hand-rolled rather than generated, matching `getBatchOperationsApi` in
- * `bank_feed/bank_feed.js` -- the generated client is regenerated from the
- * OpenAPI schema and these land alongside it, so a hand-written module keeps the
- * two from having to be kept in step by hand.
+ * The Transactions page's endpoints (`apps/journal/views.py::TransactionViewSet`),
+ * over the generated api-client. Each answers the server's JSON as sent
+ * (snake_case), which is what the table and the edit modal read.
  *
  * Every write takes a list of ids, including a list of one. Editing a selection
  * later is then a caller change, not a second set of endpoints that could
  * disagree with these about what an edit means.
  */
-export function getTransactionsApi(bookBase) {
-  const baseUrl = `${bookBase}journal/api/transactions`;
 
-  const request = async (path, { method = 'POST', body = null } = {}) => {
-    const response = await fetch(`${baseUrl}/${path}`, {
-      method,
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-        // Read per call rather than captured at construction: the token is
-        // rotated on login, and this module outlives a page's first render.
-        'X-CSRFToken': getApiHeaders()['X-CSRFToken'],
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
+/** The `f_<column>` filters, as the generated client's `fPayee`, `fDebitAccount`, ... arrays. */
+const COLUMN_PARAMS = {
+  date: 'fDate',
+  payee: 'fPayee',
+  description: 'fDescription',
+  debit_account: 'fDebitAccount',
+  credit_account: 'fCreditAccount',
+  amount: 'fAmount',
+  source: 'fSource',
+  status: 'fStatus',
+};
 
-    if (!response.ok) {
-      // The server refuses with `{error}`; a field-level rejection comes back as
-      // `{field: [messages]}`, so fall back to the first message rather than
-      // showing the user "[object Object]".
-      const payload = await response.json().catch(() => ({}));
-      throw new Error(payload.error || firstMessage(payload) || gettext('Something went wrong. Please try again.'));
-    }
-    return response.status === 204 ? null : response.json();
-  };
-
-  return {
-    /** One transaction, with its legs and what may be changed about it. */
-    fetchDetail: (id) => request(`${id}/`, { method: 'GET' }),
-
-    /** Apply one partial edit. Omitted fields are left alone. */
-    saveEdits: (ids, updates) => request('edit/', { method: 'PATCH', body: { ids, ...updates } }),
-
-    deleteTransactions: (ids) => request('batch_delete/', { body: { ids } }),
-
-    setStatus: (ids, status) => request('batch_status/', { body: { ids, status } }),
-  };
+/**
+ * The list/facets query for a filter state: `{search, startDate, endDate, columnFilters, sort}`,
+ * where `columnFilters` is `{column: [{value, label}]}`. Empty values are left out.
+ */
+export function transactionQuery({ search, startDate, endDate, columnFilters = {}, sort = null }) {
+  const query = {};
+  if (search) query.search = search;
+  if (startDate) query.startDate = startDate;
+  if (endDate) query.endDate = endDate;
+  Object.entries(columnFilters).forEach(([key, entries]) => {
+    const param = COLUMN_PARAMS[key];
+    if (param && entries.length) query[param] = entries.map((entry) => entry.value);
+  });
+  if (sort) {
+    query.sort = sort.key;
+    query.dir = sort.dir;
+  }
+  return query;
 }
 
-function firstMessage(payload) {
-  const value = Object.values(payload || {})[0];
-  if (Array.isArray(value)) return value[0];
-  return typeof value === 'string' ? value : null;
+/** A partial edit as the generated `PatchedTransactionEditRequest` takes it: only the keys given. */
+function editRequest(ids, updates) {
+  const request = { ids };
+  if ('date' in updates) request.date = apiDate(updates.date);
+  if ('payee' in updates) request.payee = updates.payee;
+  if ('description' in updates) request.description = updates.description;
+  if ('account_id' in updates) request.accountId = updates.account_id;
+  if ('category_id' in updates) request.categoryId = updates.category_id;
+  if ('splits' in updates) request.splits = updates.splits;
+  if ('remove_split' in updates) request.removeSplit = updates.remove_split;
+  if ('inflow' in updates) request.inflow = updates.inflow;
+  if ('outflow' in updates) request.outflow = updates.outflow;
+  return request;
+}
+
+export function getTransactionsApi(bookBase) {
+  const { params } = bookFromBase(bookBase);
+  // The generated paths are absolute, so the page's own origin is the base.
+  const client = () => new JournalApi(getApiConfiguration(window.location.origin));
+
+  return {
+    /** One page of rows for a `transactionQuery` (1-based `page`): `{count, next, results}`. */
+    list: (query, page = 1) => apiJson(client().transactionsListRaw({ ...params, ...query, page })),
+
+    /** The distinct values of one column, for its filter menu. */
+    facets: (query, column, q) =>
+      apiJson(client().transactionsFacetsRaw({ ...params, ...query, column, q: q || undefined })),
+
+    /** The edit modal's account and payee pickers: `{accounts, payees}`. */
+    pickers: () => apiJson(client().transactionsPickersRaw(params)),
+
+    /** One transaction, with its legs and what may be changed about it. */
+    fetchDetail: (id) => apiJson(client().transactionsRetrieveRaw({ ...params, id: Number(id) })),
+
+    /** Apply one partial edit. Omitted fields are left alone. */
+    saveEdits: (ids, updates) =>
+      apiJson(client().transactionsEditRaw({ ...params, patchedTransactionEditRequest: editRequest(ids, updates) })),
+
+    deleteTransactions: (ids) => apiJson(client().transactionsBatchDeleteRaw({ ...params, transactionIds: { ids } })),
+
+    setStatus: (ids, status) =>
+      apiJson(client().transactionsBatchStatusRaw({ ...params, transactionStatusRequest: { ids, status } })),
+  };
 }
 
 export default getTransactionsApi;

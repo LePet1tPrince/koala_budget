@@ -1,5 +1,4 @@
 from django.db.models import Q
-from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework.viewsets import ReadOnlyModelViewSet
@@ -62,7 +61,6 @@ def audit_log_view(request, team_slug, book_slug):
             "settings_page_title": _("Audit log"),
             "settings_page_blurb": _("Logins, imports, syncs and bulk operations for this set of books."),
             "page_title": _("Audit Log | {name}").format(name=book_display_name(request.book)),
-            "api_base_url": reverse("audit:audit-event-list", args=request.book.url_args),
             "event_type_choices": event_type_choices,
         },
     )

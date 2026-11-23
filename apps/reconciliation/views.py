@@ -8,13 +8,10 @@ statement is a 404, never a cross-tenant write; `BookModelAccessPermissions`
 refuses anyone who is not an authenticated member before a view runs.
 """
 
-from django.contrib import messages
 from django.http import Http404
 from django.shortcuts import redirect, render
-from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_POST
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import status, viewsets
@@ -30,7 +27,10 @@ from apps.budget.services import picker_accounts_data
 from . import presenters
 from .models import Reconciliation
 from .serializers import (
+    CompletedStatementSerializer,
+    ReconcileAccountPageSerializer,
     ReconciliationFinishSerializer,
+    ReconciliationHubSerializer,
     ReconciliationStartSerializer,
     ReconciliationTickSerializer,
     ReconciliationTickThroughSerializer,
@@ -94,9 +94,12 @@ def _doc(operation_id, request=None, parameters=(), responses=OpenApiTypes.OBJEC
     tick=_doc("tick", request=ReconciliationTickSerializer, parameters=[_ID]),
     tick_through=_doc("tick_through", request=ReconciliationTickThroughSerializer, parameters=[_ID]),
     untick_all=_doc("untick_all", parameters=[_ID]),
-    finish=_doc("finish", request=ReconciliationFinishSerializer, parameters=[_ID]),
-    undo=_doc("undo", parameters=[_ID]),
-    accounts=_doc("accounts"),
+    finish=_doc(
+        "finish", request=ReconciliationFinishSerializer, parameters=[_ID], responses=CompletedStatementSerializer
+    ),
+    undo=_doc("undo", parameters=[_ID], responses=CompletedStatementSerializer),
+    accounts=_doc("accounts", responses=ReconciliationHubSerializer),
+    page=_doc("page", parameters=[_ACCOUNT], responses=ReconcileAccountPageSerializer),
 )
 class ReconciliationViewSet(viewsets.ViewSet):
     """
@@ -217,6 +220,7 @@ class ReconciliationViewSet(viewsets.ViewSet):
 
     @action(detail=True, methods=["post"])
     def undo(self, request, pk=None, team_slug=None, book_slug=None):
+        """Undo a finished statement: its lines become unreconciled and any adjustment is voided."""
         rec = _reconciliation(request.book, pk)
         try:
             session.undo(rec, request.user, request=request)
@@ -226,20 +230,54 @@ class ReconciliationViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get"])
     def accounts(self, request, team_slug=None, book_slug=None):
-        return Response({"accounts": presenters.accounts_payload(request.book)})
+        """The hub: every reconcilable account and where it stands."""
+        return Response(_hub_payload(request.book))
+
+    @action(detail=False, methods=["get"])
+    def page(self, request, team_slug=None, book_slug=None):
+        """What one account's reconcile page opens on (`?account=<id>`)."""
+        return Response(_account_page_payload(_account(request.book, request.query_params.get("account"))))
+
+
+def _hub_payload(book):
+    accounts = presenters.accounts_payload(book)
+    return {
+        "accounts": accounts,
+        "all_intact": bool(accounts) and all(a["last_statement"] and a["last_statement"]["intact"] for a in accounts),
+    }
+
+
+def _account_page_payload(account):
+    book = account.book
+    draft = session.draft_for(account)
+    previous = session.last_completed(account)
+    return {
+        "account": presenters.account_payload(account),
+        "draft_id": draft.id if draft else None,
+        "default_statement_date": presenters.default_statement_date(account).isoformat(),
+        "previous": presenters.statement_payload(previous) if previous else None,
+        "reconciled_balance": presenters.money(to_statement(account, reconciled_balance(account))),
+        "history": presenters.history_payload(account),
+        # The "add a missing transaction" modal is the feed's own, so it needs the
+        # feed's pickers -- only for an account that has a feed to add to.
+        "all_accounts": picker_accounts_data(book) if account.has_feed else [],
+        "all_payees": PayeeSerializer(Payee.objects.filter(book=book).order_by("name"), many=True).data
+        if account.has_feed
+        else [],
+    }
 
 
 @login_and_book_required
 def hub(request, team_slug, book_slug):
-    """Every reconcilable account and where it stands -- the evidence page for the guarantee."""
-    accounts = presenters.accounts_payload(request.book)
+    """
+    Every reconcilable account and where it stands -- the evidence page for the
+    guarantee. Server-rendered; the same data is `GET api/reconciliations/accounts/`.
+    """
     return render(
         request,
         "reconciliation/hub.html",
         {
-            "accounts": accounts,
-            "all_intact": bool(accounts)
-            and all(a["last_statement"] and a["last_statement"]["intact"] for a in accounts),
+            **_hub_payload(request.book),
             # A tab of the Accounts section (templates/accounts/components/manage_tabs.html).
             "active_tab": "accounts",
             "accounts_section": "reconciliations",
@@ -250,42 +288,21 @@ def hub(request, team_slug, book_slug):
 @login_and_book_required
 @ensure_csrf_cookie
 def account_page(request, team_slug, book_slug, account_id):
+    """One account's reconcile page; its app loads `api/reconciliations/page/?account=<id>`."""
     account = _account(request.book, account_id)
-    draft = session.draft_for(account)
-    previous = session.last_completed(account)
-    preselect = [int(i) for i in request.GET.get("lines", "").split(",") if i.strip().isdigit()]
-    api = reverse("reconciliation:reconciliation-list", args=[team_slug, book_slug])
-    props = {
-        "account": presenters.account_payload(account),
-        "draft_id": draft.id if draft else None,
-        "preselect_line_ids": preselect,
-        "default_statement_date": presenters.default_statement_date(account).isoformat(),
-        "previous": presenters.statement_payload(previous) if previous else None,
-        "reconciled_balance": presenters.money(to_statement(account, reconciled_balance(account))),
-        "history": presenters.history_payload(account),
-        "book_base": request.book.base_url,
-        # The "add a missing transaction" modal is the feed's own, so it needs the
-        # feed's pickers -- only for an account that has a feed to add to.
-        "all_accounts": picker_accounts_data(request.book) if account.has_feed else [],
-        "all_payees": PayeeSerializer(Payee.objects.filter(book=request.book).order_by("name"), many=True).data
-        if account.has_feed
-        else [],
-        "urls": {
-            "api": api,
-            "hub": reverse("reconciliation:hub", args=[team_slug, book_slug]),
-            "feed": reverse("bank_feed:bank_feed_home", args=[team_slug, book_slug]),
-            "account_detail": reverse("accounts:account_detail", args=[team_slug, book_slug, account.id]),
-        },
-    }
     return render(
         request,
         "reconciliation/account.html",
-        {"account": account, "reconcile_props": props, "active_tab": "accounts", "accounts_section": "reconciliations"},
+        {"account": account, "active_tab": "accounts", "accounts_section": "reconciliations"},
     )
 
 
 @login_and_book_required
 def statement_page(request, team_slug, book_slug, pk):
+    """
+    A finished statement. Server-rendered from the same payload as
+    `GET api/reconciliations/{id}/`; its Undo button calls `POST api/reconciliations/{id}/undo/`.
+    """
     rec = _reconciliation(request.book, pk)
     if rec.is_draft:
         return redirect("reconciliation:account", team_slug, book_slug, rec.account_id)
@@ -299,17 +316,3 @@ def statement_page(request, team_slug, book_slug, pk):
             "accounts_section": "reconciliations",
         },
     )
-
-
-@login_and_book_required
-@require_POST
-def statement_undo(request, team_slug, book_slug, pk):
-    """The no-JS undo from the statement page."""
-    rec = _reconciliation(request.book, pk)
-    try:
-        session.undo(rec, request.user, request=request)
-    except ReconciliationError as exc:
-        messages.error(request, str(exc))
-    else:
-        messages.success(request, _("Statement undone. Its transactions can be reconciled again."))
-    return redirect("reconciliation:statement", team_slug, book_slug, rec.pk)

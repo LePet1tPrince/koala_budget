@@ -71,7 +71,7 @@ const CountRow = ({ label, value }) => (
   </div>
 );
 
-const Step4Apply = ({ api, importId, safetyExportUrl, homeUrl, onStartOver }) => {
+const Step4Apply = ({ api, importId, homeUrl, onStartOver }) => {
   const [status, setStatus] = useState(null);
   const polling = useRef(null);
 
@@ -107,7 +107,7 @@ const Step4Apply = ({ api, importId, safetyExportUrl, homeUrl, onStartOver }) =>
   const running = !failed && !done;
 
   const percent = useCreepingProgress(status?.progress || 0, running);
-  const elapsed = status?.elapsed_seconds || 0;
+  const elapsed = status?.elapsedSeconds || 0;
   const queued = running && !status?.started && elapsed === 0;
   const [waited, setWaited] = useState(0);
 
@@ -118,7 +118,7 @@ const Step4Apply = ({ api, importId, safetyExportUrl, homeUrl, onStartOver }) =>
     return () => clearInterval(id);
   }, [running]);
 
-  const safetyLink = safetyExportUrl ? `${safetyExportUrl}?import_id=${encodeURIComponent(importId)}` : null;
+  const safetyLink = api.safetyExportUrl(importId);
 
   if (!status) {
     return (
@@ -143,7 +143,7 @@ const Step4Apply = ({ api, importId, safetyExportUrl, homeUrl, onStartOver }) =>
         {/* Both controls are `inline-flex` (daisyUI `btn`), so `space-y-5`
             would not separate them either -- lay them out deliberately. */}
         <div className="flex flex-wrap items-center gap-3">
-          {status.safety_archive_available && safetyLink && (
+          {status.safetyArchiveAvailable && safetyLink && (
             <a href={safetyLink} className="btn btn-outline btn-sm" data-testid="safety-download-failed">
               <Icon name="download" className="h-4 w-4" />
               {gettext('Download the backup taken before this run')}
@@ -158,7 +158,7 @@ const Step4Apply = ({ api, importId, safetyExportUrl, homeUrl, onStartOver }) =>
   }
 
   if (running) {
-    const remaining = remainingText(status?.eta_seconds);
+    const remaining = remainingText(status?.etaSeconds);
     const waiting = queued && waited > QUEUE_PATIENCE_SECONDS;
 
     return (
@@ -228,7 +228,7 @@ const Step4Apply = ({ api, importId, safetyExportUrl, homeUrl, onStartOver }) =>
           level sibling, so the card's `space-y-6` applies no margin against it
           and this link would sit on the button's own line (and, at phone width,
           three pixels above it). */}
-      {status.safety_archive_available && safetyLink && (
+      {status.safetyArchiveAvailable && safetyLink && (
         <a href={safetyLink} className="link link-primary text-sm block w-fit" data-testid="safety-download-done">
           {gettext('Download a copy of this set of books from just before the import')}
         </a>

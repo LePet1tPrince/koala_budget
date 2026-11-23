@@ -117,7 +117,26 @@ class RuleCrudTest(RulesTestCase):
         self.client.force_login(self.admin)
         response = self.client.get(self.url("rules/"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "rules-props")
+        self.assertContains(response, 'id="rules-app"')
+        self.assertNotContains(response, "rules-props")
+
+    def test_page_data(self):
+        response = self.api.get(self.url("rules/api/rules/page/"))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["can_edit"])
+        self.assertIn("categories", data)
+        self.assertIn("feed_accounts", data)
+        self.assertEqual({a["name"] for a in data["feed_accounts"]}, {"Chequing", "Savings"})
+        self.assertIn("Groceries", {a["name"] for a in data["categories"]})
+
+    def test_page_data_for_a_member_and_a_stranger(self):
+        self.api.force_authenticate(user=self.member)
+        response = self.api.get(self.url("rules/api/rules/page/"))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["can_edit"])
+        self.api.force_authenticate(user=None)
+        self.assertIn(self.api.get(self.url("rules/api/rules/page/")).status_code, (401, 403))
 
 
 class RulePermissionTest(RulesTestCase):

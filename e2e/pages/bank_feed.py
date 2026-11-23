@@ -1,5 +1,7 @@
 """Page Object Model for the Bank Feed page (React-rendered)."""
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
 from .base import BasePage
 
 
@@ -19,9 +21,11 @@ class BankFeedPage(BasePage):
         self.page.on("requestfailed", lambda req: failed_urls.append(f"{req.failure} {req.url}"))
 
         self.page.goto(self.url(self.path(book)))
-        # Wait until at least one account card or the line-app container is visible
+        # The server skeleton stands in until the feed accounts and pickers load
+        # from the API; then React mounts over it (or over a load-error card).
         try:
             self.page.wait_for_selector("#line-app", timeout=15_000)
+            self.page.wait_for_selector("[data-testid='bank-feed-skeleton']", state="detached", timeout=15_000)
         except Exception:
             print(f"\n[BankFeedPage] Page HTML snippet:\n{self.page.content()[:3000]}")
             print("\n[BankFeedPage] Console messages:\n" + "\n".join(console_msgs[-20:]))
@@ -56,11 +60,6 @@ class BankFeedPage(BasePage):
         self.page.locator("[data-testid='account-filter-btn']").click()
         self.page.locator(f"[data-testid='account-filter-{account_id}']").click()
         self.page.keyboard.press("Escape")
-        self.wait_for_rows()
-
-    def show_all_accounts(self):
-        self.page.locator("[data-testid='account-filter-btn']").click()
-        self.page.locator("[data-testid='account-filter-all']").click()
         self.wait_for_rows()
 
     def heading(self) -> str:
@@ -124,19 +123,8 @@ class BankFeedPage(BasePage):
                 out.append(text)
         return out
 
-    def visible_row_count(self) -> int:
-        return len(self.row_descriptions())
-
     def has_row_matching(self, needle: str) -> bool:
         return any(needle in text for text in self.row_descriptions())
-
-    def open_quick_filters(self):
-        self.page.locator("[data-testid='quick-filters-btn']").click()
-        self.page.wait_for_selector("[data-testid='filter-to-review']", timeout=5_000)
-
-    def close_quick_filters(self):
-        self.page.keyboard.press("Escape")
-        self.page.wait_for_timeout(200)
 
     def quick_filters_disabled(self) -> bool:
         return self.page.locator("[data-testid='quick-filters-btn']").is_disabled()
@@ -178,10 +166,6 @@ class BankFeedPage(BasePage):
         """Labels of every enabled-or-disabled button the bar is showing."""
         candidates = ["Bulk Edit", "Void", "Restore", "Delete", "Reconcile", "Unreconcile", "Duplicate", "Export"]
         return [name for name in candidates if self.batch_button(name).count() and self.batch_button(name).is_visible()]
-
-    def batch_bar_text(self) -> str:
-        """The bar's summary strip — selection count and the In/Out/Net figures."""
-        return self.page.get_by_text("selected", exact=False).last.locator("xpath=ancestor::*[3]").inner_text()
 
     # ------------------------------------------------------------------
     # Possible duplicate transfers (inline chip + panel)
@@ -249,8 +233,25 @@ class BankFeedPage(BasePage):
         self.page.locator("[data-testid='start-split-btn']").click()
         self.page.wait_for_selector("[data-testid='split-editor']", timeout=5_000)
 
-    def has_split_editor(self) -> bool:
-        return self.page.locator("[data-testid='split-editor']").count() > 0
+    def has_split_editor(self, timeout: int = 5_000) -> bool:
+        """
+        Whether the edit modal shows the split editor. A split row's legs are set by
+        the modal's effect after it first paints, so give the editor a moment to appear
+        rather than reading the DOM the instant the modal is visible.
+        """
+        try:
+            self.page.locator("[data-testid='split-editor']").wait_for(state="visible", timeout=timeout)
+        except PlaywrightTimeoutError:
+            return False
+        return True
+
+    def split_editor_closed(self) -> bool:
+        """The split editor has gone (after Remove split), waiting for the re-render."""
+        try:
+            self.page.locator("[data-testid='split-editor']").wait_for(state="detached", timeout=5_000)
+        except PlaywrightTimeoutError:
+            return False
+        return True
 
     def split_leg_count(self) -> int:
         return self.page.locator("[data-testid^='split-amount-']").count()

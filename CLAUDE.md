@@ -48,6 +48,7 @@ deploy/            # Docker Compose and DigitalOcean configs
 - Book-scoped manager: `Model.for_book.all()` auto-filters by the current book (`STRICT_BOOK_CONTEXT` raises without one)
 - Book views use `@login_and_book_required` or `@book_admin_required` and take `(request, team_slug, book_slug, ...)`; team-level views keep `@login_and_team_required`
 - DRF ViewSets with `BookModelAccessPermissions` for book-scoped API endpoints
+- New JSON endpoints are DRF only, typed by serializers; `apps/api/tests/test_api_surface.py` fails a JSON view outside DRF, a DRF view missing from the schema, or a `json_script` id not on its allowlist. API conventions, phone auth (`X-Session-Token`) and the endpoint index: `docs/api-guide.md`
 - `unique_together = ["book", "field"]` on book-scoped unique fields
 - Reverse book URLs with both slugs: `reverse(name, args=book.url_args)` / `{% url 'x:y' request.team.slug request.book.slug %}`; the frontend builds from the `book-base` value (`common/book.js`)
 - Amounts: `Decimal(max_digits=15, decimal_places=2)`, positive = outflow
@@ -57,7 +58,7 @@ deploy/            # Docker Compose and DigitalOcean configs
 - Functional components with hooks
 - Auto-generated API client from OpenAPI schema — never hand-write fetch calls
 - Components self-mount via `document.getElementById('id').render(<Component />)`
-- Props passed via `window.COMPONENT_PROPS` JavaScript variable
+- React islands load and write through `api-client` (with a loading state), not `json_script` data; `json_script` carries only config ids (`book-base`) — except a server-rendered page's scripts read the API body their own view already built, embedded (`EMBEDDED_API_BODIES` in `test_api_surface.py`, read with `api.js::pageData`), never re-fetched
 
 **Django templates:**
 - 2-space indent
@@ -87,7 +88,7 @@ Full history and rationale: `docs/feature-history.md` (grep it; don't read it wh
 - Manual feed rows: `apps/bank_feed/services/manual.py::create_manual_transaction` (the feed API's create and recurring schedules). Recurring occurrences: `services/recurring.py::materialize` only.
 - Feed field edits (category/account/payee/description/date, decategorize): `apps/bank_feed/services/edit.py`. Rule application: `apps/rules/services/apply.py::run` only; a new user categorization path must call `apps.rules.services.feedback.record`.
 
-**Shared helpers (don't re-add copies):** `apps/utils/months.py`, `apps/utils/json_views.py`, `apps/utils/progress.py`, `apps/utils/amounts.py`; frontend `common/http.js`, `common/amount.js`, `common/book.js`, `common/Modal.jsx`, `common/Combobox.jsx`, `common/DateField.jsx`, `common/popoverPosition.js`. Icons: `{% icon %}` / `<Icon>`; add new ones via `assets/icons/build_icons.py`.
+**Shared helpers (don't re-add copies):** `apps/utils/months.py`, `apps/utils/json_views.py`, `apps/utils/progress.py`, `apps/utils/amounts.py`, `apps/api/base.py` (`BookAPIView`, `parse_month_param`, `MonthField`, `UploadField`); frontend `api.js` (`apiCall`, `apiJson`, `apiErrorMessage`), `common/amount.js`, `common/book.js`, `common/Modal.jsx`, `common/Combobox.jsx`, `common/DateField.jsx`, `common/popoverPosition.js`. Icons: `{% icon %}` / `<Icon>`; add new ones via `assets/icons/build_icons.py`.
 
 **Traps:**
 - Django `{# … #}` is single-line only; multi-line renders as text. Use `{% comment %}`.

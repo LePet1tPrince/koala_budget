@@ -15,17 +15,26 @@
 
 import * as runtime from '../runtime';
 import type {
+  CompletedStatement,
   PatchedReconciliationUpdate,
+  ReconcileAccountPage,
   ReconciliationFinish,
+  ReconciliationHub,
   ReconciliationStart,
   ReconciliationTick,
   ReconciliationTickThrough,
 } from '../models/index';
 import {
+    CompletedStatementFromJSON,
+    CompletedStatementToJSON,
     PatchedReconciliationUpdateFromJSON,
     PatchedReconciliationUpdateToJSON,
+    ReconcileAccountPageFromJSON,
+    ReconcileAccountPageToJSON,
     ReconciliationFinishFromJSON,
     ReconciliationFinishToJSON,
+    ReconciliationHubFromJSON,
+    ReconciliationHubToJSON,
     ReconciliationStartFromJSON,
     ReconciliationStartToJSON,
     ReconciliationTickFromJSON,
@@ -53,6 +62,12 @@ export interface ReconciliationFinishRequest {
 }
 
 export interface ReconciliationListRequest {
+    account: number;
+    bookSlug: string;
+    teamSlug: string;
+}
+
+export interface ReconciliationPageRequest {
     account: number;
     bookSlug: string;
     teamSlug: string;
@@ -110,9 +125,9 @@ export interface ReconciliationUpdateRequest {
 export class ReconciliationApi extends runtime.BaseAPI {
 
     /**
-     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * The hub: every reconcilable account and where it stands.
      */
-    async reconciliationAccountsRaw(requestParameters: ReconciliationAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
+    async reconciliationAccountsRaw(requestParameters: ReconciliationAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ReconciliationHub>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
@@ -131,9 +146,10 @@ export class ReconciliationApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -145,13 +161,13 @@ export class ReconciliationApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse<any>(response);
+        return new runtime.JSONApiResponse(response, (jsonValue) => ReconciliationHubFromJSON(jsonValue));
     }
 
     /**
-     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * The hub: every reconcilable account and where it stands.
      */
-    async reconciliationAccounts(requestParameters: ReconciliationAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
+    async reconciliationAccounts(requestParameters: ReconciliationAccountsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ReconciliationHub> {
         const response = await this.reconciliationAccountsRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -185,9 +201,10 @@ export class ReconciliationApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -212,7 +229,7 @@ export class ReconciliationApi extends runtime.BaseAPI {
     /**
      * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
-    async reconciliationFinishRaw(requestParameters: ReconciliationFinishRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
+    async reconciliationFinishRaw(requestParameters: ReconciliationFinishRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CompletedStatement>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
@@ -240,9 +257,10 @@ export class ReconciliationApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -255,13 +273,13 @@ export class ReconciliationApi extends runtime.BaseAPI {
             body: ReconciliationFinishToJSON(requestParameters['reconciliationFinish']),
         }, initOverrides);
 
-        return new runtime.JSONApiResponse<any>(response);
+        return new runtime.JSONApiResponse(response, (jsonValue) => CompletedStatementFromJSON(jsonValue));
     }
 
     /**
      * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
      */
-    async reconciliationFinish(requestParameters: ReconciliationFinishRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
+    async reconciliationFinish(requestParameters: ReconciliationFinishRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CompletedStatement> {
         const response = await this.reconciliationFinishRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -299,9 +317,10 @@ export class ReconciliationApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -321,6 +340,65 @@ export class ReconciliationApi extends runtime.BaseAPI {
      */
     async reconciliationList(requestParameters: ReconciliationListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
         const response = await this.reconciliationListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * What one account\'s reconcile page opens on (`?account=<id>`).
+     */
+    async reconciliationPageRaw(requestParameters: ReconciliationPageRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ReconcileAccountPage>> {
+        if (requestParameters['account'] == null) {
+            throw new runtime.RequiredError(
+                'account',
+                'Required parameter "account" was null or undefined when calling reconciliationPage().'
+            );
+        }
+
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling reconciliationPage().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling reconciliationPage().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['account'] != null) {
+            queryParameters['account'] = requestParameters['account'];
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/reconcile/api/reconciliations/page/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => ReconcileAccountPageFromJSON(jsonValue));
+    }
+
+    /**
+     * What one account\'s reconcile page opens on (`?account=<id>`).
+     */
+    async reconciliationPage(requestParameters: ReconciliationPageRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ReconcileAccountPage> {
+        const response = await this.reconciliationPageRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -357,9 +435,10 @@ export class ReconciliationApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -413,9 +492,10 @@ export class ReconciliationApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -477,9 +557,10 @@ export class ReconciliationApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -541,9 +622,10 @@ export class ReconciliationApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -568,9 +650,9 @@ export class ReconciliationApi extends runtime.BaseAPI {
     }
 
     /**
-     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * Undo a finished statement: its lines become unreconciled and any adjustment is voided.
      */
-    async reconciliationUndoRaw(requestParameters: ReconciliationUndoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<{ [key: string]: any; }>> {
+    async reconciliationUndoRaw(requestParameters: ReconciliationUndoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CompletedStatement>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
@@ -596,9 +678,10 @@ export class ReconciliationApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -610,13 +693,13 @@ export class ReconciliationApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse<any>(response);
+        return new runtime.JSONApiResponse(response, (jsonValue) => CompletedStatementFromJSON(jsonValue));
     }
 
     /**
-     * /a/{team_slug}/{book_slug}/reconcile/api/reconciliations/  Amounts in and out are in STATEMENT sign: what the paper statement prints.
+     * Undo a finished statement: its lines become unreconciled and any adjustment is voided.
      */
-    async reconciliationUndo(requestParameters: ReconciliationUndoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<{ [key: string]: any; }> {
+    async reconciliationUndo(requestParameters: ReconciliationUndoRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CompletedStatement> {
         const response = await this.reconciliationUndoRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -650,9 +733,10 @@ export class ReconciliationApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -706,9 +790,10 @@ export class ReconciliationApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }

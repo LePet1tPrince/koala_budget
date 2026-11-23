@@ -6,15 +6,13 @@ Provides API endpoints for imported transactions and unified bank feed.
 from datetime import timedelta
 from decimal import Decimal
 
-from django.contrib import messages
 from django.db import transaction
 from django.db.models import Count, F, Max
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
-from django.views.decorators.http import require_POST
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import mixins, serializers, status, viewsets
@@ -40,7 +38,7 @@ from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name
-from apps.books.permissions import BookModelAccessPermissions
+from apps.books.permissions import BookAccessPermissions, BookModelAccessPermissions
 from apps.budget.services import picker_accounts_data
 from apps.journal.models import JournalEntry
 from apps.journal.services import period_lock, voiding
@@ -61,7 +59,9 @@ from .serializers import (
     BatchIdsSerializer,
     CategorizeTransactionsRequestSerializer,
     CategorySuggestionSerializer,
+    CreateFeedAccountRequestSerializer,
     FeedAccountSerializer,
+    FeedPickersSerializer,
     RecurringTransactionSerializer,
     SimilarCategorySuggestionSerializer,
     TransferDismissRequestSerializer,
@@ -93,6 +93,11 @@ RECURRING_MAX_DAYS_BACK = 366
 # Upper bound on how many transactions one similar-category request may ask about.
 # The categorize view only ever needs the handful of cards it is about to show.
 MAX_SIMILAR_CATEGORY_IDS = 50
+
+
+def _account_groups():
+    """The groups a new account may join (not budget buckets), in the order the pickers list them."""
+    return AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET).order_by("account_type", "name")
 
 
 def _annotate_feed_account_activity(accounts, book):
@@ -410,7 +415,7 @@ class BankFeedViewSet(
         tags=["bank-feed"],
         responses={200: FeedAccountSerializer(many=True)},
     )
-    @action(detail=False, methods=["get"])
+    @action(detail=False, methods=["get"], pagination_class=None)
     def feed_accounts(self, request, team_slug=None, book_slug=None):
         """Return feed accounts with up-to-date balances and review counts."""
         accounts = list(
@@ -1085,8 +1090,9 @@ class BankFeedViewSet(
                 "properties": {
                     "file": {"type": "string", "format": "binary"},
                     "account_id": {"type": "integer"},
-                    "column_mapping": {"type": "string"},
-                    "category_mappings": {"type": "string"},
+                    "column_mapping": {"type": "string", "description": "JSON: {field: column index}"},
+                    "category_mappings": {"type": "string", "description": "JSON: [{category_name, account_id}]"},
+                    "date_format": {"type": "string", "description": "strptime format; absent = detect"},
                 },
             }
         },
@@ -1230,6 +1236,7 @@ class BankFeedViewSet(
     @extend_schema(
         operation_id="bank_feed_create_account",
         tags=["bank-feed"],
+        request=CreateFeedAccountRequestSerializer,
         responses={201: SimpleAccountSerializer},
     )
     @action(detail=False, methods=["post"], url_path="create_account")
@@ -1269,12 +1276,31 @@ class BankFeedViewSet(
         tags=["bank-feed"],
         responses={200: AccountGroupSerializer(many=True)},
     )
-    @action(detail=False, methods=["get"], url_path="account_groups")
+    @action(detail=False, methods=["get"], url_path="account_groups", pagination_class=None)
     def account_groups(self, request, team_slug=None, book_slug=None):
         """Return all account groups for the book, for use in account creation."""
-        groups = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET)
-        serializer = AccountGroupSerializer(groups, many=True)
+        serializer = AccountGroupSerializer(_account_groups(), many=True)
         return Response(serializer.data)
+
+    @extend_schema(
+        operation_id="bank_feed_pickers",
+        tags=["bank-feed"],
+        responses={200: FeedPickersSerializer},
+    )
+    @action(detail=False, methods=["get"], url_path="pickers", pagination_class=None)
+    def pickers(self, request, team_slug=None, book_slug=None):
+        """
+        What the Inbox's and Categorize mode's pickers offer: every account a
+        transaction can be categorized to (goal accounts with what they have
+        left), the payees, and the groups a new category can be created in.
+        """
+        return Response(
+            {
+                "accounts": picker_accounts_data(request.book),
+                "payees": PayeeSerializer(Payee.for_book.all().order_by("name"), many=True).data,
+                "account_groups": AccountGroupSerializer(_account_groups(), many=True).data,
+            }
+        )
 
     @extend_schema(
         operation_id="bank_feed_category_suggestions",
@@ -1616,7 +1642,7 @@ class BankFeedViewSet(
         request=BatchIdsSerializer,
         responses={200: BankFeedRowSerializer(many=True)},
     )
-    @action(detail=False, methods=["post"], url_path="batch_duplicate")
+    @action(detail=False, methods=["post"], url_path="batch_duplicate", pagination_class=None)
     def batch_duplicate(self, request, team_slug=None, book_slug=None):
         """
         Batch duplicate multiple bank transactions.
@@ -1795,84 +1821,28 @@ class BankFeedViewSet(
 @login_and_book_required
 def bank_feed_home(request, team_slug, book_slug):
     """
-    Main bank feed page view.
-    Displays accounts with bank feeds and bank transactions table.
+    The Inbox page. Its React app loads the feed accounts (`feed/feed_accounts/`),
+    the pickers (`feed/pickers/`) and the rows through the API.
     """
     # Recurring transactions due by today appear even if the nightly run hasn't.
     recurring.materialize_due(book=request.book)
-
-    # Get accounts with bank feeds (with_balance() and with_reconciled_balance() avoid N+1 queries)
-    accounts_with_feeds = list(
-        Account.for_book.filter(has_feed=True, is_hidden=False)
-        .with_balance()
-        .with_reconciled_balance()
-        .select_related("account_group", "institution")
-        .order_by("account_group__account_type", "account_group__sort_order", "sort_order", "name")
-    )  # noqa: E501
-
-    _annotate_feed_account_activity(accounts_with_feeds, request.book)
-
-    # Serialize accounts for React
-    accounts_data = FeedAccountSerializer(accounts_with_feeds, many=True).data
-
-    # Get all accounts, payees, and account groups for dropdowns
-    all_payees = Payee.for_book.all().order_by("name")
-    all_account_groups = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET).order_by(
-        "account_type", "name"
-    )
-
-    all_accounts_data = picker_accounts_data(request.book)
-    all_payees_data = PayeeSerializer(all_payees, many=True).data
-    all_account_groups_data = AccountGroupSerializer(all_account_groups, many=True).data
-
-    # API URLs
-    api_urls = {
-        "transactions_list": f"/a/{team_slug}/{book_slug}/bankfeed/api/transactions/",
-        "transactions_detail": f"/a/{team_slug}/{book_slug}/bankfeed/api/transactions/{{id}}/",
-        "feed_list": f"/a/{team_slug}/{book_slug}/bankfeed/api/feed/",
-    }
-
     return render(
         request,
         "bank_feed/bank_feed_home.html",
         {
             "active_tab": "bank-feed",
             "page_title": _("Bank Feed | {name}").format(name=book_display_name(request.book)),
-            "accounts": accounts_data,
-            "all_accounts": all_accounts_data,
-            "all_payees": all_payees_data,
-            "all_account_groups": all_account_groups_data,
-            "api_urls": api_urls,
         },
     )
 
 
 @login_and_book_required
 def categorize_mode(request, team_slug, book_slug):
-    """Categorize mode — gamified single-transaction categorization view."""
-    from django.urls import reverse
-
-    all_account_groups = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET).order_by(
-        "account_type", "name"
-    )
-    all_payees = Payee.for_book.all().order_by("name")
-
-    all_accounts_data = picker_accounts_data(request.book)
-    all_account_groups_data = AccountGroupSerializer(all_account_groups, many=True).data
-    all_payees_data = PayeeSerializer(all_payees, many=True).data
-
-    back_url = reverse("bank_feed:bank_feed_home", kwargs={"team_slug": team_slug, "book_slug": book_slug})
-
+    """Categorize mode -- gamified single-transaction categorization; its app loads `feed/pickers/`."""
     return render(
         request,
         "bank_feed/categorize_mode.html",
-        {
-            "page_title": _("Categorize Mode | {name}").format(name=book_display_name(request.book)),
-            "all_accounts": all_accounts_data,
-            "all_account_groups": all_account_groups_data,
-            "all_payees": all_payees_data,
-            "back_url": back_url,
-        },
+        {"page_title": _("Categorize Mode | {name}").format(name=book_display_name(request.book))},
     )
 
 
@@ -1887,17 +1857,33 @@ def categorize_mode(request, team_slug, book_slug):
                 location=OpenApiParameter.QUERY,
                 description="Comma-separated ledger account ids; absent = every account",
                 required=False,
-            )
+            ),
+            OpenApiParameter(
+                name="include_finished",
+                type=bool,
+                location=OpenApiParameter.QUERY,
+                description="Also list finished schedules (no next date), after the active ones",
+                required=False,
+            ),
         ],
         responses={200: RecurringTransactionSerializer(many=True)},
     ),
+    destroy=extend_schema(
+        operation_id="bank_feed_recurring_stop",
+        tags=["bank-feed"],
+        responses={204: None},
+    ),
 )
-class RecurringTransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+class RecurringTransactionViewSet(mixins.ListModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
     """
-    The book's active recurring schedules, soonest first -- the bank feed's
-    "scheduled transactions" panel. Finished schedules (no next date) are left out.
+    The book's recurring schedules.
 
-    - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2
+    - GET /a/{team_slug}/{book_slug}/bankfeed/api/recurring/?account=1,2 -- the
+      active ones, soonest first (the bank feed's "scheduled transactions" panel);
+      `include_finished=1` adds the finished ones after them (the Recurring page).
+    - DELETE /a/{team_slug}/{book_slug}/bankfeed/api/recurring/{id}/ -- stop one.
+      The transactions it already wrote stay, as ordinary manual transactions.
+      Open to any member, as starting one is (creating a feed transaction is).
     """
 
     permission_classes = [BookModelAccessPermissions]
@@ -1905,17 +1891,34 @@ class RecurringTransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet
     pagination_class = None
     queryset = RecurringTransaction.objects.none()  # for drf-spectacular schema generation
 
+    def get_permissions(self):
+        if self.action == "destroy":
+            # Any member may stop a schedule (members start them); the queryset is
+            # the URL's book, so another book's schedule is a 404.
+            return [BookAccessPermissions()]
+        return super().get_permissions()
+
+    @property
+    def include_finished(self):
+        return self.request.query_params.get("include_finished") in ("1", "true")
+
     def get_queryset(self):
-        rules = RecurringTransaction.objects.filter(book=self.request.book, next_date__isnull=False).select_related(
+        rules = RecurringTransaction.objects.filter(book=self.request.book)
+        if self.action != "list":
+            # Stopping takes any of the book's schedules, finished or not.
+            return rules
+        if not self.include_finished:
+            rules = rules.filter(next_date__isnull=False)
+        rules = rules.select_related(
             "account__account_group", "account__institution", "category__account_group", "category__institution"
-        )
+        ).annotate(occurrence_count=Count("transactions"))
         account_ids = [part for part in self.request.query_params.get("account", "").split(",") if part.strip()]
         if account_ids:
             try:
                 rules = rules.filter(account_id__in=[int(part) for part in account_ids])
             except ValueError:
                 raise serializers.ValidationError({"account": "Pass comma-separated account ids."}) from None
-        return rules.order_by("next_date", "id")
+        return rules.order_by(F("next_date").asc(nulls_last=True), "id")
 
     def list(self, request, team_slug=None, book_slug=None):
         rows = [
@@ -1929,8 +1932,10 @@ class RecurringTransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet
                 "inflow": -rule.amount if rule.amount < 0 else Decimal("0"),
                 "outflow": rule.amount if rule.amount > 0 else Decimal("0"),
                 "next_date": rule.next_date,
+                "start_date": rule.start_date,
                 "end_date": rule.end_date,
                 "schedule": recurring.describe(rule),
+                "occurrence_count": rule.occurrence_count,
             }
             for rule in self.get_queryset()
         ]
@@ -1939,7 +1944,12 @@ class RecurringTransactionViewSet(mixins.ListModelMixin, viewsets.GenericViewSet
 
 @login_and_book_required
 def recurring_list(request, team_slug, book_slug):
-    """The book's recurring transactions: what repeats, how often, and when next."""
+    """
+    The book's recurring transactions: what repeats, how often, and when next.
+
+    Server-rendered; the same rows are `GET recurring/?include_finished=1`, and its
+    Stop buttons call `DELETE recurring/{id}/` (`bank_feed/recurring-list.js`).
+    """
     rules = (
         RecurringTransaction.objects.filter(book=request.book)
         .select_related("account", "category")
@@ -1960,17 +1970,3 @@ def recurring_list(request, team_slug, book_slug):
             "accounts_section": "recurring",
         },
     )
-
-
-@require_POST
-@login_and_book_required
-def recurring_delete(request, team_slug, book_slug, pk):
-    """
-    Stop a schedule. The transactions it already wrote stay, as ordinary manual transactions.
-
-    Open to any member, as starting one is (creating a feed transaction is).
-    """
-    rule = get_object_or_404(RecurringTransaction, pk=pk, book=request.book)
-    rule.delete()
-    messages.success(request, gettext("Recurring transaction stopped. Transactions already added are kept."))
-    return redirect("bank_feed:recurring_list", team_slug, book_slug)

@@ -1,4 +1,5 @@
-import Cookies from 'js-cookie';
+import { bookFromBase } from '../common/book';
+import { getOnboardingApi } from './api';
 
 /**
  * "Pick it back up" on the dashboard: put the guided task rail back.
@@ -10,22 +11,14 @@ import Cookies from 'js-cookie';
 const button = document.querySelector('[data-resume-onboarding]');
 
 if (button) {
+  const api = getOnboardingApi(bookFromBase(button.dataset.bookBase));
+
   button.addEventListener('click', async () => {
     button.disabled = true;
     try {
-      const response = await fetch(button.dataset.url, {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          'X-CSRFToken': Cookies.get('csrftoken'),
-        },
-        body: JSON.stringify({ action: 'resume' }),
-      });
-      if (response.ok) {
-        window.location.reload();
-        return;
-      }
+      await api.task({ action: 'resume' });
+      window.location.reload();
+      return;
     } catch {
       // Fall through to re-enabling, so the button is not left dead.
     }

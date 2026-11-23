@@ -1,15 +1,12 @@
 """
 Tells every app page whether the guided task rail belongs on it.
 
-Deliberately cheap: one query for the onboarding row, and nothing else. The rail
-fetches its own task state from `api/tasks/` once it mounts, so the gate
-computation -- several existence queries -- never runs on a page that is not
-going to show a rail.
+Deliberately cheap: one query for the onboarding row, and nothing else (see
+`services.rail`, shared with the nav-state API). The rail loads its tasks itself,
+from `api/tasks/`, so all the page hands it is the book it belongs to.
 """
 
-from django.urls import reverse
-
-from .models import OnboardingState
+from .services.rail import shows_task_rail
 
 
 def onboarding_rail(request):
@@ -19,15 +16,7 @@ def onboarding_rail(request):
     if not book or not request.user.is_authenticated or not getattr(request, "team_membership", None):
         return {}
 
-    state = OnboardingState.objects.filter(book=book).only("phase").first()
-    if state is None or not state.shows_tasks:
+    if not shows_task_rail(book):
         return {}
 
-    return {
-        "onboarding_rail": {
-            "tasksUrl": reverse("onboarding:api_tasks", args=book.url_args),
-            "taskUrl": reverse("onboarding:api_task", args=book.url_args),
-            "openingBalancesUrl": reverse("onboarding:api_opening_balances", args=book.url_args),
-            "path": request.path,
-        }
-    }
+    return {"onboarding_rail": {"book_base": book.base_url}}

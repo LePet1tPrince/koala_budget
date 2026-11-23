@@ -6,14 +6,20 @@ from django import forms
 from django.utils.translation import gettext_lazy as _
 
 from .models import (
-    ACCOUNT_TYPE_ASSET,
     ACCOUNT_TYPE_BUDGET,
     ACCOUNT_TYPE_CHOICES,
-    ACCOUNT_TYPE_LIABILITY,
     Account,
     AccountGroup,
     Institution,
     Payee,
+)
+from .validators import (
+    GROUP_TYPE_LOCKED_MESSAGE,
+    account_group_type_error,
+    account_name_error,
+    group_type_locked,
+    holds_institution,
+    unique_name_error,
 )
 
 
@@ -32,11 +38,9 @@ class BookUniqueNameMixin:
     def clean_name(self):
         name = self.cleaned_data["name"].strip()
         if self.book is not None:
-            taken = self._meta.model.objects.filter(book=self.book, name=name)
-            if self.instance.pk:
-                taken = taken.exclude(pk=self.instance.pk)
-            if taken.exists():
-                raise forms.ValidationError(_("“%(name)s” already exists.") % {"name": name})
+            error = unique_name_error(self._meta.model, self.book, name, self.instance)
+            if error:
+                raise forms.ValidationError(error)
         return name
 
 
@@ -54,12 +58,11 @@ class AccountGroupForm(BookUniqueNameMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         # The model also knows the budget type; budget groups belong to the app.
         self.fields["account_type"].choices = [("", "---------"), *ACCOUNT_TYPE_CHOICES]
-        # A group's type is its accounts' type: changing it would silently turn,
-        # say, expense accounts into assets. Locked once the group holds any.
-        if self.instance.pk and (self.instance.is_system or self.instance.accounts.exists()):
+        # A group's type is its accounts' type (validators.group_type_locked).
+        if group_type_locked(self.instance):
             field = self.fields["account_type"]
             field.disabled = True
-            field.help_text = _("Fixed while the group has accounts in it.")
+            field.help_text = GROUP_TYPE_LOCKED_MESSAGE
 
 
 class AccountForm(forms.ModelForm):
@@ -118,9 +121,7 @@ class AccountForm(forms.ModelForm):
         # In create mode the unbound form keeps the field so the template can render
         # the options (Alpine.js toggles visibility); once a type is chosen, drop it
         # for non-asset/liability types so stray institution data is never saved.
-        if account_type_value not in (ACCOUNT_TYPE_ASSET, ACCOUNT_TYPE_LIABILITY) and (
-            not is_create or account_type_value
-        ):
+        if not holds_institution(account_type_value) and (not is_create or account_type_value):
             self.fields.pop("institution", None)
 
         # In create view, has_feed is automatically determined from account type
@@ -134,24 +135,14 @@ class AccountForm(forms.ModelForm):
         account_group = cleaned_data.get("account_group")
         name = cleaned_data.get("name")
 
-        if account_type and account_group and account_group.account_type != account_type:
-            raise forms.ValidationError(
-                _("The selected account group '%(group)s' does not match the selected account type '%(type)s'.")
-                % {
-                    "group": account_group.name,
-                    "type": dict(ACCOUNT_TYPE_CHOICES)[account_type],
-                }
-            )
+        error = account_group_type_error(account_group, account_type)
+        if error:
+            raise forms.ValidationError(error)
 
         if name and self.book and account_type:
-            qs = Account.objects.filter(book=self.book, name=name, account_group__account_type=account_type)
-            if self.instance and self.instance.pk:
-                qs = qs.exclude(pk=self.instance.pk)
-            if qs.exists():
-                raise forms.ValidationError(
-                    _("An account named '%(name)s' already exists for account type '%(type)s'.")
-                    % {"name": name, "type": dict(ACCOUNT_TYPE_CHOICES)[account_type]}
-                )
+            error = account_name_error(self.book, name, account_type, self.instance)
+            if error:
+                raise forms.ValidationError(error)
 
         return cleaned_data
 

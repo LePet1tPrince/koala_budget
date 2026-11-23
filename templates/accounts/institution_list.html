@@ -5,7 +5,7 @@
 {% block manage_title %}{% translate "Institutions" %}{% endblock %}
 {% block manage_subtitle %}{% translate "The banks and brokerages your accounts are held with." %}{% endblock %}
 {% block manage_actions %}
-  <a href="{% url 'accounts:institution_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-dialog="create-dialog" data-testid="new-institution-btn">
+  <a href="{% url 'accounts:institution_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-manage-modal="institution" data-testid="new-institution-btn">
     {% icon "plus" class="inline-block shrink-0 w-4 h-4" %}{% translate "New institution" %}
   </a>
 {% endblock %}
@@ -33,13 +33,10 @@
   {% else %}
     <div class="py-10 text-center text-sm text-base-content/70">
       {% translate "No institutions yet." %}
-      <a href="{% url 'accounts:institution_create' request.team.slug request.book.slug %}" class="link link-primary" data-dialog="create-dialog">{% translate "Add one" %}</a>
+      <a href="{% url 'accounts:institution_create' request.team.slug request.book.slug %}" class="link link-primary" data-manage-modal="institution">{% translate "Add one" %}</a>
     </div>
   {% endif %}
 {% endblock %}
-{% block dialogs %}
-  {% url 'accounts:institution_create' request.team.slug request.book.slug as create_url %}
-  {% translate "New institution" as dialog_title %}
-  {% translate "Create institution" as submit_label %}
-  {% include "accounts/components/form_dialog.html" with dialog_id="create-dialog" title=dialog_title form=create_form action=create_url submit_label=submit_label %}
+{% block page_js %}
+  {% include "accounts/components/manage_modals_js.html" %}
 {% endblock %}

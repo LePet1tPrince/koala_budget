@@ -15,8 +15,8 @@
 
 import * as runtime from '../runtime';
 import type {
+  AuditLog,
   JournalEntry,
-  PaginatedAuditLogList,
   PaginatedJournalEntryList,
   PaginatedSimpleLineList,
   PaginatedTransactionRowList,
@@ -28,15 +28,17 @@ import type {
   SimpleLinesRecategorizeRequest,
   TransactionDetail,
   TransactionIds,
+  TransactionPickers,
+  TransactionRows,
   TransactionStatusRequest,
   TransactionsBatchDelete200Response,
   TransactionsFacets200Response,
 } from '../models/index';
 import {
+    AuditLogFromJSON,
+    AuditLogToJSON,
     JournalEntryFromJSON,
     JournalEntryToJSON,
-    PaginatedAuditLogListFromJSON,
-    PaginatedAuditLogListToJSON,
     PaginatedJournalEntryListFromJSON,
     PaginatedJournalEntryListToJSON,
     PaginatedSimpleLineListFromJSON,
@@ -59,6 +61,10 @@ import {
     TransactionDetailToJSON,
     TransactionIdsFromJSON,
     TransactionIdsToJSON,
+    TransactionPickersFromJSON,
+    TransactionPickersToJSON,
+    TransactionRowsFromJSON,
+    TransactionRowsToJSON,
     TransactionStatusRequestFromJSON,
     TransactionStatusRequestToJSON,
     TransactionsBatchDelete200ResponseFromJSON,
@@ -71,7 +77,6 @@ export interface JournalEntriesAuditRequest {
     bookSlug: string;
     id: number;
     teamSlug: string;
-    page?: number;
 }
 
 export interface JournalEntriesCreateRequest {
@@ -169,13 +174,11 @@ export interface TransactionsBatchStatusRequest {
     bookSlug: string;
     teamSlug: string;
     transactionStatusRequest: TransactionStatusRequest;
-    page?: number;
 }
 
 export interface TransactionsEditRequest {
     bookSlug: string;
     teamSlug: string;
-    page?: number;
     patchedTransactionEditRequest?: PatchedTransactionEditRequest;
 }
 
@@ -185,7 +188,14 @@ export interface TransactionsFacetsRequest {
     teamSlug: string;
     dir?: string;
     endDate?: string;
-    fColumn?: string;
+    fAmount?: Array<string>;
+    fCreditAccount?: Array<string>;
+    fDate?: Array<string>;
+    fDebitAccount?: Array<string>;
+    fDescription?: Array<string>;
+    fPayee?: Array<string>;
+    fSource?: Array<string>;
+    fStatus?: Array<string>;
     q?: string;
     search?: string;
     sort?: string;
@@ -197,16 +207,28 @@ export interface TransactionsListRequest {
     teamSlug: string;
     dir?: string;
     endDate?: string;
-    fColumn?: string;
+    fAmount?: Array<string>;
+    fCreditAccount?: Array<string>;
+    fDate?: Array<string>;
+    fDebitAccount?: Array<string>;
+    fDescription?: Array<string>;
+    fPayee?: Array<string>;
+    fSource?: Array<string>;
+    fStatus?: Array<string>;
     page?: number;
     search?: string;
     sort?: string;
     startDate?: string;
 }
 
+export interface TransactionsPickersRequest {
+    bookSlug: string;
+    teamSlug: string;
+}
+
 export interface TransactionsRetrieveRequest {
     bookSlug: string;
-    id: string;
+    id: number;
     teamSlug: string;
 }
 
@@ -218,7 +240,7 @@ export class JournalApi extends runtime.BaseAPI {
     /**
      * Return the row-level audit history for this journal entry and its lines.
      */
-    async journalEntriesAuditRaw(requestParameters: JournalEntriesAuditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedAuditLogList>> {
+    async journalEntriesAuditRaw(requestParameters: JournalEntriesAuditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<AuditLog>>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
@@ -242,15 +264,12 @@ export class JournalApi extends runtime.BaseAPI {
 
         const queryParameters: any = {};
 
-        if (requestParameters['page'] != null) {
-            queryParameters['page'] = requestParameters['page'];
-        }
-
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -262,13 +281,13 @@ export class JournalApi extends runtime.BaseAPI {
             query: queryParameters,
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedAuditLogListFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => jsonValue.map(AuditLogFromJSON));
     }
 
     /**
      * Return the row-level audit history for this journal entry and its lines.
      */
-    async journalEntriesAudit(requestParameters: JournalEntriesAuditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedAuditLogList> {
+    async journalEntriesAudit(requestParameters: JournalEntriesAuditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<AuditLog>> {
         const response = await this.journalEntriesAuditRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -304,9 +323,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -359,9 +379,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -409,9 +430,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -465,9 +487,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -520,9 +543,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -583,9 +607,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -640,9 +665,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -695,9 +721,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -753,9 +780,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -809,9 +837,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -866,9 +895,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -921,9 +951,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -984,9 +1015,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1041,9 +1073,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1070,7 +1103,7 @@ export class JournalApi extends runtime.BaseAPI {
     /**
      * Void transactions so they drop out of every balance, or restore them.
      */
-    async transactionsBatchStatusRaw(requestParameters: TransactionsBatchStatusRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedTransactionRowList>> {
+    async transactionsBatchStatusRaw(requestParameters: TransactionsBatchStatusRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TransactionRows>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
@@ -1094,17 +1127,14 @@ export class JournalApi extends runtime.BaseAPI {
 
         const queryParameters: any = {};
 
-        if (requestParameters['page'] != null) {
-            queryParameters['page'] = requestParameters['page'];
-        }
-
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1117,13 +1147,13 @@ export class JournalApi extends runtime.BaseAPI {
             body: TransactionStatusRequestToJSON(requestParameters['transactionStatusRequest']),
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedTransactionRowListFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => TransactionRowsFromJSON(jsonValue));
     }
 
     /**
      * Void transactions so they drop out of every balance, or restore them.
      */
-    async transactionsBatchStatus(requestParameters: TransactionsBatchStatusRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedTransactionRowList> {
+    async transactionsBatchStatus(requestParameters: TransactionsBatchStatusRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TransactionRows> {
         const response = await this.transactionsBatchStatusRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -1131,7 +1161,7 @@ export class JournalApi extends runtime.BaseAPI {
     /**
      * Apply one partial edit to one or more transactions.  Omitted fields are left alone, so the same payload serves a single row\'s full edit and a one-field change across a selection.  Nothing is written unless every transaction in the list can take the edit.
      */
-    async transactionsEditRaw(requestParameters: TransactionsEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<PaginatedTransactionRowList>> {
+    async transactionsEditRaw(requestParameters: TransactionsEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TransactionRows>> {
         if (requestParameters['bookSlug'] == null) {
             throw new runtime.RequiredError(
                 'bookSlug',
@@ -1148,17 +1178,14 @@ export class JournalApi extends runtime.BaseAPI {
 
         const queryParameters: any = {};
 
-        if (requestParameters['page'] != null) {
-            queryParameters['page'] = requestParameters['page'];
-        }
-
         const headerParameters: runtime.HTTPHeaders = {};
 
         headerParameters['Content-Type'] = 'application/json';
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1171,13 +1198,13 @@ export class JournalApi extends runtime.BaseAPI {
             body: PatchedTransactionEditRequestToJSON(requestParameters['patchedTransactionEditRequest']),
         }, initOverrides);
 
-        return new runtime.JSONApiResponse(response, (jsonValue) => PaginatedTransactionRowListFromJSON(jsonValue));
+        return new runtime.JSONApiResponse(response, (jsonValue) => TransactionRowsFromJSON(jsonValue));
     }
 
     /**
      * Apply one partial edit to one or more transactions.  Omitted fields are left alone, so the same payload serves a single row\'s full edit and a one-field change across a selection.  Nothing is written unless every transaction in the list can take the edit.
      */
-    async transactionsEdit(requestParameters: TransactionsEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedTransactionRowList> {
+    async transactionsEdit(requestParameters: TransactionsEditRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TransactionRows> {
         const response = await this.transactionsEditRaw(requestParameters, initOverrides);
         return await response.value();
     }
@@ -1221,8 +1248,36 @@ export class JournalApi extends runtime.BaseAPI {
             queryParameters['end_date'] = requestParameters['endDate'];
         }
 
-        if (requestParameters['fColumn'] != null) {
-            queryParameters['f_{column}'] = requestParameters['fColumn'];
+        if (requestParameters['fAmount'] != null) {
+            queryParameters['f_amount'] = requestParameters['fAmount'];
+        }
+
+        if (requestParameters['fCreditAccount'] != null) {
+            queryParameters['f_credit_account'] = requestParameters['fCreditAccount'];
+        }
+
+        if (requestParameters['fDate'] != null) {
+            queryParameters['f_date'] = requestParameters['fDate'];
+        }
+
+        if (requestParameters['fDebitAccount'] != null) {
+            queryParameters['f_debit_account'] = requestParameters['fDebitAccount'];
+        }
+
+        if (requestParameters['fDescription'] != null) {
+            queryParameters['f_description'] = requestParameters['fDescription'];
+        }
+
+        if (requestParameters['fPayee'] != null) {
+            queryParameters['f_payee'] = requestParameters['fPayee'];
+        }
+
+        if (requestParameters['fSource'] != null) {
+            queryParameters['f_source'] = requestParameters['fSource'];
+        }
+
+        if (requestParameters['fStatus'] != null) {
+            queryParameters['f_status'] = requestParameters['fStatus'];
         }
 
         if (requestParameters['q'] != null) {
@@ -1243,9 +1298,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1296,8 +1352,36 @@ export class JournalApi extends runtime.BaseAPI {
             queryParameters['end_date'] = requestParameters['endDate'];
         }
 
-        if (requestParameters['fColumn'] != null) {
-            queryParameters['f_{column}'] = requestParameters['fColumn'];
+        if (requestParameters['fAmount'] != null) {
+            queryParameters['f_amount'] = requestParameters['fAmount'];
+        }
+
+        if (requestParameters['fCreditAccount'] != null) {
+            queryParameters['f_credit_account'] = requestParameters['fCreditAccount'];
+        }
+
+        if (requestParameters['fDate'] != null) {
+            queryParameters['f_date'] = requestParameters['fDate'];
+        }
+
+        if (requestParameters['fDebitAccount'] != null) {
+            queryParameters['f_debit_account'] = requestParameters['fDebitAccount'];
+        }
+
+        if (requestParameters['fDescription'] != null) {
+            queryParameters['f_description'] = requestParameters['fDescription'];
+        }
+
+        if (requestParameters['fPayee'] != null) {
+            queryParameters['f_payee'] = requestParameters['fPayee'];
+        }
+
+        if (requestParameters['fSource'] != null) {
+            queryParameters['f_source'] = requestParameters['fSource'];
+        }
+
+        if (requestParameters['fStatus'] != null) {
+            queryParameters['f_status'] = requestParameters['fStatus'];
         }
 
         if (requestParameters['page'] != null) {
@@ -1318,9 +1402,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }
@@ -1340,6 +1425,54 @@ export class JournalApi extends runtime.BaseAPI {
      */
     async transactionsList(requestParameters: TransactionsListRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<PaginatedTransactionRowList> {
         const response = await this.transactionsListRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * The edit modal\'s account and payee pickers, for any page that hosts it (Transactions, an account\'s activity). Loaded once when the page opens, so the first row click does not wait on a list that rarely changes.
+     */
+    async transactionsPickersRaw(requestParameters: TransactionsPickersRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<TransactionPickers>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling transactionsPickers().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling transactionsPickers().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/journal/api/transactions/pickers/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => TransactionPickersFromJSON(jsonValue));
+    }
+
+    /**
+     * The edit modal\'s account and payee pickers, for any page that hosts it (Transactions, an account\'s activity). Loaded once when the page opens, so the first row click does not wait on a list that rarely changes.
+     */
+    async transactionsPickers(requestParameters: TransactionsPickersRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<TransactionPickers> {
+        const response = await this.transactionsPickersRaw(requestParameters, initOverrides);
         return await response.value();
     }
 
@@ -1372,9 +1505,10 @@ export class JournalApi extends runtime.BaseAPI {
 
         const headerParameters: runtime.HTTPHeaders = {};
 
-        if (this.configuration && (this.configuration.username !== undefined || this.configuration.password !== undefined)) {
-            headerParameters["Authorization"] = "Basic " + btoa(this.configuration.username + ":" + this.configuration.password);
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
         }
+
         if (this.configuration && this.configuration.apiKey) {
             headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
         }

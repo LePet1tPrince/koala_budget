@@ -5,12 +5,11 @@ import {GRID, MONEY, currency, compactCurrency, getInk, getSurface, observeTheme
 // The goals colour used on the Dollar Map and the Sankey.
 const GOAL_COLOR = '#c98500';
 
-document.addEventListener('DOMContentLoaded', () => {
-  const dataEl = document.getElementById('cash-flow-data');
-  const canvas = document.getElementById('cash-flow-chart');
-  if (!dataEl || !canvas) return;
-
-  const data = JSON.parse(dataEl.textContent);
+/**
+ * The Income & Spending chart: money in and out per period, goal spending, and the net.
+ * `data`: {labels, income, expenses, goal_spending (or null), net} -- numbers per period.
+ */
+export function drawCashFlowChart(canvas, data) {
   if (!data.labels || data.labels.length === 0) return;
 
   const ink = getInk(canvas);
@@ -103,4 +102,4 @@ document.addEventListener('DOMContentLoaded', () => {
     c.options.scales.y.ticks.color = newInk;
     c.data.datasets[0].pointBorderColor = newSurface;
   });
-});
+}

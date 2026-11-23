@@ -315,14 +315,14 @@ class AccountsHomeViewTest(TestCase):
             Account.objects.create(book=self.book, name="Groceries", account_group=expense_group)
             Account.objects.create(book=self.book, name="Checking", account_group=asset_group)
 
-        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
+        url = reverse("accounts:board", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
-        sections = response.context["manage_props"]["types"]
+        sections = response.json()["sections"]
         self.assertEqual([s["key"] for s in sections], ["asset", "liability", "income", "expense", "goal", "equity"])
         by_key = {s["key"]: s for s in sections}
         asset_accounts = by_key[ACCOUNT_TYPE_ASSET]["groups"][0]["accounts"]
         self.assertEqual([a["name"] for a in asset_accounts], ["Checking"])
-        self.assertEqual(asset_accounts[0]["balance"], "0")
+        self.assertEqual(asset_accounts[0]["balance"], "0.00")
 
 
 class AccountGroupViewTest(TestCase):
@@ -418,15 +418,19 @@ class AccountViewTest(TestCase):
         self.client.login(username="testuser@example.com", password="testpass123")
 
     def test_accounts_home_view(self):
-        """Test the accounts home (board) view includes accounts in its props."""
+        """The accounts home (board) page loads the board from its API: the page carries the book, not the data."""
         with current_book(self.book):
             Account.objects.create(book=self.book, name="Checking", account_group=self.account_group)
 
         url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Checking")
-        sections = {section["key"]: section for section in response.context["manage_props"]["types"]}
+        self.assertContains(response, 'id="book-base"')
+        self.assertNotContains(response, "accounts-board-props")
+        self.assertIn("csrftoken", response.cookies)
+
+        url = reverse("accounts:board", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
+        sections = {section["key"]: section for section in self.client.get(url).json()["sections"]}
         group_names = [g["name"] for g in sections[ACCOUNT_TYPE_ASSET]["groups"]]
         self.assertIn("Bank Accounts", group_names)
 
@@ -518,11 +522,20 @@ class AccountViewTest(TestCase):
         report_data = response.context["report_data"]
         self.assertEqual(report_data["starting_balance"], Decimal("500.00"))
         self.assertEqual(report_data["ending_balance"], Decimal("-700.00"))
-        chart_data = response.context["balance_chart_data"]
-        self.assertEqual(chart_data["points"], [{"date": "2024-06-15", "balance": -700.0}])
+        self.assertTrue(response.context["has_balance_chart"])
         self.assertContains(response, "Starting Balance")
         self.assertContains(response, "account-balance-chart")
         self.assertContains(response, "date-range-picker")
+        # The chart's data is the charts API's, for the range the page shows.
+        self.assertContains(response, 'data-start-date="2024-06-01"')
+        self.assertNotContains(response, "account-balance-data")
+        charts_url = reverse(
+            "accounts:account-charts",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
+        )
+        charts = self.client.get(charts_url, {"start_date": "2024-06-01", "end_date": "2024-06-30"}).json()
+        self.assertEqual(charts["balance"]["points"], [{"date": "2024-06-15", "balance": "-700.00"}])
+        self.assertIsNone(charts["budget"])
 
     def test_account_detail_activity_rows_open_the_edit_modal(self):
         """Transaction rows carry their entry id for the edit modal; budget entries don't."""
@@ -559,8 +572,11 @@ class AccountViewTest(TestCase):
             [(row["entry_id"], row["editable"]) for row in bucket_rows], [(budget_line.journal_entry_id, False)]
         )
         self.assertContains(response, 'id="account-activity-editor"')
-        self.assertIn("Edit Rent", [a["name"] for a in response.context["all_accounts"]])
         self.assertIn("csrftoken", response.cookies)
+        # The modal's pickers load from the API, not the page.
+        self.assertNotContains(response, 'id="all-accounts"')
+        pickers = self.client.get(reverse("journal:transaction-pickers", args=self.book.url_args)).json()
+        self.assertIn("Edit Rent", [a["name"] for a in pickers["accounts"]])
 
     def test_account_detail_view_expense_budget_chart(self):
         """Expense account detail embeds the budget-vs-actual chart instead of the balance chart."""
@@ -584,13 +600,27 @@ class AccountViewTest(TestCase):
         response = self.client.get(url, {"start_date": "2024-06-01", "end_date": "2024-06-30"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.context["balance_chart_data"])
-        budget_chart = response.context["budget_chart_data"]
-        self.assertEqual(budget_chart["budgeted"], [1500.0])
-        self.assertEqual(budget_chart["actual"], [1200.0])
-        self.assertEqual(budget_chart["available"], [300.0])
+        self.assertFalse(response.context["has_balance_chart"])
+        self.assertEqual(response.context["budget_chart_kind"], ACCOUNT_TYPE_EXPENSE)
         self.assertContains(response, "account-budget-chart")
         self.assertNotContains(response, "account-balance-chart")
+
+        charts_url = reverse(
+            "accounts:account-charts",
+            kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": expense.pk},
+        )
+        charts = self.client.get(charts_url, {"start_date": "2024-06-01", "end_date": "2024-06-30"}).json()
+        self.assertIsNone(charts["balance"])
+        self.assertEqual(
+            charts["budget"],
+            {
+                "kind": "expense",
+                "months": ["2024-06"],
+                "budgeted": ["1500.00"],
+                "actual": ["1200.00"],
+                "available": ["300.00"],
+            },
+        )
 
     def test_account_detail_view_defaults_to_current_year(self):
         """Without date params the activity section defaults to the current year."""
@@ -654,21 +684,21 @@ class AccountViewTest(TestCase):
         self.assertRedirects(response, detail_url, fetch_redirect_response=False)
         self.assertTrue(Account.objects.filter(pk=account.pk).exists())
 
-    def test_account_detail_view_has_delete_confirmation_dialog(self):
-        """The detail page carries its own delete-confirmation dialog rather than linking to a separate page."""
+    def test_account_detail_view_deletes_from_the_editor(self):
+        """Delete opens the account editor with its delete already asked; its href is the no-JS confirm page."""
         account = Account.objects.create(book=self.book, name="Has Dialog", account_group=self.account_group)
         url = reverse(
             "accounts:account_detail",
             kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
         )
         response = self.client.get(url)
-        self.assertContains(response, 'id="delete-account-modal"')
         self.assertContains(response, 'id="delete-account-btn"')
+        self.assertContains(response, f'data-manage-modal="account" data-id="{account.pk}" data-confirm-delete')
         delete_url = reverse(
             "accounts:account_delete",
             kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug, "pk": account.pk},
         )
-        self.assertContains(response, f'action="{delete_url}"')
+        self.assertContains(response, f'href="{delete_url}"')
 
 
 class PayeeViewTest(TestCase):
@@ -935,7 +965,7 @@ class AccountRedirectTest(TestCase):
 
 
 class AccountsBoardApiTest(TestCase):
-    """Tests for the drag-and-drop board JSON API (reorder / move / inline create)."""
+    """Tests for the drag-and-drop board API (reorder / move / inline create / hide)."""
 
     @classmethod
     def setUpTestData(cls):
@@ -978,10 +1008,10 @@ class AccountsBoardApiTest(TestCase):
 
     def test_reorder_accounts_within_group(self):
         response = self._post(
-            "api_reorder_accounts",
+            "board-reorder-accounts",
             {"groups": [{"group_id": self.bank_group.pk, "account_ids": [self.savings.pk, self.checking.pk]}]},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 204)
         self.savings.refresh_from_db()
         self.checking.refresh_from_db()
         self.assertEqual(self.savings.sort_order, 0)
@@ -989,7 +1019,7 @@ class AccountsBoardApiTest(TestCase):
 
     def test_move_account_to_other_group_same_type(self):
         response = self._post(
-            "api_reorder_accounts",
+            "board-reorder-accounts",
             {
                 "groups": [
                     {"group_id": self.bank_group.pk, "account_ids": [self.checking.pk]},
@@ -997,14 +1027,14 @@ class AccountsBoardApiTest(TestCase):
                 ]
             },
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 204)
         self.savings.refresh_from_db()
         self.assertEqual(self.savings.account_group, self.invest_group)
         self.assertEqual(self.savings.sort_order, 0)
 
     def test_move_account_across_types_is_rejected(self):
         response = self._post(
-            "api_reorder_accounts",
+            "board-reorder-accounts",
             {"groups": [{"group_id": self.expense_group.pk, "account_ids": [self.checking.pk]}]},
         )
         self.assertEqual(response.status_code, 400)
@@ -1013,7 +1043,7 @@ class AccountsBoardApiTest(TestCase):
 
     def test_reorder_rejects_other_teams_objects(self):
         response = self._post(
-            "api_reorder_accounts",
+            "board-reorder-accounts",
             {"groups": [{"group_id": self.other_group.pk, "account_ids": [self.checking.pk]}]},
         )
         self.assertEqual(response.status_code, 400)
@@ -1021,21 +1051,21 @@ class AccountsBoardApiTest(TestCase):
     def test_reorder_requires_membership(self):
         self.client.login(username="other@example.com", password="testpass123")
         url = reverse(
-            "accounts:api_reorder_accounts", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug}
+            "accounts:board-reorder-accounts", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug}
         )
         response = self.client.post(
             url,
             {"groups": [{"group_id": self.bank_group.pk, "account_ids": [self.checking.pk]}]},
             content_type="application/json",
         )
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 403)
 
     def test_reorder_groups(self):
         response = self._post(
-            "api_reorder_groups",
+            "board-reorder-groups",
             {"account_type": ACCOUNT_TYPE_ASSET, "group_ids": [self.invest_group.pk, self.bank_group.pk]},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 204)
         self.invest_group.refresh_from_db()
         self.bank_group.refresh_from_db()
         self.assertEqual(self.invest_group.sort_order, 0)
@@ -1043,83 +1073,84 @@ class AccountsBoardApiTest(TestCase):
 
     def test_reorder_groups_rejects_wrong_type(self):
         response = self._post(
-            "api_reorder_groups",
+            "board-reorder-groups",
             {"account_type": ACCOUNT_TYPE_ASSET, "group_ids": [self.expense_group.pk]},
         )
         self.assertEqual(response.status_code, 400)
 
     def test_create_account_appends_to_group(self):
-        response = self._post("api_create_account", {"name": "Chequing 2", "group_id": self.bank_group.pk})
+        response = self._post("board-create-account", {"name": "Chequing 2", "group_id": self.bank_group.pk})
         self.assertEqual(response.status_code, 201)
         account = Account.objects.get(book=self.book, name="Chequing 2")
         self.assertEqual(account.account_group, self.bank_group)
         self.assertEqual(account.sort_order, 2)  # after Checking (0) and Savings (1)
         self.assertTrue(account.has_feed)  # asset accounts get a feed
-        self.assertEqual(response.json()["account"]["name"], "Chequing 2")
+        self.assertEqual(response.json()["name"], "Chequing 2")
+        self.assertEqual(response.json()["balance"], "0.00")
 
     def test_create_expense_account_has_no_feed(self):
-        response = self._post("api_create_account", {"name": "Utilities", "group_id": self.expense_group.pk})
+        response = self._post("board-create-account", {"name": "Utilities", "group_id": self.expense_group.pk})
         self.assertEqual(response.status_code, 201)
         account = Account.objects.get(book=self.book, name="Utilities")
         self.assertFalse(account.has_feed)
 
     def test_create_account_duplicate_name_rejected(self):
-        response = self._post("api_create_account", {"name": "Checking", "group_id": self.invest_group.pk})
+        response = self._post("board-create-account", {"name": "Checking", "group_id": self.invest_group.pk})
         self.assertEqual(response.status_code, 400)
-        self.assertIn("already exists", response.json()["error"])
+        self.assertIn("already exists", response.json()["name"][0])
 
     def test_create_group_appends_to_type(self):
-        response = self._post("api_create_group", {"name": "Property", "account_type": ACCOUNT_TYPE_ASSET})
+        response = self._post("board-create-group", {"name": "Property", "account_type": ACCOUNT_TYPE_ASSET})
         self.assertEqual(response.status_code, 201)
         group = AccountGroup.objects.get(book=self.book, name="Property")
         self.assertEqual(group.account_type, ACCOUNT_TYPE_ASSET)
         self.assertEqual(group.sort_order, 2)  # after Bank Accounts (0) and Investments (1)
 
     def test_create_group_duplicate_name_rejected(self):
-        response = self._post("api_create_group", {"name": "Bank Accounts", "account_type": ACCOUNT_TYPE_ASSET})
+        response = self._post("board-create-group", {"name": "Bank Accounts", "account_type": ACCOUNT_TYPE_ASSET})
         self.assertEqual(response.status_code, 400)
 
     def test_set_hidden_hides_and_shows_any_account(self):
         for account in (self.checking, self.groceries):
-            response = self._post("api_set_hidden", {"account_id": account.pk, "is_hidden": True})
+            response = self._post("board-set-hidden", {"account_id": account.pk, "is_hidden": True})
             self.assertEqual(response.status_code, 200)
-            self.assertTrue(response.json()["isHidden"])
+            self.assertEqual(response.json(), {"account_id": account.pk, "is_hidden": True})
             account.refresh_from_db()
             self.assertTrue(account.is_hidden)
 
-            response = self._post("api_set_hidden", {"account_id": account.pk, "is_hidden": False})
+            response = self._post("board-set-hidden", {"account_id": account.pk, "is_hidden": False})
             self.assertEqual(response.status_code, 200)
             account.refresh_from_db()
             self.assertFalse(account.is_hidden)
 
     def test_set_hidden_rejects_bad_body_and_other_books_account(self):
         self.assertEqual(
-            self._post("api_set_hidden", {"account_id": self.checking.pk, "is_hidden": "yes"}).status_code, 400
+            self._post("board-set-hidden", {"account_id": self.checking.pk, "is_hidden": "maybe"}).status_code, 400
         )
         other = Account.objects.create(book=self.other_book, name="Theirs", account_group=self.other_group)
-        response = self._post("api_set_hidden", {"account_id": other.pk, "is_hidden": True})
+        response = self._post("board-set-hidden", {"account_id": other.pk, "is_hidden": True})
         self.assertEqual(response.status_code, 400)
         other.refresh_from_db()
         self.assertFalse(other.is_hidden)
 
     def test_set_hidden_requires_membership(self):
         self.client.login(username="other@example.com", password="testpass123")
-        response = self._post("api_set_hidden", {"account_id": self.checking.pk, "is_hidden": True})
-        self.assertEqual(response.status_code, 404)
+        response = self._post("board-set-hidden", {"account_id": self.checking.pk, "is_hidden": True})
+        self.assertEqual(response.status_code, 403)
         self.checking.refresh_from_db()
         self.assertFalse(self.checking.is_hidden)
 
     def _board_rows(self):
-        url = reverse("accounts:accounts_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
-        types = self.client.get(url).context["manage_props"]["types"]
-        return {a["name"]: a for t in types for g in t["groups"] for a in g["accounts"]}
+        url = reverse("accounts:board", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
+        sections = self.client.get(url).json()["sections"]
+        return {a["name"]: a for t in sections for g in t["groups"] for a in g["accounts"]}
 
     def test_board_props_carry_hidden_state(self):
         self.groceries.is_hidden = True
         self.groceries.save()
         rows = self._board_rows()
-        self.assertTrue(rows["Groceries"]["isHidden"])
-        self.assertFalse(rows["Checking"]["isHidden"])
+        self.assertTrue(rows["Groceries"]["is_hidden"])
+        self.assertFalse(rows["Checking"]["is_hidden"])
 
     def test_board_shows_income_balance_positive(self):
         income_group = AccountGroup.objects.create(book=self.book, name="Earnings", account_type=ACCOUNT_TYPE_INCOME)
@@ -1150,11 +1181,11 @@ class AccountsBoardApiTest(TestCase):
     def test_custom_order_flows_into_default_queryset(self):
         """Account.Meta.ordering follows group sort_order then account sort_order."""
         self._post(
-            "api_reorder_accounts",
+            "board-reorder-accounts",
             {"groups": [{"group_id": self.bank_group.pk, "account_ids": [self.savings.pk, self.checking.pk]}]},
         )
         self._post(
-            "api_reorder_groups",
+            "board-reorder-groups",
             {"account_type": ACCOUNT_TYPE_ASSET, "group_ids": [self.invest_group.pk, self.bank_group.pk]},
         )
         names = list(
@@ -1264,7 +1295,12 @@ class ManagementPagesTest(TestCase):
     def test_transactions_page_opens_filtered_by_payee(self):
         url = reverse("journal:transactions_home", args=self.book.url_args)
         response = self.client.get(url, {"f_payee": ["Metro", "Unknown"]})
-        self.assertEqual(response.context["initial_filters"], {"payee": [{"value": "Metro", "label": "Metro"}]})
+        # The app reads `?f_payee=` itself and keeps only the book's payees, from its pickers.
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "initial-filters")
+        pickers = self.client.get(reverse("journal:transaction-pickers", args=self.book.url_args)).json()
+        self.assertIn("Metro", [payee["name"] for payee in pickers["payees"]])
+        self.assertNotIn("Unknown", [payee["name"] for payee in pickers["payees"]])
 
     def test_liability_balance_reads_as_owed(self):
         response = self.client.get(self.card.get_absolute_url())
@@ -1312,17 +1348,20 @@ class InstitutionAccountsTest(TestCase):
         )
 
     def test_checklist_offers_assets_and_liabilities_only(self):
-        response = self.client.get(self.td.get_absolute_url())
+        response = self.client.get(self.url)
         choices = {
             choice["account"].name: choice
-            for section in response.context["account_sections"]
+            for section in response.context["sections"]
             for group in section["groups"]
             for choice in group["choices"]
         }
         self.assertEqual(set(choices), {"Chequing", "Savings", "Visa"})
         self.assertTrue(choices["Chequing"]["checked"])
         self.assertEqual(choices["Savings"]["elsewhere"], self.rbc)
-        self.assertContains(response, "Choose accounts")
+        # The institution's page opens the same checklist in its editor.
+        detail = self.client.get(self.td.get_absolute_url())
+        self.assertContains(detail, "Choose accounts")
+        self.assertContains(detail, 'data-manage-modal="institution-accounts"')
 
     def test_ticked_accounts_are_linked_and_unticked_unlinked(self):
         response = self.client.post(self.url, {"accounts": [self.savings.pk, self.visa.pk]})
