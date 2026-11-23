@@ -100,6 +100,7 @@ models/DataImportStatus.ts
 models/DataUploadResult.ts
 models/DeclineDraft.ts
 models/DeleteAccount.ts
+models/EmailPreferences.ts
 models/EventTypeEnum.ts
 models/ExchangePublicTokenRequest.ts
 models/ExchangePublicTokenResponse.ts
@@ -245,6 +246,7 @@ models/ParsedTransaction.ts
 models/PatchedBankFeedRow.ts
 models/PatchedBatchEditRequest.ts
 models/PatchedBookSettings.ts
+models/PatchedEmailPreferences.ts
 models/PatchedGoalWrite.ts
 models/PatchedInvitation.ts
 models/PatchedJournalEntry.ts

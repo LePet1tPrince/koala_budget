@@ -1,0 +1,4 @@
+{% load i18n %}{% autoescape off %}{% include "emails/_trial_ending_body.txt" %}
+{{ subscription_url }}
+
+{% translate "You get this because you administer this team's subscription." as reason %}{% include "emails/footer.txt" with reason=reason %}{% endautoescape %}

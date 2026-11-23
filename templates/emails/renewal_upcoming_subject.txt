@@ -1,0 +1,1 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate trimmed with project_name=project_name %}Your {{ project_name }} subscription renews soon{% endblocktranslate %}{% endautoescape %}

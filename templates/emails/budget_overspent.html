@@ -1,0 +1,21 @@
+{% extends 'emails/base.html' %}
+{% load i18n currency_tags %}
+{% block message_body %}
+<p>{% blocktranslate trimmed with book=book.name month=month|date:"F Y" %}
+  Spending in {{ book }} has gone past what's available in these categories for {{ month }}:
+{% endblocktranslate %}</p>
+<table role='presentation' cellpadding='0' cellspacing='0' style='width:100%;font-size:16px;line-height:24px;'>
+  {% for row in rows %}
+    <tr>
+      <td style='padding:4px 0;'>{{ row.category.name }}</td>
+      <td style='padding:4px 0;text-align:right;color:#b91c1c;white-space:nowrap;'>
+        {% blocktranslate trimmed with over=row.over_by|currency %}{{ over }} over{% endblocktranslate %}
+      </td>
+    </tr>
+  {% endfor %}
+</table>
+<p>{% translate "Move money from another category or a goal to cover it on the budget page." %}</p>
+{% endblock %}
+{% block cta_link %}{{ budget_url }}{% endblock %}
+{% block cta_text %}{% translate "Open the budget" %}{% endblock %}
+{% block footer_reason %}{% translate "You get this because you are a member of this book's team. You hear about each category once a month." %}{% endblock %}

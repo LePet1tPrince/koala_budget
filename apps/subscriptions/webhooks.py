@@ -1,6 +1,7 @@
 import logging
 
 from django.core.mail import mail_admins
+from django.db import transaction
 from djstripe.event_handlers import djstripe_receiver
 from djstripe.models import Customer, Price, Subscription
 
@@ -75,6 +76,15 @@ def email_admins_when_subscriptions_canceled(event, **kwargs):
         f"Their email was {customer_email}",
         fail_silently=True,
     )
+
+
+@djstripe_receiver(["customer.subscription.trial_will_end", "invoice.payment_failed", "invoice.upcoming"])
+def email_admins_about_billing(event, **kwargs):
+    """Trial ending, a failed payment, an annual renewal coming: the team's admins hear by email."""
+    from apps.emails.tasks import send_billing_email
+
+    event_type, stripe_object = event.type, event.data["object"]
+    transaction.on_commit(lambda: send_billing_email.delay(event_type, stripe_object), robust=True)
 
 
 def has_multiple_items(stripe_event_data):

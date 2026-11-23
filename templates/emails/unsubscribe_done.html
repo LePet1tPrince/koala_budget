@@ -1,0 +1,13 @@
+{% extends "account/base.html" %}
+{% load i18n %}
+{% block content %}
+  <div class="app-card" data-testid="unsubscribe-done">
+    <h1 class="text-2xl font-bold mb-2">{% translate "You're unsubscribed" %}</h1>
+    <p class="mb-4">
+      {% blocktranslate trimmed with label=label email=masked_email %}
+        {{ email }} won't get {{ label }} any more.
+      {% endblocktranslate %}
+    </p>
+    <a href="{% url 'emails:preferences' %}" class="link">{% translate "Change your email preferences" %}</a>
+  </div>
+{% endblock %}

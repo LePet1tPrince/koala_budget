@@ -137,6 +137,16 @@ def sections_for(request) -> list[SettingsSection]:
             group=GROUP_ME,
         )
     )
+    sections.append(
+        SettingsSection(
+            key="emails",
+            label=_("Email notifications"),
+            blurb=_("Bank connection and overspending alerts."),
+            icon="mail",
+            url=reverse("emails:preferences"),
+            group=GROUP_ME,
+        )
+    )
     if user.has_usable_password():
         sections.append(
             SettingsSection(

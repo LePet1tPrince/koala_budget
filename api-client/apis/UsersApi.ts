@@ -18,6 +18,8 @@ import type {
   APIKey,
   APIKeyCreated,
   DeleteAccount,
+  EmailPreferences,
+  PatchedEmailPreferences,
   PatchedProfile,
   Profile,
   ProfileUpdate,
@@ -29,6 +31,10 @@ import {
     APIKeyCreatedToJSON,
     DeleteAccountFromJSON,
     DeleteAccountToJSON,
+    EmailPreferencesFromJSON,
+    EmailPreferencesToJSON,
+    PatchedEmailPreferencesFromJSON,
+    PatchedEmailPreferencesToJSON,
     PatchedProfileFromJSON,
     PatchedProfileToJSON,
     ProfileFromJSON,
@@ -43,6 +49,10 @@ export interface ApiKeysRevokeRequest {
 
 export interface DeleteAccountRequest {
     deleteAccount: DeleteAccount;
+}
+
+export interface EmailPreferencesPartialUpdateRequest {
+    patchedEmailPreferences?: PatchedEmailPreferences;
 }
 
 export interface ProfileAvatarUploadRequest {
@@ -241,6 +251,75 @@ export class UsersApi extends runtime.BaseAPI {
      */
     async downloadData(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Blob> {
         const response = await this.downloadDataRaw(initOverrides);
+        return await response.value();
+    }
+
+    /**
+     * Turn optional emails on or off; fields left out keep their value. Billing notices (trial ending, failed payment, annual renewal) go to team admins regardless.
+     */
+    async emailPreferencesPartialUpdateRaw(requestParameters: EmailPreferencesPartialUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EmailPreferences>> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/emails/api/preferences/`,
+            method: 'PATCH',
+            headers: headerParameters,
+            query: queryParameters,
+            body: PatchedEmailPreferencesToJSON(requestParameters['patchedEmailPreferences']),
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => EmailPreferencesFromJSON(jsonValue));
+    }
+
+    /**
+     * Turn optional emails on or off; fields left out keep their value. Billing notices (trial ending, failed payment, annual renewal) go to team admins regardless.
+     */
+    async emailPreferencesPartialUpdate(requestParameters: EmailPreferencesPartialUpdateRequest = {}, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EmailPreferences> {
+        const response = await this.emailPreferencesPartialUpdateRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
+     */
+    async emailPreferencesRetrieveRaw(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<EmailPreferences>> {
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/emails/api/preferences/`,
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => EmailPreferencesFromJSON(jsonValue));
+    }
+
+    /**
+     */
+    async emailPreferencesRetrieve(initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<EmailPreferences> {
+        const response = await this.emailPreferencesRetrieveRaw(initOverrides);
         return await response.value();
     }
 
