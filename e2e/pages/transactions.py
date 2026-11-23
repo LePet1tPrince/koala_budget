@@ -203,8 +203,17 @@ class TransactionsPage(BasePage):
         self.page.locator("[data-testid='start-split-btn']").click()
         self.page.wait_for_selector("[data-testid='split-editor']")
 
-    def has_split_editor(self) -> bool:
-        return self.page.locator("[data-testid='split-editor']").is_visible()
+    def has_split_editor(self, timeout: int = 5_000) -> bool:
+        """
+        Whether the edit modal shows the split editor. A split row's legs are set by
+        the modal's effect after it first paints, so give the editor a moment to appear
+        rather than reading the DOM the instant the modal is visible.
+        """
+        try:
+            self.page.locator("[data-testid='split-editor']").wait_for(state="visible", timeout=timeout)
+        except PlaywrightTimeoutError:
+            return False
+        return True
 
     def split_leg_count(self) -> int:
         return self.page.locator("[data-testid^='split-category-']").count()

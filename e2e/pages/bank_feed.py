@@ -1,5 +1,7 @@
 """Page Object Model for the Bank Feed page (React-rendered)."""
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
 from .base import BasePage
 
 
@@ -231,8 +233,25 @@ class BankFeedPage(BasePage):
         self.page.locator("[data-testid='start-split-btn']").click()
         self.page.wait_for_selector("[data-testid='split-editor']", timeout=5_000)
 
-    def has_split_editor(self) -> bool:
-        return self.page.locator("[data-testid='split-editor']").count() > 0
+    def has_split_editor(self, timeout: int = 5_000) -> bool:
+        """
+        Whether the edit modal shows the split editor. A split row's legs are set by
+        the modal's effect after it first paints, so give the editor a moment to appear
+        rather than reading the DOM the instant the modal is visible.
+        """
+        try:
+            self.page.locator("[data-testid='split-editor']").wait_for(state="visible", timeout=timeout)
+        except PlaywrightTimeoutError:
+            return False
+        return True
+
+    def split_editor_closed(self) -> bool:
+        """The split editor has gone (after Remove split), waiting for the re-render."""
+        try:
+            self.page.locator("[data-testid='split-editor']").wait_for(state="detached", timeout=5_000)
+        except PlaywrightTimeoutError:
+            return False
+        return True
 
     def split_leg_count(self) -> int:
         return self.page.locator("[data-testid^='split-amount-']").count()
