@@ -51,9 +51,11 @@ class ProjectImageTestCase(SimpleTestCase):
         from django.conf import settings
         from django.contrib.staticfiles import finders
 
-        with patch("apps.web.templatetags.meta_tags.static", side_effect=lambda name: f"/static/{name}") as static:
-            with patch("apps.web.meta.get_server_root", return_value="https://example.com"):
-                get_image_url(settings.PROJECT_METADATA, "")
+        with (
+            patch("apps.web.templatetags.meta_tags.static", side_effect=lambda name: f"/static/{name}") as static,
+            patch("apps.web.meta.get_server_root", return_value="https://example.com"),
+        ):
+            get_image_url(settings.PROJECT_METADATA, "")
         name = static.call_args.args[0]
         self.assertFalse(name.startswith("/"))
         self.assertIsNotNone(finders.find(name))
