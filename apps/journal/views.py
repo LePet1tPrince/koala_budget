@@ -10,20 +10,21 @@ from django.shortcuts import get_object_or_404, render
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from apps.accounts.guards import assert_category_allowed
 from apps.accounts.models import Account, Payee
+from apps.api.base import error_response
 from apps.audit.models import AuditEvent, AuditLog
 from apps.audit.serializers import AuditLogSerializer
 from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
 from apps.books.helpers import book_display_name
 from apps.books.permissions import BookModelAccessPermissions
-from apps.reconciliation.services.guards import ReconciledLineError, assert_line_mutable
+from apps.reconciliation.services.guards import assert_line_mutable
 from apps.utils.months import add_months
 
 from .filters import (
@@ -101,10 +102,7 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         serializer.save(book=self.request.book)
 
     def destroy(self, request, *args, **kwargs):
-        try:
-            period_lock.assert_entry_mutable(self.get_object(), book=request.book)
-        except period_lock.PeriodLockedError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        period_lock.assert_entry_mutable(self.get_object(), book=request.book)
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"])
@@ -116,20 +114,11 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         journal_entry = self.get_object()
 
         if journal_entry.status != JournalEntry.STATUS_DRAFT:
-            return Response(
-                {"error": "Only draft entries can be posted."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("Only draft entries can be posted.")
 
         if not journal_entry.is_balanced:
-            return Response(
-                {"error": "Cannot post an unbalanced journal entry."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        try:
-            period_lock.assert_entry_mutable(journal_entry, book=request.book)
-        except period_lock.PeriodLockedError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("Cannot post an unbalanced journal entry.")
+        period_lock.assert_entry_mutable(journal_entry, book=request.book)
 
         journal_entry.status = JournalEntry.STATUS_POSTED
         journal_entry.save()
@@ -146,17 +135,11 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         journal_entry = self.get_object()
 
         if journal_entry.status != JournalEntry.STATUS_POSTED:
-            return Response(
-                {"error": "Only posted entries can be voided."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("Only posted entries can be voided.")
 
         # Voiding drops every line out of every balance, reconciled ones included,
         # and takes the entry's bank rows with it.
-        try:
-            voiding.void(entries=[journal_entry])
-        except voiding.VoidRefused as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        voiding.void(entries=[journal_entry])
 
         serializer = self.get_serializer(journal_entry)
         return Response(serializer.data)
@@ -277,10 +260,7 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         journal_entry.delete()
 
     def destroy(self, request, *args, **kwargs):
-        try:
-            period_lock.assert_entry_mutable(self.get_object().journal_entry, book=request.book)
-        except period_lock.PeriodLockedError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        period_lock.assert_entry_mutable(self.get_object().journal_entry, book=request.book)
         return super().destroy(request, *args, **kwargs)
 
     @extend_schema(
@@ -308,31 +288,19 @@ class SimpleLineViewSet(viewsets.ModelViewSet):
         new_category_id = request.data.get("new_category_id")
 
         if not new_category_id:
-            return Response(
-                {"error": "new_category_id is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("new_category_id is required")
 
         new_category = get_object_or_404(Account.objects.filter(book=self.request.book), id=new_category_id)
-        try:
-            assert_category_allowed(new_category, keep_ids={line.account_id})
-        except ValueError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        assert_category_allowed(new_category, keep_ids={line.account_id})
 
         # A line moved onto an account the entry already posts to on the *other*
         # side (e.g. the bank account the money came through) cancels itself out.
         other_side = {"cr_amount__gt": 0} if line.dr_amount > 0 else {"dr_amount__gt": 0}
         if line.journal_entry.lines.exclude(pk=line.pk).filter(account=new_category, **other_side).exists():
-            return Response(
-                {"error": _("The transaction already uses that account on its other side.")},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response(_("The transaction already uses that account on its other side."))
 
-        try:
-            assert_line_mutable(line, new_account=new_category)
-            period_lock.assert_entry_mutable(line.journal_entry, book=request.book)
-        except (ReconciledLineError, period_lock.PeriodLockedError) as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        assert_line_mutable(line, new_account=new_category)
+        period_lock.assert_entry_mutable(line.journal_entry, book=request.book)
 
         repoint_line(line, new_category)
 
@@ -463,7 +431,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
             # A shape the editor cannot present as one transaction -- a hand-built
             # entry, say. The row still lists; it just cannot be opened, and the
             # modal shows this reason instead of failing opaquely.
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response(str(exc))
 
     @extend_schema(
         operation_id="transactions_pickers",
@@ -592,12 +560,9 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        try:
-            entries = self.load_for_edit(data["ids"])
-            edits = self._edits_from(data, book=request.book)
-            updated = apply_edits_bulk(entries, edits, book=request.book)
-        except EditRefused as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        entries = self.load_for_edit(data["ids"])
+        edits = self._edits_from(data, book=request.book)
+        updated = apply_edits_bulk(entries, edits, book=request.book)
 
         if len(data["ids"]) > 1:
             log_event(
@@ -655,13 +620,10 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         serializer.is_valid(raise_exception=True)
         ids = serializer.validated_data["ids"]
 
-        try:
-            entries = self.load_for_edit(ids)
-            with transaction.atomic():
-                for entry in entries:
-                    delete_transaction(entry, book=request.book)
-        except EditRefused as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        entries = self.load_for_edit(ids)
+        with transaction.atomic():
+            for entry in entries:
+                delete_transaction(entry, book=request.book)
 
         if len(ids) > 1:
             log_event(AuditEvent.BULK_DELETE, request=request, metadata={"count": len(ids), "scope": "transactions"})
@@ -680,12 +642,9 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        try:
-            entries = self.load_for_edit(data["ids"])
-            with transaction.atomic():
-                updated = [set_status(entry, data["status"], book=request.book) for entry in entries]
-        except EditRefused as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        entries = self.load_for_edit(data["ids"])
+        with transaction.atomic():
+            updated = [set_status(entry, data["status"], book=request.book) for entry in entries]
 
         return Response({"results": self.rows_for(updated)})
 
@@ -744,10 +703,7 @@ class TransactionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
         """
         column = COLUMNS.get((request.query_params.get("column") or "").strip())
         if column is None:
-            return Response(
-                {"error": f"Unknown column. Expected one of: {', '.join(COLUMNS)}."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response(f"Unknown column. Expected one of: {', '.join(COLUMNS)}.")
 
         queryset = self.filtered_queryset(exclude_column=column.key, facet_column=column.key)
         query = (request.query_params.get("q") or "").strip()

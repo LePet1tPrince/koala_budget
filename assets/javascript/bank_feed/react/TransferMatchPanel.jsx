@@ -3,8 +3,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 import Icon from '../../common/Icon';
-import { formatCurrency } from '../../utilities/currency';
 import { formatDate } from '../utils';
+import { formatMoney } from '../../common/amount';
 
 /**
  * Inline review of a possible duplicate transfer, rendered under its feed row.
@@ -136,8 +136,8 @@ const categoryText = (leg, counterpart) => {
 
 const amountText = (leg) =>
   Number(leg.inflow) > 0
-    ? interpolate(gettext('%s in'), [formatCurrency(leg.inflow)])
-    : interpolate(gettext('%s out'), [formatCurrency(leg.outflow)]);
+    ? interpolate(gettext('%s in'), [formatMoney(leg.inflow)])
+    : interpolate(gettext('%s out'), [formatMoney(leg.outflow)]);
 
 /**
  * The two legs side by side, one row per attribute, so a difference (dates two

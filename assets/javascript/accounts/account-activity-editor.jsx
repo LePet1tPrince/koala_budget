@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import TransactionEditModal from '../transactions/TransactionEditModal';
+import TransactionModal from '../bank_feed/react/TransactionModal';
+import { ledgerTransaction } from '../transactions/ledgerTransaction';
 import { getTransactionsApi } from '../transactions/transactionsApi';
 import Toast from '../common/Toast';
 import { readBook } from '../common/book';
@@ -25,7 +26,7 @@ const AccountActivityEditor = ({ table }) => {
   const pickers = useMemo(() => api.pickers(), [api]);
   const [allAccounts, setAllAccounts] = useState([]);
   const [allPayees, setAllPayees] = useState([]);
-  const [editing, setEditing] = useState([]);
+  const [editing, setEditing] = useState(null);
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
@@ -43,7 +44,7 @@ const AccountActivityEditor = ({ table }) => {
         // The table row is a display projection; the detail fetch carries the
         // ids, split legs and capabilities the modal opens on.
         const [detail] = await Promise.all([api.fetchDetail(entryId), pickers]);
-        setEditing([detail]);
+        setEditing(detail);
       } catch (err) {
         setToast({ message: err.message, severity: 'error' });
       }
@@ -71,25 +72,27 @@ const AccountActivityEditor = ({ table }) => {
 
   return (
     <>
-      <TransactionEditModal
-        open={editing.length > 0}
-        transactions={editing}
+      <TransactionModal
+        open={Boolean(editing)}
+        transaction={editing}
+        source={ledgerTransaction}
         allAccounts={allAccounts}
+        accounts={allAccounts}
         allPayees={allPayees}
         book={book}
-        onSave={async (ids, updates) => {
-          await api.saveEdits(ids, updates);
+        onSave={async (updates) => {
+          await api.saveEdits([editing.id], updates);
           reload();
         }}
-        onDelete={async (ids) => {
-          await api.deleteTransactions(ids);
+        onDelete={async () => {
+          await api.deleteTransactions([editing.id]);
           reload();
         }}
-        onSetStatus={async (ids, statusValue) => {
-          await api.setStatus(ids, statusValue);
+        onSetStatus={async (statusValue) => {
+          await api.setStatus([editing.id], statusValue);
           reload();
         }}
-        onClose={() => setEditing([])}
+        onClose={() => setEditing(null)}
         onAccountCreated={(account) =>
           setAllAccounts((prev) => (prev.some((a) => a.id === account.id) ? prev : [...prev, account]))
         }

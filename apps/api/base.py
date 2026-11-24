@@ -40,6 +40,9 @@ Validation failures are DRF's own shape, `{"<field>": ["message", ...]}` with a
 `is_valid(raise_exception=True)` produces, so a parameter error and a body error
 look the same to the client. Errors not about one field use
 `{"non_field_errors": [...]}` (or `{"detail": "..."}` for DRF's own 401/403/404).
+
+The older feed, transactions and rules endpoints answer `{"error": "..."}`
+instead: `error_response`, `get_or_404`, or a raised `apps.utils.errors.Refused`.
 """
 
 from collections.abc import Callable
@@ -48,8 +51,9 @@ from datetime import date
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema_field
-from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework import serializers, status
+from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.books.permissions import BookAccessPermissions
@@ -58,6 +62,19 @@ from apps.utils.months import format_month, parse_month
 INVALID_MONTH = _("Enter a month as YYYY-MM.")
 
 MONTH_SCHEMA = {"type": "string", "pattern": r"^[0-9]{4}-[0-9]{2}$", "example": "2026-03"}
+
+
+def error_response(message, code: int = status.HTTP_400_BAD_REQUEST) -> Response:
+    """The `{"error": message}` answer the book apps' own endpoints give (see `apps.utils.errors`)."""
+    return Response({"error": message}, status=code)
+
+
+def get_or_404(queryset, message, **lookup):
+    """The row of `queryset` matching `lookup`, or a 404 answering `{"error": message}`."""
+    found = queryset.filter(**lookup).first()
+    if found is None:
+        raise NotFound({"error": message})
+    return found
 
 
 def parse_month_param(value, *, field: str = "month") -> date:

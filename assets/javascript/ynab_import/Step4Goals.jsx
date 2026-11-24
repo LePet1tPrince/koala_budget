@@ -3,6 +3,7 @@
 import React from 'react';
 
 import Icon from '../common/Icon';
+import { formatMoney } from '../common/amount';
 
 /**
  * Which savings categories become goals.
@@ -16,9 +17,6 @@ import Icon from '../common/Icon';
  * transfers, and the odd one out (`Investment Gain/Loss`) that is a valuation
  * change rather than either.
  */
-const money = (value) =>
-  `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 const KINDS = [
   { value: 'goal', label: gettext('A savings goal') },
   { value: 'expense', label: gettext('A spending category') },
@@ -77,7 +75,7 @@ const Step4Goals = ({ categories, choices, onChange }) => {
                 </div>
                 {kind === 'goal' && (
                   <span className="badge badge-success badge-soft whitespace-nowrap">
-                    {money(category.saved)} {gettext('saved')}
+                    {formatMoney(category.saved)} {gettext('saved')}
                   </span>
                 )}
               </div>

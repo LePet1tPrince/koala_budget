@@ -19,7 +19,7 @@
 import { BudgetApi, Configuration } from 'api-client';
 
 import { getApiHeaders } from '../api';
-import { formatMoney } from '../common/amount';
+import { formatGrouped, formatMoney } from '../common/amount';
 
 const DEBOUNCE_MS = 350;
 const CARRY_OVER_MS = 30 * 60 * 1000;
@@ -33,8 +33,7 @@ let current = null;
 let timer = null;
 let ticket = 0;
 
-const money = (value) =>
-  Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (value) => formatGrouped(Math.abs(value));
 
 function remember(data) {
   try {

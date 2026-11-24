@@ -22,11 +22,11 @@ import {
   summaryAsRow,
   writeQueryToUrl,
 } from '../feedQuery';
-import { formatCurrency } from '../../utilities/currency';
 import Icon from '../../common/Icon';
 import { BankFeedRowFromJSON } from 'api-client';
 import { rulesApiForBook } from '../../rules/api';
 import RuleBuilderDialog, { draftFromRow } from '../../rules/RuleBuilderDialog';
+import { formatMoney } from '../../common/amount';
 
 /** How long the feed waits after its last write settles before re-reading it. */
 const QUIET_REFRESH_DELAY_MS = 500;
@@ -1377,13 +1377,13 @@ const LineApp = ({
               <span className="text-base-content/70">
                 {gettext('Categorized balance')}:{' '}
                 <span className="font-semibold text-base-content">
-                  {formatCurrency(selectedAccount.categorized_balance ?? selectedAccount.balance)}
+                  {formatMoney(selectedAccount.categorized_balance ?? selectedAccount.balance)}
                 </span>
               </span>
               <span className="text-base-content/70">
                 {gettext('Reconciled balance')}:{' '}
                 <span className="font-semibold text-base-content">
-                  {formatCurrency(selectedAccount.reconciled_balance ?? 0)}
+                  {formatMoney(selectedAccount.reconciled_balance ?? 0)}
                 </span>
                 {selectedAccount.last_statement_date ? (
                   <span className="ml-2" data-testid="reconciled-through">

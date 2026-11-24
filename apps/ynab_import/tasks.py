@@ -11,13 +11,11 @@ be visible to anyone until the import had already finished.
 import logging
 
 from celery import shared_task
-from celery_progress.backend import ProgressRecorder
 from django.conf import settings
-from django.db import transaction
-from django.utils import timezone
 
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
+from apps.utils.progress import reporter
 
 from .models import YnabImport
 from .services.apply import ApplyError, apply_plan
@@ -40,29 +38,9 @@ def run_ynab_import(self, import_id: int):
         # would write the whole history twice.
         return record.as_dict()
 
-    recorder = ProgressRecorder(self)
     channel = ProgressChannel(record.id)
-
-    record.status = YnabImport.STATUS_RUNNING
-    record.progress = 0
-    record.step = "Reading your export"
-    record.started_at = timezone.now()
-    record.save(update_fields=["status", "progress", "step", "started_at", "updated_at"])
-
-    def report(percent: int, step: str):
-        """
-        Two channels, because each fails in a way the other does not.
-
-        The result backend is Redis and so is not inside the import's transaction;
-        the second connection is the database, so it still works where results are
-        turned off. Neither may fail the import: losing the progress bar is a far
-        better outcome than losing the books.
-        """
-        try:
-            recorder.set_progress(percent, 100, description=step)
-        except Exception:  # noqa: BLE001 - progress is a nicety; the import is not
-            logger.debug("Could not report YNAB import progress to the result backend", exc_info=True)
-        channel.report(percent, step)
+    report = reporter(self, channel)
+    record.start("Reading your export")
 
     try:
         report(2, "Reading your export")
@@ -73,38 +51,23 @@ def run_ynab_import(self, import_id: int):
         checks = reconcile(analysis, plan)
     except (ApplyError, BuildError) as error:
         channel.close()
-        record.status = YnabImport.STATUS_FAILED
-        record.error = str(error)
-        record.finished_at = timezone.now()
-        record.save(update_fields=["status", "error", "finished_at", "updated_at"])
-        return record.as_dict()
+        return record.fail(str(error))
     except Exception as error:  # noqa: BLE001 - the wizard must say something, whatever broke
         channel.close()
         logger.exception("YNAB import %s failed", import_id)
-        record.status = YnabImport.STATUS_FAILED
-        record.error = f"The import could not be completed: {error}"
-        record.finished_at = timezone.now()
-        record.save(update_fields=["status", "error", "finished_at", "updated_at"])
-        return record.as_dict()
+        return record.fail(f"The import could not be completed: {error}")
 
     channel.close()
-
-    with transaction.atomic():
-        record.status = YnabImport.STATUS_DONE
-        record.progress = 100
-        record.step = "Done"
-        record.finished_at = timezone.now()
-        record.result = {
+    record.finish(
+        {
             "created": result.as_dict(),
             "summary": plan.stats,
             "notes": plan.notes,
             "reconciliation": checks.as_dict(),
-        }
-        # The export is in the ledger now. Keeping a second copy of someone's entire
-        # financial history in a staging table buys nothing.
-        record.register_csv = ""
-        record.plan_csv = ""
-        record.save()
+        },
+        register_csv="",
+        plan_csv="",
+    )
 
     _finish_onboarding(record)
 

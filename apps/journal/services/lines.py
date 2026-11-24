@@ -59,12 +59,13 @@ from django.utils.translation import gettext_lazy as _
 from apps.journal.models import JournalLine
 from apps.journal.services import period_lock
 from apps.reconciliation.services.guards import assert_line_mutable, assert_line_removable
+from apps.utils.errors import Refused
 
 ZERO = Decimal("0")
 CENT = Decimal("0.01")
 
 
-class SplitError(ValueError):
+class SplitError(Refused):
     """
     Lines the caller asked for that cannot be written.
 

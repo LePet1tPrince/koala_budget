@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 
 import AmountInput from '../common/AmountInput';
-import { amountForPayload } from '../common/amount';
+import { amountForPayload, formatMoney } from '../common/amount';
 
 /**
  * The opening-balance step, and the net-worth reveal that follows it.
@@ -25,15 +25,6 @@ import { amountForPayload } from '../common/amount';
   most locales, which would make this one number look foreign on a page where
   every other figure says "$".
 */
-const money = (value) => {
-  const amount = Number(value) || 0;
-  const sign = amount < 0 ? '-' : '';
-  return `${sign}$${Math.abs(amount).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-};
-
 const useCountUp = (from, to, ms = 700) => {
   const [value, setValue] = useState(from);
 
@@ -72,10 +63,10 @@ const Reveal = ({ before, after, onClose, reportUrl }) => {
       </p>
 
       <p className="money mt-6 text-center text-[2.5rem] font-semibold tracking-tight" data-testid="net-worth-figure">
-        {money(shown)}
+        {formatMoney(shown)}
       </p>
       <p className="mt-1 text-center text-sm text-base-content/70">
-        {gettext('was {before}').replace('{before}', money(before))}
+        {gettext('was {before}').replace('{before}', formatMoney(before))}
       </p>
 
       <div className="mt-7 flex flex-wrap justify-end gap-2">

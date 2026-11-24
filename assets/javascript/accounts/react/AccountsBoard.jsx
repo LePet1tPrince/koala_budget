@@ -19,10 +19,10 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 import Icon from '../../common/Icon';
-import { formatCurrency } from '../../utilities/currency';
 import { accountsUrls, apiErrorMessage, callApi, getAccountsApi } from '../accountsApi';
 import AccountModal from './manage/AccountModal';
 import GroupModal from './manage/GroupModal';
+import { formatMoney } from '../../common/amount';
 
 // Tabs over the type sections: one account type on screen at a time. Goals
 // also shows plain equity, which is the same stored type.
@@ -257,7 +257,7 @@ function AccountRowContent({ account, dragHandleProps, dragging, overlay, onTogg
         className={['font-mono text-sm shrink-0 tabular-nums', account.isHidden ? 'opacity-60' : ''].join(' ')}
         data-testid="account-balance"
       >
-        {formatCurrency(account.balance)}
+        {formatMoney(account.balance)}
         {account.isGoal && <span className="ml-1 font-sans text-xs text-base-content/70">{gettext('left')}</span>}
       </span>
       {onEdit && (
@@ -345,7 +345,7 @@ function GroupCard({
         </a>
         <span className="badge badge-ghost badge-sm shrink-0">{group.accounts.length}</span>
         <span className="ml-auto font-mono text-sm text-base-content/70 tabular-nums shrink-0">
-          {formatCurrency(subtotal)}
+          {formatMoney(subtotal)}
         </span>
         <EditButton
           label={interpolate(gettext('Edit %s'), [group.name])}

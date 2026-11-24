@@ -11,7 +11,6 @@ from django.db.models import Count, F, Max
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils import timezone
-from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -34,6 +33,7 @@ from apps.accounts.serializers import (
     PayeeSerializer,
     SimpleAccountSerializer,
 )
+from apps.api.base import error_response, get_or_404
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.books.decorators import login_and_book_required
@@ -43,12 +43,6 @@ from apps.budget.services import picker_accounts_data
 from apps.journal.models import JournalEntry
 from apps.journal.services import period_lock, voiding
 from apps.reconciliation.models import Reconciliation
-from apps.reconciliation.services.guards import (
-    ReconciledLineError,
-    assert_date_change_allowed,
-    assert_entry_removable,
-    assert_line_mutable,
-)
 from apps.reconciliation.services.integrity import intact_map
 from apps.rules.services import feedback as rules_feedback
 
@@ -79,14 +73,12 @@ from .services import edit, feed_query, recurring
 from .services.categorize import create_entry, repoint_category
 from .services.category_usage import category_usage
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
-from .services.edit import SPLIT_MIRROR_ERROR, VOID_EDIT_ERROR
 from .services.manual import create_manual_transaction
 from .services.sample_csv import build_sample_csv
 from .services.similar_transactions import suggest_categories
-from .services.splits import SplitError, apply_splits, check_legs_total, is_split, parse_legs
+from .services.splits import check_legs_total, parse_legs
 from .services.transfer_detection import find_transfer_candidates
 from .services.transfer_match import MatchError, ProposalChanged, match_transfer, propose_pairs
-from .services.transfer_mirror import is_split_mirror, sync_transfer, would_orphan_primary
 
 # How far back a new recurring transaction may start (its catch-up is written at once).
 RECURRING_MAX_DAYS_BACK = 366
@@ -269,6 +261,8 @@ class ManualTransactionSerializer(serializers.Serializer):
             raise serializers.ValidationError("Specify either inflow or outflow, not both.")
         if inflow == 0 and outflow == 0:
             raise serializers.ValidationError("Either inflow or outflow must be greater than zero.")
+        # Signed, positive for an outflow (the Plaid convention the ledger uses).
+        data["amount"] = outflow - inflow
         # The leg contents are validated by `parse_legs`, so the rules and their
         # wording live in one place; only the either/or belongs here.
         if data.get("splits") is not None and data.get("category") is not None:
@@ -451,23 +445,10 @@ class BankFeedViewSet(
         category_id = request.data.get("category_id")
 
         if not rows or not category_id:
-            return Response(
-                {"error": "rows and category_id are required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("rows and category_id are required")
 
-        # Verify category account exists and belongs to book
-        try:
-            category_account = Account.for_book.get(id=category_id)
-        except Account.DoesNotExist:
-            return Response(
-                {"error": "Category account not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        try:
-            assert_category_allowed(category_account)
-        except ValueError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        category_account = get_or_404(Account.for_book, "Category account not found", id=category_id)
+        assert_category_allowed(category_account)
 
         # Resolve all transactions up front so a bad id can't partially apply the batch
         tx_ids = {row.get("id") for row in rows if row.get("id")}
@@ -475,41 +456,22 @@ class BankFeedViewSet(
             BankTransaction.objects.select_related("account", "journal_entry").filter(id__in=tx_ids, book=request.book)
         )
         if len(transactions) != len(tx_ids):
-            return Response(
-                {"error": "One or more transactions not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return error_response("One or more transactions not found", status.HTTP_404_NOT_FOUND)
         refused = period_lock.refused_rows(transactions, book=request.book, categorizes=True)
         if refused:
             return refused_response(refused)
 
-        try:
-            with transaction.atomic():
-                for bank_tx in transactions:
-                    if bank_tx.journal_entry:
-                        # Already categorized: move the category line instead of
-                        # creating a duplicate journal entry
-                        self._update_journal_category(bank_tx, category_account)
-                    else:
-                        self._create_journal_from_bank_transaction(
-                            transaction_id=bank_tx.id,
-                            category_account=category_account,
-                            book=request.book,
-                        )
-        except ValueError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        with transaction.atomic():
+            for bank_tx in transactions:
+                # Already categorized: move the category line rather than add an entry.
+                if bank_tx.journal_entry:
+                    repoint_category(bank_tx, category_account)
+                else:
+                    create_entry(bank_tx, category_account)
 
         rules_feedback.record(transactions)
         log_event(AuditEvent.BULK_CATEGORIZE, request=request, metadata={"count": len(transactions)})
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-    def _create_journal_from_bank_transaction(self, transaction_id: int, category_account: Account, book):
-        """Create and link the journal entry for an uncategorized BankTransaction."""
-        bank_tx = BankTransaction.objects.select_related("account").get(id=transaction_id, book=book)
-        return create_entry(bank_tx, category_account)
 
     def list(self, request, team_slug=None, book_slug=None):
         """
@@ -588,7 +550,7 @@ class BankFeedViewSet(
                     account_id=int(request.query_params["in_account"]),
                 )
         except (KeyError, ValueError):
-            return Response({"error": "Pass row, or journal_entry and in_account."}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("Pass row, or journal_entry and in_account.")
         found = target.order_by("is_transfer_mirror", "pk").values("pk", "is_void").first()
         if found is None:
             return Response({"id": None, "page": None, "is_void": None})
@@ -621,51 +583,26 @@ class BankFeedViewSet(
 
         data = serializer.validated_data
 
-        # Verify accounts exist and belong to this book
-        try:
-            bank_account = Account.for_book.get(id=data["account"])
-        except Account.DoesNotExist:
-            return Response(
-                {"error": "Bank account not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        bank_account = get_or_404(Account.for_book, "Bank account not found", id=data["account"])
 
         # Category is optional — a blank category creates an uncategorized transaction
         # (no journal entry) that the user can categorize later.
         category_account = None
         if data.get("category") is not None:
-            try:
-                category_account = Account.for_book.get(id=data["category"])
-            except Account.DoesNotExist:
-                return Response(
-                    {"error": "Category account not found"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-            try:
-                assert_category_allowed(category_account)
-            except ValueError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            category_account = get_or_404(Account.for_book, "Category account not found", id=data["category"])
+            assert_category_allowed(category_account)
 
-        # Calculate amount (Plaid convention: positive = outflow, negative = inflow)
-        inflow = data.get("inflow", Decimal("0")) or Decimal("0")
-        outflow = data.get("outflow", Decimal("0")) or Decimal("0")
-        amount = outflow - inflow  # positive = outflow
+        amount = data["amount"]
 
         # Split legs, when the client sent them. Validated before anything is
         # written, so a bad payload never opens a transaction.
         legs = None
         if data.get("splits") is not None:
-            try:
-                legs = parse_legs(data["splits"])
-                check_legs_total(legs, total=amount)
-            except SplitError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            legs = parse_legs(data["splits"])
+            check_legs_total(legs, total=amount)
 
         if legs is not None or category_account is not None:
-            try:
-                period_lock.assert_date_open(request.book, data["date"])
-            except period_lock.PeriodLockedError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            period_lock.assert_date_open(request.book, data["date"])
 
         # Only categorized transactions get a journal entry; a blank category and
         # no splits leave the transaction uncategorized (journal_entry=None).
@@ -709,254 +646,36 @@ class BankFeedViewSet(
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     def update(self, request, team_slug=None, book_slug=None, pk=None):
-        """
-        Update an existing bank transaction and its associated journal entry.
-
-        Request body:
-        - date: Transaction date (YYYY-MM-DD)
-        - category: Category account ID
-        - inflow: Money coming in (default 0)
-        - outflow: Money going out (default 0)
-        - payee: Payee/merchant name (optional)
-        - description: Transaction description (optional)
-        - account: Bank account ID
-        """
-        # Get the existing bank transaction
-        try:
-            bank_tx = BankTransaction.objects.select_related("account", "journal_entry").get(id=pk, book=request.book)
-        except BankTransaction.DoesNotExist:
-            return Response(
-                {"error": "Transaction not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        # A void transaction counts toward nothing; editing it would change what
-        # the user restores later without them seeing it. Restore first.
-        if bank_tx.is_void:
-            return Response({"error": VOID_EDIT_ERROR}, status=status.HTTP_400_BAD_REQUEST)
-
+        """Replace a feed row's fields and categorization (`services.edit.update_row`)."""
+        bank_tx = get_or_404(
+            BankTransaction.objects.select_related("account", "journal_entry"),
+            "Transaction not found",
+            id=pk,
+            book=request.book,
+        )
         serializer = ManualTransactionSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
         data = serializer.validated_data
 
-        # Verify accounts exist and belong to this book
-        try:
-            bank_account = Account.for_book.get(id=data["account"])
-        except Account.DoesNotExist:
-            return Response(
-                {"error": "Bank account not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        # Category is optional — clearing it de-categorizes the transaction.
-        # An account the entry already uses stays allowed even if it's a system
-        # one, so re-saving an adjustment untouched keeps working.
-        current_category_ids = (
-            {line.account_id for line in bank_tx.journal_entry.lines.all() if line.account_id != bank_tx.account_id}
-            if bank_tx.journal_entry_id
-            else set()
+        category_id = data.get("category")
+        edit.update_row(
+            bank_tx,
+            account=get_or_404(Account.for_book, "Bank account not found", id=data["account"]),
+            category=None
+            if category_id is None
+            else get_or_404(Account.for_book, "Category account not found", id=category_id),
+            splits=data.get("splits"),
+            remove_split=data.get("remove_split", False),
+            amount=data["amount"],
+            date=data["date"],
+            payee_name=data.get("payee", ""),
+            description=data.get("description", ""),
         )
-        category_account = None
-        if data.get("category") is not None:
-            try:
-                category_account = Account.for_book.get(id=data["category"])
-            except Account.DoesNotExist:
-                return Response(
-                    {"error": "Category account not found"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-            try:
-                assert_category_allowed(category_account, keep_ids=current_category_ids)
-            except ValueError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-        # A split's transfer leg shows here as a mirror row; any edit to it would
-        # rewrite a split the user made in the other account.
-        if is_split_mirror(bank_tx):
-            return Response({"error": SPLIT_MIRROR_ERROR}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Re-pointing (or clearing) the mirror leg's category would orphan the real
-        # primary transaction; reject it (edit the original transaction instead).
-        if would_orphan_primary(bank_tx, category_account):
-            return Response(
-                {
-                    "error": "This is the mirror side of a transfer. Edit the original transaction to change its category."  # noqa: E501
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Removing the category from a reconciled transaction would drop confirmed
-        # history out of the ledger; refuse until it is unreconciled. A request
-        # carrying `splits` has no single category by design and is re-apportioning
-        # rather than de-categorizing, so it is not this guard's business -- the
-        # bank line keeps its amount either way.
-        if (
-            category_account is None
-            and data.get("splits") is None
-            and bank_tx.journal_entry
-            and bank_tx.journal_entry.lines.filter(account=bank_tx.account, is_reconciled=True).exists()
-        ):
-            return Response(
-                {"error": "This transaction is reconciled. Unreconcile it before removing its category."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Calculate amount (Plaid convention: positive = outflow, negative = inflow)
-        inflow = data.get("inflow", Decimal("0")) or Decimal("0")
-        outflow = data.get("outflow", Decimal("0")) or Decimal("0")
-        amount = outflow - inflow  # positive = outflow
-
-        # Split legs, when the client sent them. Validated (and their sum checked
-        # against the total) before anything is written, so a bad payload never
-        # opens a transaction.
-        legs = None
-        if data.get("splits") is not None:
-            try:
-                legs = parse_legs(data["splits"], keep_ids=current_category_ids)
-                check_legs_total(legs, total=amount)
-            except SplitError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-        # An existing split must be sent with its legs, or explicitly collapsed.
-        # Dropping them silently would fold the user's apportionment into whatever
-        # single category the request happened to carry -- which is exactly what the
-        # old code did, and why a split could not survive being opened.
-        if (
-            legs is None
-            and category_account is not None
-            and not data.get("remove_split")
-            and is_split(bank_tx.journal_entry)
-        ):
-            return Response(
-                {"error": "This transaction is split across categories. Send its splits, or remove the split first."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Reconciliation is a fact about the bank line, whose amount does not change
-        # when legs are re-apportioned -- so re-splitting a reconciled transaction is
-        # allowed, and changing its total is not.
-        if (
-            amount != bank_tx.amount
-            and bank_tx.journal_entry_id
-            and bank_tx.journal_entry.lines.filter(account=bank_tx.account, is_reconciled=True).exists()
-        ):
-            return Response(
-                {"error": "This transaction is reconciled. Unreconcile it before changing its amount."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # The rest of what can change a reconciled line: moving it to another
-        # account, re-dating it past its statement, or dropping the other side of
-        # a transfer by de-categorizing. `apply_splits` guards the legs themselves.
-        try:
-            entry = bank_tx.journal_entry
-            if entry is not None:
-                if bank_account.id != bank_tx.account_id:
-                    for line in entry.lines.filter(account=bank_tx.account):
-                        assert_line_mutable(line, new_account=bank_account)
-                assert_date_change_allowed(entry, data["date"])
-                if category_account is None and data.get("splits") is None:
-                    assert_entry_removable(
-                        entry, own_account_id=bank_tx.account_id, verb=gettext("removing its category")
-                    )
-        except ReconciledLineError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            period_lock.assert_row_edit_allowed(
-                bank_tx,
-                book=request.book,
-                new_date=data["date"],
-                categorizes=category_account is not None or legs is not None,
-            )
-        except period_lock.PeriodLockedError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Get or create payee if provided
-        payee = None
-        payee_name = data.get("payee", "")
-        if payee_name:
-            payee, _ = Payee.objects.get_or_create(
-                book=request.book,
-                name=payee_name,
-            )
-
-        try:
-            with transaction.atomic():
-                # Remember the original bank account so we can still identify the bank-side
-                # journal line after the account is reassigned
-                old_account = bank_tx.account
-
-                # Update bank transaction
-                bank_tx.account = bank_account
-                bank_tx.amount = amount
-                bank_tx.posted_date = data["date"]
-                bank_tx.description = data.get("description", "")
-                bank_tx.merchant_name = payee_name
-                bank_tx.save()
-
-                # Update, create, or remove the journal entry depending on the category.
-                # `apply_splits` writes the lines in every case -- a plain transaction is
-                # just a split with one leg -- so there is one place that decides which
-                # side of a line an amount lands on, and one place that checks the
-                # entry balances.
-                journal_entry = bank_tx.journal_entry
-                entry_legs = legs if legs is not None else [(category_account, amount)]
-
-                if category_account is None and legs is None:
-                    # Blank category: leave the transaction uncategorized. Drop any
-                    # existing journal entry (and its mirror leg) so it disappears from
-                    # balances and reappears as an uncategorized feed row.
-                    if journal_entry is not None:
-                        self._decategorize(bank_tx)
-                elif journal_entry:
-                    # Update existing journal entry
-                    journal_entry.entry_date = data["date"]
-                    journal_entry.description = data.get("description", "")
-                    journal_entry.payee = payee
-                    journal_entry.save()
-
-                    # Follow an account move before the lines are rewritten: the writer
-                    # finds the bank line by the transaction's *current* account, so the
-                    # old account's lines are re-pointed first (one save at a time, so
-                    # the audit signals fire).
-                    moved = journal_entry.lines.filter(account=old_account) if old_account != bank_account else ()
-                    apply_splits(bank_tx, entry_legs, total=amount, move_lines=moved)
-                else:
-                    # Create the entry; `apply_splits` writes its bank line and legs.
-                    journal_entry = JournalEntry.objects.create(
-                        book=request.book,
-                        entry_date=data["date"],
-                        description=data.get("description", ""),
-                        payee=payee,
-                        source=JournalEntry.SOURCE_MANUAL,
-                        status=JournalEntry.STATUS_POSTED,
-                    )
-
-                    bank_tx.journal_entry = journal_entry
-                    bank_tx.save()
-
-                    apply_splits(bank_tx, entry_legs, total=amount)
-
-                # Keep the transfer's two legs in lockstep — moves/creates/removes the
-                # counterpart leg and syncs its display fields, in either direction.
-                sync_transfer(bank_tx)
-
-        except ValueError as e:
-            # A reconciled leg `apply_splits` refused to drop or re-amount.
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
         rules_feedback.record([bank_tx])
 
-        # Reload to get updated data
         bank_tx.refresh_from_db()
-
-        # Return the updated transaction as a feed row
-        row = bank_transaction_to_feed_row(bank_tx)
-        response_serializer = BankFeedRowSerializer(row)
-        return Response(response_serializer.data)
+        return Response(BankFeedRowSerializer(bank_transaction_to_feed_row(bank_tx)).data)
 
     @extend_schema(
         operation_id="bank_feed_sample_csv",
@@ -995,10 +714,7 @@ class BankFeedViewSet(
         Response: headers, sample_rows, total_rows
         """
         if "file" not in request.FILES:
-            return Response(
-                {"error": "No file provided"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("No file provided")
 
         uploaded_file = request.FILES["file"]
         result = parse_file(uploaded_file, uploaded_file.name)
@@ -1034,31 +750,19 @@ class BankFeedViewSet(
         Response: total_rows, invalid_count, invalid_samples, suggested_format
         """
         if "file" not in request.FILES:
-            return Response(
-                {"error": "No file provided"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("No file provided")
 
         try:
             date_column = int(request.data.get("date_column"))
         except (TypeError, ValueError):
-            return Response(
-                {"error": "Invalid date_column"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("Invalid date_column")
 
         if date_column < 0:
-            return Response(
-                {"error": "Invalid date_column"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("Invalid date_column")
 
         date_format = request.data.get("date_format") or ""
         if not date_format:
-            return Response(
-                {"error": "No date_format provided"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("No date_format provided")
 
         has_headers = str(request.data.get("has_headers", "true")).lower() not in ("false", "0")
 
@@ -1111,10 +815,7 @@ class BankFeedViewSet(
         import json
 
         if "file" not in request.FILES:
-            return Response(
-                {"error": "No file provided"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("No file provided")
 
         uploaded_file = request.FILES["file"]
 
@@ -1122,18 +823,12 @@ class BankFeedViewSet(
         try:
             account_id = int(request.data.get("account_id"))
         except (TypeError, ValueError):
-            return Response(
-                {"error": "Invalid account_id"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("Invalid account_id")
 
         try:
             column_mapping = json.loads(request.data.get("column_mapping", "{}"))
         except json.JSONDecodeError:
-            return Response(
-                {"error": "Invalid column_mapping JSON"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response("Invalid column_mapping JSON")
 
         try:
             category_mappings_list = json.loads(request.data.get("category_mappings", "[]"))
@@ -1142,14 +837,7 @@ class BankFeedViewSet(
         except (json.JSONDecodeError, KeyError):
             category_mappings = {}
 
-        # Verify account belongs to book
-        try:
-            Account.for_book.get(id=account_id)
-        except Account.DoesNotExist:
-            return Response(
-                {"error": "Account not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        get_or_404(Account.for_book, "Account not found", id=account_id)
 
         date_format = request.data.get("date_format") or None
 
@@ -1215,14 +903,7 @@ class BankFeedViewSet(
         transactions = data["transactions"]
         skip_duplicates = data.get("skip_duplicates", True)
 
-        # Verify account belongs to book
-        try:
-            Account.for_book.get(id=account_id)
-        except Account.DoesNotExist:
-            return Response(
-                {"error": "Account not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        get_or_404(Account.for_book, "Account not found", id=account_id)
 
         result = create_transactions(
             transactions=transactions,
@@ -1250,17 +931,18 @@ class BankFeedViewSet(
         account_group_id = request.data.get("account_group_id")
 
         if not name:
-            return Response({"error": "name is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("name is required")
         if not account_group_id:
-            return Response({"error": "account_group_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response("account_group_id is required")
 
-        try:
-            account_group = AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET).get(id=account_group_id)
-        except AccountGroup.DoesNotExist:
-            return Response({"error": "Account group not found"}, status=status.HTTP_404_NOT_FOUND)
+        account_group = get_or_404(
+            AccountGroup.for_book.exclude(account_type=ACCOUNT_TYPE_BUDGET),
+            "Account group not found",
+            id=account_group_id,
+        )
 
         if Account.for_book.exclude_budget_buckets().filter(name__iexact=name).exists():
-            return Response({"error": f'An account named "{name}" already exists'}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response(f'An account named "{name}" already exists')
 
         account = Account.objects.create(
             name=name,
@@ -1377,19 +1059,13 @@ class BankFeedViewSet(
             if not raw_id:
                 continue
             if not raw_id.isdigit():
-                return Response(
-                    {"error": "ids must be a comma-separated list of transaction ids"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                return error_response("ids must be a comma-separated list of transaction ids")
             ids.append(int(raw_id))
 
         if not ids:
             return Response([])
         if len(ids) > MAX_SIMILAR_CATEGORY_IDS:
-            return Response(
-                {"error": f"At most {MAX_SIMILAR_CATEGORY_IDS} ids may be requested at once"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return error_response(f"At most {MAX_SIMILAR_CATEGORY_IDS} ids may be requested at once")
 
         transactions = BankTransaction.objects.filter(book=request.book, id__in=ids)
         suggestions_by_transaction = suggest_categories(request.book, transactions)
@@ -1434,32 +1110,14 @@ class BankFeedViewSet(
         # Validate referenced objects up front
         category_account = None
         if category_id is not None:
-            try:
-                category_account = Account.for_book.get(id=category_id)
-            except Account.DoesNotExist:
-                return Response(
-                    {"error": "Category account not found"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-            try:
-                assert_category_allowed(category_account)
-            except ValueError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            category_account = get_or_404(Account.for_book, "Category account not found", id=category_id)
+            assert_category_allowed(category_account)
 
         target_account = None
         if account_id is not None:
-            try:
-                target_account = Account.for_book.get(id=account_id)
-                if not target_account.has_feed:
-                    return Response(
-                        {"error": "Target account must have bank feed enabled"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            except Account.DoesNotExist:
-                return Response(
-                    {"error": "Target account not found"},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
+            target_account = get_or_404(Account.for_book, "Target account not found", id=account_id)
+            if not target_account.has_feed:
+                return error_response("Target account must have bank feed enabled")
 
         # A blank payee is how the caller clears one, so it must not create a
         # nameless Payee row — the entry's payee is unset instead.
@@ -1491,7 +1149,9 @@ class BankFeedViewSet(
         # so a selection spanning several accounts says which rows to deselect.
         refused = []
         for tx in transactions:
-            error = self._batch_edit_refusal(tx, category_account, target_account, new_date) or period_lock.row_refusal(
+            error = edit.refusal(
+                tx, category=category_account, target_account=target_account, new_date=new_date
+            ) or period_lock.row_refusal(
                 tx, book=request.book, new_date=new_date, categorizes=category_account is not None
             )
             if error:
@@ -1499,13 +1159,18 @@ class BankFeedViewSet(
         if refused:
             return refused_response(refused)
 
-        try:
-            self._apply_batch_edit(
-                transactions, category_account, target_account, payee_name, payee_obj, description, new_date, request
-            )
-        except ValueError as e:
-            # Raised inside the atomic block, so nothing in the batch was written.
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        # One transaction: a refusal part-way rolls back the whole batch.
+        with transaction.atomic():
+            for tx in transactions:
+                edit.apply_fields(
+                    tx,
+                    category=category_account,
+                    target_account=target_account,
+                    payee_name=payee_name,
+                    payee=payee_obj,
+                    description=description,
+                    new_date=new_date,
+                )
         if category_account is not None:
             rules_feedback.record(transactions)
 
@@ -1520,36 +1185,6 @@ class BankFeedViewSet(
             },
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-    @staticmethod
-    def _batch_edit_refusal(tx, category_account, target_account, new_date):
-        """Why `batch_edit` cannot apply to `tx`, or None."""
-        return edit.refusal(tx, category=category_account, target_account=target_account, new_date=new_date)
-
-    @transaction.atomic
-    def _apply_batch_edit(
-        self, transactions, category_account, target_account, payee_name, payee_obj, description, new_date, request
-    ):
-        """The writes behind `batch_edit`, in one transaction so a refusal rolls back the whole batch."""
-        for tx in transactions:
-            edit.apply_fields(
-                tx,
-                category=category_account,
-                target_account=target_account,
-                payee_name=payee_name,
-                payee=payee_obj,
-                description=description,
-                new_date=new_date,
-            )
-
-    @transaction.atomic
-    def _update_journal_category(self, bank_tx, new_category_account):
-        """Update the category line of an existing journal entry."""
-        repoint_category(bank_tx, new_category_account)
-
-    def _decategorize(self, bank_tx):
-        """Remove a transaction's categorization (`services.edit.decategorize`)."""
-        edit.decategorize(bank_tx)
 
     @extend_schema(
         operation_id="bank_feed_batch_void",
@@ -1735,7 +1370,7 @@ class BankFeedViewSet(
             try:
                 account_id = int(account_id)
             except ValueError:
-                return Response({"error": "account must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+                return error_response("account must be an integer")
             candidates = [p for p in candidates if account_id in (p["outflow"].account_id, p["inflow"].account_id)]
         serializer = TransferSuggestionSerializer(propose_pairs(candidates), many=True)
         return Response(serializer.data)
@@ -1770,11 +1405,11 @@ class BankFeedViewSet(
                 expected_archive_id=data["expected_archive_id"],
             )
         except BankTransaction.DoesNotExist:
-            return Response({"error": "One or both transactions not found."}, status=status.HTTP_404_NOT_FOUND)
+            return error_response("One or both transactions not found.", status.HTTP_404_NOT_FOUND)
         except ProposalChanged as e:
             return Response({"error": str(e), "proposal": e.proposal.as_dict()}, status=status.HTTP_409_CONFLICT)
         except (MatchError, ValueError) as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response(str(e))
 
         log_event(
             AuditEvent.TRANSFER_DUP_RESOLVED,
@@ -1804,10 +1439,7 @@ class BankFeedViewSet(
         # Both transactions must belong to this book before recording a dismissal.
         found = set(BankTransaction.objects.filter(id__in=[tx_a, tx_b], book=request.book).values_list("id", flat=True))
         if found != {tx_a, tx_b}:
-            return Response(
-                {"error": "One or both transactions not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return error_response("One or both transactions not found.", status.HTTP_404_NOT_FOUND)
 
         TransferMatchDismissal.record(request.book, tx_a, tx_b)
         log_event(

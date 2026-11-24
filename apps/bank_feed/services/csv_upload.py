@@ -263,97 +263,57 @@ def parse_amount(value: str) -> Decimal | None:
         return None
 
 
-def parse_csv_file(file: BinaryIO) -> ParseResult:
-    """
-    Parse a CSV file and return headers, sample rows, and total count.
-    """
+UNSUPPORTED_FILE_ERROR = "Unsupported file type. Please upload a CSV or Excel file."
+
+
+class UnsupportedFileError(ValueError):
+    pass
+
+
+def _csv_rows(file: BinaryIO) -> list[list[str]]:
+    content = file.read()
+    text = content.decode(detect_encoding(content))
     try:
-        content = file.read()
-        encoding = detect_encoding(content)
-        text = content.decode(encoding)
+        dialect = csv.Sniffer().sniff(text[:8192])
+    except csv.Error:
+        dialect = csv.excel
+    return list(csv.reader(io.StringIO(text), dialect))
 
-        # Use csv.Sniffer to detect dialect
-        try:
-            dialect = csv.Sniffer().sniff(text[:8192])
-        except csv.Error:
-            dialect = csv.excel
 
-        reader = csv.reader(io.StringIO(text), dialect)
-        rows = list(reader)
-
-        if not rows:
-            return ParseResult(headers=[], sample_rows=[], total_rows=0, error="File is empty")
-
-        headers = rows[0]
-        data_rows = rows[1:]
-
-        # Get sample rows (up to 5)
-        sample_rows = data_rows[:5]
-
-        return ParseResult(
-            headers=headers,
-            sample_rows=sample_rows,
-            total_rows=len(data_rows),
+def _excel_rows(file: BinaryIO) -> list[list[str]]:
+    """Every non-empty row, each cell as a string."""
+    workbook = load_workbook(filename=file, read_only=True, data_only=True)
+    try:
+        rows = (
+            [str(cell) if cell is not None else "" for cell in row]
+            for row in workbook.active.iter_rows(values_only=True)
         )
-
-    except Exception as e:
-        return ParseResult(headers=[], sample_rows=[], total_rows=0, error=str(e))
-
-
-def parse_excel_file(file: BinaryIO) -> ParseResult:
-    """
-    Parse an Excel file and return headers, sample rows, and total count.
-    """
-    try:
-        workbook = load_workbook(filename=file, read_only=True, data_only=True)
-        sheet = workbook.active
-
-        rows = []
-        for row in sheet.iter_rows(values_only=True):
-            # Convert all values to strings
-            str_row = [str(cell) if cell is not None else "" for cell in row]
-            # Skip completely empty rows
-            if any(cell.strip() for cell in str_row):
-                rows.append(str_row)
-
+        return [row for row in rows if any(cell.strip() for cell in row)]
+    finally:
         workbook.close()
 
-        if not rows:
-            return ParseResult(headers=[], sample_rows=[], total_rows=0, error="File is empty")
 
-        headers = rows[0]
-        data_rows = rows[1:]
-
-        # Get sample rows (up to 5)
-        sample_rows = data_rows[:5]
-
-        return ParseResult(
-            headers=headers,
-            sample_rows=sample_rows,
-            total_rows=len(data_rows),
-        )
-
-    except Exception as e:
-        return ParseResult(headers=[], sample_rows=[], total_rows=0, error=str(e))
+def read_rows(file: BinaryIO, filename: str, has_headers: bool = True) -> list[list[str]]:
+    """The upload's data rows (the header row dropped when `has_headers`), by file extension."""
+    name = filename.lower()
+    if name.endswith((".xlsx", ".xls")):
+        rows = _excel_rows(file)
+    elif name.endswith(".csv"):
+        rows = _csv_rows(file)
+    else:
+        raise UnsupportedFileError(UNSUPPORTED_FILE_ERROR)
+    return rows[1:] if has_headers else rows
 
 
 def parse_file(file: BinaryIO, filename: str) -> ParseResult:
-    """
-    Parse a file based on its extension.
-    """
-    filename_lower = filename.lower()
-
-    if filename_lower.endswith((".xlsx", ".xls")):
-        return parse_excel_file(file)
-    elif filename_lower.endswith(".csv"):
-        return parse_csv_file(file)
-    else:
-        return ParseResult(
-            headers=[],
-            sample_rows=[],
-            total_rows=0,
-            error="Unsupported file type. Please upload a CSV or Excel file.",
-        )
+    """The upload's headers, first five data rows, and data row count."""
+    try:
+        rows = read_rows(file, filename, has_headers=False)
+    except Exception as e:  # noqa: BLE001 - surface any read/decode failure to the caller
+        return ParseResult(headers=[], sample_rows=[], total_rows=0, error=str(e))
+    if not rows:
+        return ParseResult(headers=[], sample_rows=[], total_rows=0, error="File is empty")
+    return ParseResult(headers=rows[0], sample_rows=rows[1:6], total_rows=len(rows) - 1)
 
 
 def match_category(category_name: str, book) -> Account | None:
@@ -454,49 +414,6 @@ def suggest_account_for_category(
     return best
 
 
-def get_all_rows_from_csv(file: BinaryIO, has_headers: bool = True) -> list[list[str]]:
-    """Read all data rows from a CSV file."""
-    content = file.read()
-    encoding = detect_encoding(content)
-    text = content.decode(encoding)
-
-    try:
-        dialect = csv.Sniffer().sniff(text[:8192])
-    except csv.Error:
-        dialect = csv.excel
-
-    reader = csv.reader(io.StringIO(text), dialect)
-    rows = list(reader)
-
-    if not rows:
-        return []
-
-    if has_headers:
-        return rows[1:]  # Skip header row
-    return rows  # Return all rows including first row
-
-
-def get_all_rows_from_excel(file: BinaryIO, has_headers: bool = True) -> list[list[str]]:
-    """Read all data rows from an Excel file."""
-    workbook = load_workbook(filename=file, read_only=True, data_only=True)
-    sheet = workbook.active
-
-    rows = []
-    for row in sheet.iter_rows(values_only=True):
-        str_row = [str(cell) if cell is not None else "" for cell in row]
-        if any(cell.strip() for cell in str_row):
-            rows.append(str_row)
-
-    workbook.close()
-
-    if not rows:
-        return []
-
-    if has_headers:
-        return rows[1:]  # Skip header row
-    return rows  # Return all rows including first row
-
-
 # How many offending rows we send back for the warning -- enough to recognise the
 # problem, few enough to keep the response (and the toast) small.
 MAX_INVALID_DATE_SAMPLES = 5
@@ -523,20 +440,8 @@ def validate_date_column(
     Blank date cells count as invalid: the import rejects them too, and no
     format change will fix them.
     """
-    filename_lower = filename.lower()
-
     try:
-        if filename_lower.endswith((".xlsx", ".xls")):
-            rows = get_all_rows_from_excel(file, has_headers=has_headers)
-        elif filename_lower.endswith(".csv"):
-            rows = get_all_rows_from_csv(file, has_headers=has_headers)
-        else:
-            return DateValidationResult(
-                total_rows=0,
-                invalid_count=0,
-                invalid_samples=[],
-                error="Unsupported file type. Please upload a CSV or Excel file.",
-            )
+        rows = read_rows(file, filename, has_headers=has_headers)
     except Exception as e:  # noqa: BLE001 - surface any read/decode failure to the caller
         return DateValidationResult(total_rows=0, invalid_count=0, invalid_samples=[], error=str(e))
 
@@ -616,20 +521,10 @@ def preview_transactions(
     """
     from apps.bank_feed.models import BankTransaction
 
-    filename_lower = filename.lower()
-    has_headers = column_mapping.get("has_headers", True)
-
-    if filename_lower.endswith((".xlsx", ".xls")):
-        rows = get_all_rows_from_excel(file, has_headers=has_headers)
-    elif filename_lower.endswith(".csv"):
-        rows = get_all_rows_from_csv(file, has_headers=has_headers)
-    else:
-        return PreviewResult(
-            transactions=[],
-            unmapped_categories=[],
-            error_count=1,
-            duplicate_count=0,
-        )
+    try:
+        rows = read_rows(file, filename, has_headers=column_mapping.get("has_headers", True))
+    except UnsupportedFileError:
+        return PreviewResult(transactions=[], unmapped_categories=[], error_count=1, duplicate_count=0)
 
     transactions = []
     # category name -> {"inflow": Decimal, "outflow": Decimal, "count": int}

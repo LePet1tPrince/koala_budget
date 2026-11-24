@@ -168,8 +168,11 @@ needs it). `GET /api/me/` gives each book's `base_url`; the generated client tak
 | 409 | `{"detail": "..."}` | A stale confirmation (e.g. a reconciliation adjustment computed differently now) |
 | 429 | `{"detail": "..."}` | Throttled (DRF: 1000/hour per user, 100/hour anonymous; 10/hour for `users/api/delete-account/`) |
 
-A few older bank-feed actions answer `{"error": "..."}` instead of the field shape (the schema shows
-it). `assets/javascript/api.js::apiErrorMessage` picks the user-facing message from any of these.
+The older bank-feed, transactions and rules actions answer `{"error": "..."}` instead of the field
+shape (the schema shows it): `apps.api.base.error_response` / `get_or_404`, or any raised
+`apps.utils.errors.Refused` (the domain errors -- period lock, reconciled line, split, void, edit
+refusals), which `apps.api.exceptions.exception_handler` answers with its `status_code`.
+`assets/javascript/api.js::apiErrorMessage` picks the user-facing message from any of these.
 
 ### Permissions
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Icon from '../../common/Icon';
-import { formatCurrency } from '../../utilities/currency';
 import { formatDate as formatDateUtc } from '../utils';
+import { formatMoney } from '../../common/amount';
 
 /* globals gettext, interpolate */
 
@@ -111,11 +111,9 @@ const ScheduledTransactions = ({ client, book, accountIds, showAccount, refreshK
                       {rule.schedule}
                       {rule.endDate && ` · ${interpolate(gettext('until %s'), [formatDateUtc(rule.endDate)])}`}
                     </td>
+                    <td className="text-right money">{parseFloat(rule.inflow) > 0 ? formatMoney(rule.inflow) : ''}</td>
                     <td className="text-right money">
-                      {parseFloat(rule.inflow) > 0 ? formatCurrency(rule.inflow) : ''}
-                    </td>
-                    <td className="text-right money">
-                      {parseFloat(rule.outflow) > 0 ? formatCurrency(rule.outflow) : ''}
+                      {parseFloat(rule.outflow) > 0 ? formatMoney(rule.outflow) : ''}
                     </td>
                   </tr>
                 ))}

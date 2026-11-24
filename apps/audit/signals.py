@@ -13,135 +13,54 @@ from apps.audit.utils import (
 )
 from apps.journal.models import JournalEntry, JournalLine
 
-# ---- JournalEntry signals ----
+# ---- JournalEntry / JournalLine signals ----
+
+# model -> (snapshot function, relation the snapshot reads)
+SNAPSHOTS = {
+    JournalEntry: (snapshot_journal_entry, "payee"),
+    JournalLine: (snapshot_journal_line, "account"),
+}
 
 
-@receiver(pre_save, sender=JournalEntry)
-def journal_entry_pre_save(sender, instance, **kwargs):
-    if instance.pk:
-        try:
-            old = JournalEntry.objects.select_related("payee").get(pk=instance.pk)
-            instance._pre_save_state = snapshot_journal_entry(old)
-        except JournalEntry.DoesNotExist:
-            instance._pre_save_state = None
-    else:
-        instance._pre_save_state = None
-
-
-@receiver(post_save, sender=JournalEntry)
-def journal_entry_post_save(sender, instance, created, **kwargs):
-    ct = ContentType.objects.get_for_model(JournalEntry)
-    user = get_current_user()
-    if created:
-        AuditLog.objects.create(
-            content_type=ct,
-            object_id=instance.pk,
-            journal_entry_id=instance.pk,
-            team_id=instance.book.team_id,
-            book_id=instance.book_id,
-            user=user,
-            action=AuditLog.ACTION_CREATE,
-            source_model="JournalEntry",
-            changes={"snapshot": snapshot_journal_entry(instance)},
-        )
-    else:
-        before = getattr(instance, "_pre_save_state", None)
-        if before is not None:
-            changes = diff_snapshots(before, snapshot_journal_entry(instance))
-            if changes:
-                AuditLog.objects.create(
-                    content_type=ct,
-                    object_id=instance.pk,
-                    journal_entry_id=instance.pk,
-                    team_id=instance.book.team_id,
-                    book_id=instance.book_id,
-                    user=user,
-                    action=AuditLog.ACTION_UPDATE,
-                    source_model="JournalEntry",
-                    changes=changes,
-                )
-
-
-@receiver(post_delete, sender=JournalEntry)
-def journal_entry_post_delete(sender, instance, **kwargs):
-    ct = ContentType.objects.get_for_model(JournalEntry)
+def _log(sender, instance, action, changes):
     AuditLog.objects.create(
-        content_type=ct,
+        content_type=ContentType.objects.get_for_model(sender),
         object_id=instance.pk,
-        journal_entry_id=instance.pk,
+        journal_entry_id=instance.pk if sender is JournalEntry else instance.journal_entry_id,
         team_id=instance.book.team_id,
         book_id=instance.book_id,
         user=get_current_user(),
-        action=AuditLog.ACTION_DELETE,
-        source_model="JournalEntry",
-        changes={"snapshot": snapshot_journal_entry(instance)},
+        action=action,
+        source_model=sender.__name__,
+        changes=changes,
     )
 
 
-# ---- JournalLine signals ----
+def remember_state(sender, instance, **kwargs):
+    snapshot, related = SNAPSHOTS[sender]
+    old = sender.objects.select_related(related).filter(pk=instance.pk).first() if instance.pk else None
+    instance._pre_save_state = snapshot(old) if old else None
 
 
-@receiver(pre_save, sender=JournalLine)
-def journal_line_pre_save(sender, instance, **kwargs):
-    if instance.pk:
-        try:
-            old = JournalLine.objects.select_related("account").get(pk=instance.pk)
-            instance._pre_save_state = snapshot_journal_line(old)
-        except JournalLine.DoesNotExist:
-            instance._pre_save_state = None
-    else:
-        instance._pre_save_state = None
-
-
-@receiver(post_save, sender=JournalLine)
-def journal_line_post_save(sender, instance, created, **kwargs):
-    ct = ContentType.objects.get_for_model(JournalLine)
-    user = get_current_user()
-    entry_id = instance.journal_entry_id
+def log_save(sender, instance, created, **kwargs):
+    snapshot = SNAPSHOTS[sender][0]
     if created:
-        AuditLog.objects.create(
-            content_type=ct,
-            object_id=instance.pk,
-            journal_entry_id=entry_id,
-            team_id=instance.book.team_id,
-            book_id=instance.book_id,
-            user=user,
-            action=AuditLog.ACTION_CREATE,
-            source_model="JournalLine",
-            changes={"snapshot": snapshot_journal_line(instance)},
-        )
-    else:
-        before = getattr(instance, "_pre_save_state", None)
-        if before is not None:
-            changes = diff_snapshots(before, snapshot_journal_line(instance))
-            if changes:
-                AuditLog.objects.create(
-                    content_type=ct,
-                    object_id=instance.pk,
-                    journal_entry_id=entry_id,
-                    team_id=instance.book.team_id,
-                    book_id=instance.book_id,
-                    user=user,
-                    action=AuditLog.ACTION_UPDATE,
-                    source_model="JournalLine",
-                    changes=changes,
-                )
+        _log(sender, instance, AuditLog.ACTION_CREATE, {"snapshot": snapshot(instance)})
+        return
+    before = getattr(instance, "_pre_save_state", None)
+    changes = diff_snapshots(before, snapshot(instance)) if before is not None else None
+    if changes:
+        _log(sender, instance, AuditLog.ACTION_UPDATE, changes)
 
 
-@receiver(post_delete, sender=JournalLine)
-def journal_line_post_delete(sender, instance, **kwargs):
-    ct = ContentType.objects.get_for_model(JournalLine)
-    AuditLog.objects.create(
-        content_type=ct,
-        object_id=instance.pk,
-        journal_entry_id=instance.journal_entry_id,
-        team_id=instance.book.team_id,
-        book_id=instance.book_id,
-        user=get_current_user(),
-        action=AuditLog.ACTION_DELETE,
-        source_model="JournalLine",
-        changes={"snapshot": snapshot_journal_line(instance)},
-    )
+def log_delete(sender, instance, **kwargs):
+    _log(sender, instance, AuditLog.ACTION_DELETE, {"snapshot": SNAPSHOTS[sender][0](instance)})
+
+
+for _model in SNAPSHOTS:
+    pre_save.connect(remember_state, sender=_model)
+    post_save.connect(log_save, sender=_model)
+    post_delete.connect(log_delete, sender=_model)
 
 
 # ---- Auth event signals ----

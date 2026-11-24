@@ -1,18 +1,19 @@
 import React, { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 import DateRangePicker from '../../common/DateRangePicker';
-import EditTransactionModal from './EditTransactionModal';
+import TransactionModal from './TransactionModal';
+import { feedTransaction } from './feedTransaction';
 import TransferMatchPanel from './TransferMatchPanel';
 import ScheduledTransactions from './ScheduledTransactions';
 import { Toast } from '../../common/Toast';
 import { SortArrow, TablePager } from '../../common/TablePager';
 import { AccountFilter, Dropdown, MenuRow, ReconciledLock } from './LineTableParts';
 import { usePlaidLinkFlow } from './PlaidLinkButton';
-import { formatCurrency } from '../../utilities/currency';
 import { formatDate as formatDateUtc } from '../utils';
 import { NO_QUICK_FILTERS, PAGE_SIZE_OPTIONS } from '../feedQuery';
 import Icon from '../../common/Icon';
 import RuleBadge from './RuleBadge';
+import { formatMoney } from '../../common/amount';
 
 /* globals gettext, interpolate */
 
@@ -87,7 +88,7 @@ const isCategorized = (row) => Boolean(row.category) || Boolean(row.isSplit);
 const categoryTitle = (row) => {
   if (row.isSplit) {
     return (row.splits || [])
-      .map((leg) => `${leg.categoryName ?? leg.category_name}: ${formatCurrency(Math.abs(Number(leg.amount)))}`)
+      .map((leg) => `${leg.categoryName ?? leg.category_name}: ${formatMoney(Math.abs(Number(leg.amount)))}`)
       .join(' · ');
   }
   return row.category ? row.category.name : gettext('Uncategorized');
@@ -171,7 +172,6 @@ const LineTable = ({
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
-  const [modalMode, setModalMode] = useState('edit'); // 'create' | 'edit'
 
   // Id of the row whose checkbox was last clicked, used as the anchor for
   // shift-click range selection (within the page on screen)
@@ -230,13 +230,11 @@ const LineTable = ({
 
   const handleEditClick = (rowData) => {
     setEditingTransaction(rowData);
-    setModalMode('edit');
     setEditModalOpen(true);
   };
 
   const handleAddClick = () => {
     setEditingTransaction(null);
-    setModalMode('create');
     setEditModalOpen(true);
   };
 
@@ -704,11 +702,11 @@ const LineTable = ({
                           </span>
                         </td>
                         <td className="money whitespace-nowrap text-right">
-                          {row.inflow && parseFloat(row.inflow) > 0 ? formatCurrency(row.inflow) : ''}
+                          {row.inflow && parseFloat(row.inflow) > 0 ? formatMoney(row.inflow) : ''}
                           {row.isForeignCurrency && parseFloat(row.inflow) > 0 && <CurrencyTag code={row.currency} />}
                         </td>
                         <td className="money whitespace-nowrap text-right">
-                          {row.outflow && parseFloat(row.outflow) > 0 ? formatCurrency(row.outflow) : ''}
+                          {row.outflow && parseFloat(row.outflow) > 0 ? formatMoney(row.outflow) : ''}
                           {row.isForeignCurrency && parseFloat(row.outflow) > 0 && <CurrencyTag code={row.currency} />}
                         </td>
                         <td title={withOriginal(row.description, row.originalDescription)}>
@@ -822,17 +820,18 @@ const LineTable = ({
         </div>
       </div>
 
-      <EditTransactionModal
+      <TransactionModal
         open={editModalOpen}
         onClose={handleEditModalClose}
         transaction={editingTransaction}
+        source={feedTransaction}
         allAccounts={allAccounts}
         allPayees={allPayees}
         categorySuggestions={categorySuggestions}
         book={book}
         onSave={handleEditSave}
-        mode={modalMode}
-        feedAccounts={accounts}
+        // Adding asks which account: the Inbox shows every one, so it can't be assumed.
+        accounts={editingTransaction ? undefined : accounts}
         defaultAccountId={defaultAccountId}
         onAccountCreated={onAccountCreated}
         allowRecurring

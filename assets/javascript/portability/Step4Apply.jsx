@@ -3,66 +3,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 
 import Icon from '../common/Icon';
+import ImportRunning from '../common/ImportRunning';
 
-/**
- * The import running, and then what it did.
- *
- * The progress bar's rules are copied from `apps/ynab_import/Step6Apply.jsx`,
- * not reinvented: it never goes backwards, never fills while work is still
- * going on (the server caps live progress at 99 for the same reason this
- * caps it again), and creeps gently between the server's own reports so a
- * long silent phase never reads as a hang. See that file's comments for why
- * each number here is what it is.
- */
 const POLL_MS = 900;
-const CREEP_CEILING = 6;
-const CREEP_SECONDS = 25;
-const CREEP_TICK_MS = 400;
-const NEARLY_DONE = 99;
-const QUEUE_PATIENCE_SECONDS = 12;
-
-const remainingText = (seconds) => {
-  if (seconds === null || seconds === undefined) return '';
-  if (seconds < 15) return gettext('a few seconds left');
-  if (seconds < 45) return gettext('under a minute left');
-  if (seconds < 90) return gettext('about a minute left');
-  return gettext('about {n} minutes left').replace('{n}', Math.round(seconds / 60));
-};
-
-const elapsedText = (seconds) => {
-  if (!seconds || seconds < 5) return '';
-  if (seconds < 60) return gettext('{n} seconds so far').replace('{n}', Math.round(seconds));
-  const minutes = Math.floor(seconds / 60);
-  return gettext('{n} min {s} sec so far')
-    .replace('{n}', minutes)
-    .replace('{s}', Math.round(seconds % 60));
-};
-
-const useCreepingProgress = (target, running) => {
-  const [shown, setShown] = useState(target);
-  const floor = useRef(target);
-  const since = useRef(Date.now());
-
-  useEffect(() => {
-    if (target > floor.current) {
-      floor.current = target;
-      since.current = Date.now();
-      setShown((current) => Math.max(current, target));
-    }
-  }, [target]);
-
-  useEffect(() => {
-    if (!running) return undefined;
-    const id = setInterval(() => {
-      const seconds = (Date.now() - since.current) / 1000;
-      const crept = floor.current + CREEP_CEILING * Math.min(1, seconds / CREEP_SECONDS);
-      setShown((current) => Math.min(NEARLY_DONE, Math.max(current, crept)));
-    }, CREEP_TICK_MS);
-    return () => clearInterval(id);
-  }, [running]);
-
-  return Math.round(Math.min(running ? NEARLY_DONE : 100, shown));
-};
 
 const CountRow = ({ label, value }) => (
   <div className="flex justify-between text-sm">
@@ -104,19 +47,6 @@ const Step4Apply = ({ api, importId, homeUrl, onStartOver }) => {
 
   const failed = status?.status === 'failed';
   const done = status?.status === 'done';
-  const running = !failed && !done;
-
-  const percent = useCreepingProgress(status?.progress || 0, running);
-  const elapsed = status?.elapsedSeconds || 0;
-  const queued = running && !status?.started && elapsed === 0;
-  const [waited, setWaited] = useState(0);
-
-  useEffect(() => {
-    if (!running) return undefined;
-    const started = Date.now();
-    const id = setInterval(() => setWaited((Date.now() - started) / 1000), 1000);
-    return () => clearInterval(id);
-  }, [running]);
 
   const safetyLink = api.safetyExportUrl(importId);
 
@@ -157,47 +87,18 @@ const Step4Apply = ({ api, importId, homeUrl, onStartOver }) => {
     );
   }
 
-  if (running) {
-    const remaining = remainingText(status?.etaSeconds);
-    const waiting = queued && waited > QUEUE_PATIENCE_SECONDS;
-
+  if (!done) {
     return (
-      <div className="app-card space-y-4" data-testid="apply-running">
-        <h2 className="text-lg font-semibold">{gettext('Importing…')}</h2>
-
-        <div>
-          <progress
-            className="progress progress-primary w-full"
-            value={percent}
-            max="100"
-            data-testid="apply-progress"
-            data-percent={percent}
-          ></progress>
-          <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2 text-sm">
-            <span data-testid="apply-step">{status.step || gettext('Getting started…')}</span>
-            <span className="money text-base-content/70">
-              {percent}%{remaining && ` · ${remaining}`}
-            </span>
-          </div>
-        </div>
-
-        <p className="text-sm text-base-content/70">
-          {elapsedText(elapsed || waited)}
-          {elapsedText(elapsed || waited) && ' · '}
-          {gettext('A large team takes a moment. You can leave this page open.')}
-        </p>
-
-        {waiting && (
-          <div className="alert alert-warning" data-testid="apply-queued">
-            <Icon name="triangle-alert" className="h-5 w-5 shrink-0" />
-            <span>
-              {gettext(
-                'This import is queued but nothing has picked it up yet. It runs in a background worker — if this does not start shortly, check that the worker is running.',
-              )}
-            </span>
-          </div>
+      <ImportRunning
+        status={status}
+        testId="apply"
+        className="app-card"
+        title={gettext('Importing…')}
+        note={gettext('A large team takes a moment. You can leave this page open.')}
+        queuedMessage={gettext(
+          'This import is queued but nothing has picked it up yet. It runs in a background worker — if this does not start shortly, check that the worker is running.',
         )}
-      </div>
+      />
     );
   }
 

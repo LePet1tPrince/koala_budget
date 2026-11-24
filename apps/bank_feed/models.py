@@ -8,11 +8,12 @@ from django.db import models
 from django.utils import timezone
 
 from apps.books.models import BaseBookModel
+from apps.utils.errors import Refused
 
 VOID_ROW_MESSAGE = "This transaction is void. Restore it before categorizing it."
 
 
-class VoidRowError(ValueError):
+class VoidRowError(Refused):
     """A void bank row was about to be linked to an entry that counts."""
 
 

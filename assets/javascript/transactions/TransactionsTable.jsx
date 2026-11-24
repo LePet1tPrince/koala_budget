@@ -2,12 +2,12 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 
-import { formatCurrency } from '../utilities/currency';
 import { formatDate } from '../bank_feed/utils';
 import DateRangePicker from '../common/DateRangePicker';
 import Icon from '../common/Icon';
 import ColumnMenu from './ColumnMenu';
 import { FALLBACK_BADGE, STATUS_STYLES, TRANSACTION_COLUMNS } from './columns';
+import { formatMoney } from '../common/amount';
 
 /**
  * Badge component for displaying status/source labels.
@@ -316,7 +316,7 @@ const TransactionsTable = ({
                       {tx.credit_account || '—'}
                     </td>
                     <td className="money whitespace-nowrap text-right">
-                      {formatCurrency(tx.amount)}
+                      {formatMoney(tx.amount)}
                     </td>
                     <td className="w-10">
                       <button
@@ -340,10 +340,10 @@ const TransactionsTable = ({
                         <td />
                         <td className="pl-8 text-base-content/70">{leg.account}</td>
                         <td className="money whitespace-nowrap text-base-content/70">
-                          {Number(leg.debit) > 0 ? formatCurrency(leg.debit) : ''}
+                          {Number(leg.debit) > 0 ? formatMoney(leg.debit) : ''}
                         </td>
                         <td className="money whitespace-nowrap text-base-content/70">
-                          {Number(leg.credit) > 0 ? formatCurrency(leg.credit) : ''}
+                          {Number(leg.credit) > 0 ? formatMoney(leg.credit) : ''}
                         </td>
                         <td />
                         <td />

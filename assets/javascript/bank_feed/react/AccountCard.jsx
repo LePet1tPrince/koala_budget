@@ -1,9 +1,9 @@
 /* globals gettext */
 
 import React from 'react';
-import { formatCurrency } from '../../utilities/currency';
 import { formatDate } from '../utils';
 import Icon from '../../common/Icon';
+import { formatMoney } from '../../common/amount';
 
 /**
  * AccountCard component - a compact, scannable row for the account picker.
@@ -97,7 +97,7 @@ const AccountCard = ({ account, isSelected, onClick, matchCount = 0 }) => {
       </div>
 
       <p className="shrink-0 text-sm font-semibold tabular-nums text-right">
-        {formatCurrency(account.categorized_balance ?? account.balance)}
+        {formatMoney(account.categorized_balance ?? account.balance)}
       </p>
     </div>
   );

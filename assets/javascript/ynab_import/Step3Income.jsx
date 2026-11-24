@@ -14,6 +14,7 @@ import {
   resolveNewName,
   resolveRename,
 } from './names';
+import { formatMoney } from '../common/amount';
 
 /**
  * Where each inflow came from.
@@ -23,9 +24,6 @@ import {
  * that into income accounts: the counts and totals are shown because they are the
  * evidence -- a payee seen 351 times is a salary, one seen once is not.
  */
-const money = (value) =>
-  `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 const Step3Income = ({ income, suggestions, otherIncome, choices, onChange, edits = EMPTY_EDITS, onEditsChange }) => {
   const choiceFor = (row) => choices[row.payee] || {};
   const update = (row, patch) => onChange({ ...choices, [row.payee]: { ...choiceFor(row), ...patch } });
@@ -129,7 +127,7 @@ const Step3Income = ({ income, suggestions, otherIncome, choices, onChange, edit
                 <tr key={row.payee} data-testid="ynab-income-row" data-payee={row.payee}>
                   <td className="whitespace-nowrap">{row.label}</td>
                   <td className="money text-right">{row.count.toLocaleString()}</td>
-                  <td className="money text-right">{money(row.total)}</td>
+                  <td className="money text-right">{formatMoney(row.total)}</td>
                   <td>
                     <select
                       className="select select-bordered select-sm w-36"
