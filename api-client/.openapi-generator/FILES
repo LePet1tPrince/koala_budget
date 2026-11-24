@@ -412,7 +412,6 @@ models/VisibilityRequest.ts
 models/VisibilityResponse.ts
 models/WaterfallStep.ts
 models/WaterfallStepKeyEnum.ts
-models/WealthRank.ts
 models/YnabAccount.ts
 models/YnabCategory.ts
 models/YnabChartGroup.ts

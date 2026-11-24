@@ -213,19 +213,6 @@ class CompositionSerializer(serializers.Serializer):
     bands = CompositionBandSerializer(many=True, source="groups")
 
 
-class WealthRankSerializer(serializers.Serializer):
-    wealth = _money(help_text="Net worth per adult: what was ranked.")
-    percentile = serializers.FloatField(help_text="Share of the world's adults with less, 0–100.")
-    top_pct_display = serializers.CharField(help_text="100 − percentile, to three significant figures.")
-    rank = serializers.IntegerField(help_text="1 = richest.")
-    population = serializers.IntegerField(help_text="Adults in the distribution.")
-    places_per_dollar = serializers.FloatField(allow_null=True)
-    dollars_per_place = serializers.FloatField(allow_null=True)
-    data_year = serializers.IntegerField()
-    price_year = serializers.IntegerField()
-    source = serializers.CharField()
-
-
 class NetWorthReportSerializer(serializers.Serializer):
     """Net Worth over a range: balances at its start and end by section/group/account, the trend, the composition."""
 
@@ -237,8 +224,6 @@ class NetWorthReportSerializer(serializers.Serializer):
     composition = CompositionSerializer(
         allow_null=True, source="composition_data", help_text="Month-end balance per group; null with no groups."
     )
-    wealth_rank = WealthRankSerializer()
-    household_adults = serializers.IntegerField()
 
 
 # --- Budget & Goals --------------------------------------------------------------

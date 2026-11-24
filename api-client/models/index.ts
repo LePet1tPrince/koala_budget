@@ -391,7 +391,6 @@ export * from './VisibilityRequest';
 export * from './VisibilityResponse';
 export * from './WaterfallStep';
 export * from './WaterfallStepKeyEnum';
-export * from './WealthRank';
 export * from './YnabAccount';
 export * from './YnabCategory';
 export * from './YnabChartGroup';

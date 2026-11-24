@@ -67,12 +67,6 @@ export interface BookSettings {
      */
     budgetFutureIncome?: boolean;
     /**
-     * Adults who share this book's net worth, for comparing it with other people's.
-     * @type {number}
-     * @memberof BookSettings
-     */
-    householdAdults?: number;
-    /**
      * The dates a report shows when you open it.
      * 
      * * `report` - Each report's own default
@@ -130,7 +124,6 @@ export function BookSettingsFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'slug': json['slug'],
         'baseUrl': json['base_url'],
         'budgetFutureIncome': json['budget_future_income'] == null ? undefined : json['budget_future_income'],
-        'householdAdults': json['household_adults'] == null ? undefined : json['household_adults'],
         'reportTimeframe': json['report_timeframe'] == null ? undefined : ReportTimeframeEnumFromJSON(json['report_timeframe']),
         'lockedThrough': json['locked_through'] == null ? undefined : (new Date(json['locked_through'])),
         'futureIncomePreview': FutureIncomePreviewFromJSON(json['future_income_preview']),
@@ -151,7 +144,6 @@ export function BookSettingsFromJSONTyped(json: any, ignoreDiscriminator: boolea
         'name': value['name'],
         'slug': value['slug'],
         'budget_future_income': value['budgetFutureIncome'],
-        'household_adults': value['householdAdults'],
         'report_timeframe': ReportTimeframeEnumToJSON(value['reportTimeframe']),
         'locked_through': value['lockedThrough'] == null ? undefined : ((value['lockedThrough'] as any).toISOString().substring(0,10)),
     };

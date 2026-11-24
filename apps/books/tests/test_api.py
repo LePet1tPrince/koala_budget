@@ -229,7 +229,6 @@ class BookSettingsAPITest(BooksAPITestCase):
             ({"slug": "budget"}, "slug"),
             ({"slug": "business"}, "slug"),
             ({"name": "BUSINESS"}, "name"),
-            ({"household_adults": 11}, "household_adults"),
             ({"report_timeframe": "forever"}, "report_timeframe"),
             ({"locked_through": (date.today() + timedelta(days=1)).isoformat()}, "locked_through"),
         ):
@@ -250,9 +249,9 @@ class BookSettingsAPITest(BooksAPITestCase):
         self.assertEqual(event.metadata, {"locked_through": closed.isoformat(), "locked_through_before": None})
 
         # A save that leaves the field out keeps the lock.
-        self.assertEqual(self.patch({"household_adults": 2}).status_code, 200)
+        self.assertEqual(self.patch({"budget_future_income": True}).status_code, 200)
         self.personal.refresh_from_db()
-        self.assertEqual((self.personal.locked_through, self.personal.household_adults), (closed, 2))
+        self.assertEqual((self.personal.locked_through, self.personal.budget_future_income), (closed, True))
 
         # Null reopens every period.
         self.assertEqual(self.patch({"locked_through": None}).status_code, 200)

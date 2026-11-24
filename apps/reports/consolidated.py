@@ -18,7 +18,6 @@ from django.utils.translation import gettext_lazy
 from apps.utils.months import add_months, months_between
 
 from .services import ReportService
-from .wealth_rank import global_rank
 
 ZERO = Decimal("0")
 
@@ -138,8 +137,6 @@ def net_worth_report(book, start_date, end_date):
         "trend": trend,
         "stats": stats,
         "composition_data": composition_data,
-        "wealth_rank": global_rank(end_worth, book.household_adults),
-        "household_adults": book.household_adults,
     }
 
 
