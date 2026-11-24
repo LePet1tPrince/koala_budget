@@ -45,6 +45,20 @@ class GetImageUrlFunctionTestCase(SimpleTestCase):
         )
 
 
+class ProjectImageTestCase(SimpleTestCase):
+    def test_the_default_image_is_a_static_file_the_finders_resolve(self):
+        """The name handed to `static()` is relative: with a leading slash the finders raise."""
+        from django.conf import settings
+        from django.contrib.staticfiles import finders
+
+        with patch("apps.web.templatetags.meta_tags.static", side_effect=lambda name: f"/static/{name}") as static:
+            with patch("apps.web.meta.get_server_root", return_value="https://example.com"):
+                get_image_url(settings.PROJECT_METADATA, "")
+        name = static.call_args.args[0]
+        self.assertFalse(name.startswith("/"))
+        self.assertIsNotNone(finders.find(name))
+
+
 class AbsoluteUrlTestCase(SimpleTestCase):
     def test_basic_usage(self):
         template = """

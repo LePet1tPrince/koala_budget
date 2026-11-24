@@ -29,7 +29,9 @@ def get_image_url(project_meta, page_image=None):
         if page_image.startswith(settings.MEDIA_URL):
             page_image = meta.absolute_url(page_image)
         else:
-            page_image = meta.absolute_url(static(page_image))
+            # Static names are relative: a leading slash makes the staticfiles
+            # finders refuse the path (SuspiciousFileOperation).
+            page_image = meta.absolute_url(static(page_image.lstrip("/")))
 
     return page_image
 
