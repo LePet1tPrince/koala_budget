@@ -312,6 +312,9 @@ class RecurringPageTest(RecurringFixture):
         self.assertContains(response, 'side-link-active" data-testid="nav-transactions-recurring"')
         # Not a tab of the chart of accounts any more.
         self.assertNotContains(response, 'data-testid="manage-tabs"')
+        # Its siblings under Transactions.
+        self.assertContains(response, 'data-testid="nav-transactions-rules"')
+        self.assertContains(response, 'data-testid="nav-transactions-reconciliations"')
 
     def stop_url(self, pk=None):
         return reverse("bank_feed:recurring-schedule-detail", args=[*self.book.url_args, pk or self.r.pk])

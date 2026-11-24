@@ -62,7 +62,7 @@
     {% endif %}
   </div>
 
-  {# Transactions: expands to what shapes them -- recurring transactions and rules. #}
+  {# Transactions: expands to what shapes and checks them -- recurring transactions, rules and reconciliations. #}
   <div x-data="sideGroup({% if active_tab == 'transactions' and transactions_section %}true{% else %}false{% endif %})" x-bind="group" class="side-group flex flex-col">
     <div class="side-row" x-ref="row">
       <a x-ref="link" href="{% url 'journal:transactions_home' nav_team.slug nav_book.slug %}"
@@ -87,6 +87,11 @@
          class="side-link side-link-sub {% if transactions_section == 'rules' %}side-link-active{% endif %}" data-testid="nav-transactions-rules">
         {% icon "wand-magic-sparkles" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Rules" %}
+      </a>
+      <a href="{% url 'reconciliation:hub' nav_team.slug nav_book.slug %}"
+         class="side-link side-link-sub {% if transactions_section == 'reconciliations' %}side-link-active{% endif %}" data-testid="nav-transactions-reconciliations">
+        {% icon "check-circle" class="inline-block shrink-0 w-4 h-4" %}
+        {% translate "Reconciliations" %}
       </a>
     </div>
   </div>
@@ -140,8 +145,7 @@
   {% comment %}
     One link for the chart of accounts (its page has Accounts, Payees and
     Institutions tabs). Audit log, Team and Subscription are sections of Settings;
-    rules and recurring transactions sit under Transactions; reconciling starts
-    from an account's own page.
+    recurring transactions, rules and reconciliations sit under Transactions.
   {% endcomment %}
   {% if not user.is_anonymous %}
     <a href="{% url 'accounts:accounts_home' nav_team.slug nav_book.slug %}"

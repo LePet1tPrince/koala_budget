@@ -2,8 +2,8 @@
 {% comment %}
 Section switcher for the chart of accounts: the accounts board (which also edits
 groups), payees and institutions. The active tab comes from the view's
-`accounts_section`. Rules and recurring transactions sit with Transactions in the
-sidebar; reconciling is done from an account's own page.
+`accounts_section`. Recurring transactions, rules and reconciliations sit with
+Transactions in the sidebar.
 {% endcomment %}
 <div role="tablist" class="tabs tabs-border -mx-1 mb-5 flex-nowrap overflow-x-auto border-b border-base-300 [&>.tab]:whitespace-nowrap" data-testid="manage-tabs">
   <a role="tab" class="tab{% if accounts_section == 'accounts' or accounts_section == 'groups' %} tab-active{% endif %}" href="{% url 'accounts:accounts_home' request.team.slug request.book.slug %}"{% if accounts_section == 'accounts' or accounts_section == 'groups' %} aria-selected="true"{% endif %}>{% translate "Accounts" %}</a>
