@@ -1,6 +1,7 @@
 /* globals gettext, interpolate */
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { createConfetti } from '../../common/confetti';
+import { directionOf, orderCategories, usageById, withUse } from '../categoryOrder';
 import { getBatchOperationsApi, getFeedPageApi, getTransactionApi, getUploadApiHelpers } from '../bank_feed';
 import CreateAccountModal from './CSVUploadWizard/CreateAccountModal';
 import EditTransactionModal from './EditTransactionModal';
@@ -505,6 +506,7 @@ function SuggestedCategories({ suggestions, accountsById, loading, activeKey, on
 function AccountHierarchy({
   allAccounts,
   allAccountGroups,
+  usage,
   suggestions,
   suggestionsLoading,
   currentTransaction,
@@ -619,16 +621,21 @@ function AccountHierarchy({
       return sorted.length ? [{ name: 'Search results', accounts: sorted }] : [];
     }
 
-    const groups = {};
-    filteredAccounts.forEach(({ account: a }) => {
-      const key = a.account_group_name || 'Other';
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(a);
-    });
-    return Object.entries(groups)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, accounts]) => ({ name, accounts: accounts.sort((a, b) => a.name.localeCompare(b.name)) }));
-  }, [filteredAccounts]);
+    // Otherwise by what this transaction most likely is: expenses first for money
+    // out, income first for money in, transfers next, and the categories you use
+    // most for this direction at the top of each (`categoryOrder.js`).
+    const feedAccountId = currentTransaction?.account?.id ?? null;
+    const feedAccount = feedAccountId != null ? accountsById[feedAccountId] : null;
+    return orderCategories(
+      filteredAccounts.map(r => r.account),
+      {
+        direction: directionOf(currentTransaction),
+        feedAccountId,
+        feedKind: feedAccount ? accountKind(feedAccount) : 'asset',
+        usage,
+      }
+    );
+  }, [filteredAccounts, trimmedSearch, currentTransaction, accountsById, usage]);
 
   // Accounts already offered in the Suggested section above are dropped
   // here so nothing appears twice; a group left with nothing to show is
@@ -733,7 +740,8 @@ function AccountHierarchy({
             setActiveIndex(e.target.value ? 0 : -1);
           }}
           onKeyDown={handleSearchKeyDown}
-          placeholder="Search accounts..."
+          placeholder={gettext('Search categories…')}
+          data-testid="categorize-search"
           className="input input-bordered input-sm w-full pl-9 pr-8"
         />
         {searchQuery && (
@@ -840,7 +848,7 @@ function AccountHierarchy({
           </div>
         )}
         {visibleGroupedAccounts.map(group => (
-          <div key={group.name}>
+          <div key={group.name} data-testid="category-group">
             <div className="text-xs font-semibold text-base-content/70 uppercase tracking-wider px-1 mb-1.5 sticky top-0 bg-base-100 py-1 z-10">
               {group.name}
             </div>
@@ -850,6 +858,8 @@ function AccountHierarchy({
                   key={account.id}
                   onClick={() => onSelect(account)}
                   data-nav-key={`a:${account.id}`}
+                  data-kind={accountKind(account)}
+                  data-testid="category-row"
                   data-active={activeKey === `a:${account.id}` ? 'true' : undefined}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-base-300 transition-all hover:border-primary hover:bg-primary/5 hover:shadow-md active:scale-[0.98] ${
                     activeKey === `a:${account.id}` ? 'ring-2 ring-primary ring-offset-2 ring-offset-base-100 border-primary bg-primary/10' : ''
@@ -1023,6 +1033,7 @@ export default function CategorizeMode({
   allAccounts,
   allAccountGroups,
   allPayees = [],
+  categoryUsage = [],
   backUrl,
 }) {
   const [transactions, setTransactions] = useState([]);
@@ -1037,6 +1048,9 @@ export default function CategorizeMode({
   const [suggestionsByTransaction, setSuggestionsByTransaction] = useState({});
   const suggestionsInFlight = useRef(new Set());
   const [localAccounts, setLocalAccounts] = useState(() => pickableAccounts(allAccounts));
+  // How often each category has been chosen, by direction; grows as this queue is
+  // filed, so a category just used climbs the list for the next transaction.
+  const [usage, setUsage] = useState(() => usageById(categoryUsage));
   const [showCreateAccountModal, setShowCreateAccountModal] = useState(false);
   const [pendingBatch, setPendingBatch] = useState(null); // { account, tx, matches } awaiting the similar-transactions modal
   const [splitModalOpen, setSplitModalOpen] = useState(false);
@@ -1233,6 +1247,7 @@ export default function CategorizeMode({
       ]);
 
       setUndoStack(prev => [...prev, { transactions: txList, account }]);
+      setUsage(prev => txList.reduce((u, t) => withUse(u, account.id, directionOf(t)), prev));
       advanceQueue(txList, { editedIds, includesTop });
     } catch (err) {
       console.error('Failed to categorize:', err);
@@ -1549,6 +1564,7 @@ export default function CategorizeMode({
           <AccountHierarchy
             allAccounts={localAccounts}
             allAccountGroups={allAccountGroups}
+            usage={usage}
             suggestions={currentSuggestions}
             suggestionsLoading={suggestionsLoading}
             currentTransaction={transactions[0]}

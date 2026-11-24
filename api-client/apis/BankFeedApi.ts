@@ -1131,7 +1131,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * What the Inbox\'s and Categorize mode\'s pickers offer: every account a transaction can be categorized to (goal accounts with what they have left), the payees, and the groups a new category can be created in.
+     * What the Inbox\'s and Categorize mode\'s pickers offer: every account a transaction can be categorized to (goal accounts with what they have left), the payees, the groups a new category can be created in, and how often each account was chosen for money out and money in.
      */
     async bankFeedPickersRaw(requestParameters: BankFeedPickersRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<FeedPickers>> {
         if (requestParameters['bookSlug'] == null) {
@@ -1171,7 +1171,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * What the Inbox\'s and Categorize mode\'s pickers offer: every account a transaction can be categorized to (goal accounts with what they have left), the payees, and the groups a new category can be created in.
+     * What the Inbox\'s and Categorize mode\'s pickers offer: every account a transaction can be categorized to (goal accounts with what they have left), the payees, the groups a new category can be created in, and how often each account was chosen for money out and money in.
      */
     async bankFeedPickers(requestParameters: BankFeedPickersRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<FeedPickers> {
         const response = await this.bankFeedPickersRaw(requestParameters, initOverrides);

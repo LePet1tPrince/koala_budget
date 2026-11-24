@@ -77,6 +77,7 @@ from .serializers import (
 )
 from .services import edit, feed_query, recurring
 from .services.categorize import create_entry, repoint_category
+from .services.category_usage import category_usage
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
 from .services.edit import SPLIT_MIRROR_ERROR, VOID_EDIT_ERROR
 from .services.manual import create_manual_transaction
@@ -1292,13 +1293,15 @@ class BankFeedViewSet(
         """
         What the Inbox's and Categorize mode's pickers offer: every account a
         transaction can be categorized to (goal accounts with what they have
-        left), the payees, and the groups a new category can be created in.
+        left), the payees, the groups a new category can be created in, and how
+        often each account was chosen for money out and money in.
         """
         return Response(
             {
                 "accounts": picker_accounts_data(request.book),
                 "payees": PayeeSerializer(Payee.for_book.all().order_by("name"), many=True).data,
                 "account_groups": AccountGroupSerializer(_account_groups(), many=True).data,
+                "category_usage": category_usage(request.book),
             }
         )
 

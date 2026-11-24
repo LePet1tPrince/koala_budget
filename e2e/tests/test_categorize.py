@@ -11,9 +11,18 @@ out of the search rather than out of the page — and the suggestion block that
 sits above the list.
 """
 
+from decimal import Decimal
+
 import pytest
 from playwright.sync_api import Page, expect
 
+from apps.accounts.models import (
+    ACCOUNT_TYPE_ASSET,
+    ACCOUNT_TYPE_EQUITY,
+    ACCOUNT_TYPE_EXPENSE,
+    ACCOUNT_TYPE_INCOME,
+    ACCOUNT_TYPE_LIABILITY,
+)
 from e2e.factories import AccountFactory, AccountGroupFactory, AssetAccountFactory, feed_transaction
 from e2e.pages.bank_feed import BankFeedPage
 from e2e.pages.categorize import CategorizePage
@@ -315,12 +324,12 @@ def test_scope_to_one_account(requires_vite, authenticated_page: Page, live_serv
     assert categorize.scope_account.input_value() == str(two_feed_accounts["other"].id)
 
     categorize.scope_account.select_option("")
-    authenticated_page.wait_for_selector("input[placeholder='Search accounts...']", timeout=15_000)
+    authenticated_page.wait_for_selector("[data-testid='categorize-search']", timeout=15_000)
     assert categorize.remaining() == 3
     assert "account=" not in authenticated_page.url
 
     categorize.scope_account.select_option(str(two_feed_accounts["first"].id))
-    authenticated_page.wait_for_selector("input[placeholder='Search accounts...']", timeout=15_000)
+    authenticated_page.wait_for_selector("[data-testid='categorize-search']", timeout=15_000)
     assert categorize.remaining() == 1
     assert f"account={two_feed_accounts['first'].id}" in authenticated_page.url
 
@@ -345,7 +354,7 @@ def test_empty_scope_offers_to_widen(requires_vite, authenticated_page: Page, li
     assert "this account and date range" in message.inner_text()
 
     authenticated_page.locator("[data-testid='categorize-scope-clear']").click()
-    authenticated_page.wait_for_selector("input[placeholder='Search accounts...']", timeout=15_000)
+    authenticated_page.wait_for_selector("[data-testid='categorize-search']", timeout=15_000)
     assert categorize.remaining() == 3
 
 
@@ -360,8 +369,49 @@ def test_inbox_hands_its_account_filter_to_categorize_mode(
     authenticated_page.locator("[data-testid='categorize-mode-btn']").click()
 
     categorize = CategorizePage(authenticated_page, live_server.url)
-    authenticated_page.wait_for_selector("input[placeholder='Search accounts...']", timeout=15_000)
+    authenticated_page.wait_for_selector("[data-testid='categorize-search']", timeout=15_000)
     assert categorize.remaining() == 2
 
     authenticated_page.get_by_role("link", name="← Back").click()
     authenticated_page.wait_for_url(f"**/bankfeed/?account={two_feed_accounts['other'].id}*")
+
+
+# ----------------------------------------------------------------------
+# The order the categories are listed in (bank_feed/categoryOrder.js)
+# ----------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "amount, first_kinds",
+    [
+        # Money out: expenses, then transfers (a card payment before another bank account).
+        (Decimal("25.00"), ["expense", "liability", "asset"]),
+        # Money in: income, then transfers (another bank account before a card).
+        (Decimal("-25.00"), ["income", "asset", "liability"]),
+    ],
+)
+def test_categories_are_ordered_by_the_transactions_direction(
+    requires_vite, authenticated_page: Page, live_server, team, amount, first_kinds
+):
+    account = AssetAccountFactory(team=team, name="Order Chequing", has_feed=True)
+    # One category of each kind, in groups whose names would sort the other way.
+    for kind, name in (
+        (ACCOUNT_TYPE_EQUITY, "A Equity"),
+        (ACCOUNT_TYPE_ASSET, "B Savings"),
+        (ACCOUNT_TYPE_LIABILITY, "C Visa"),
+        (ACCOUNT_TYPE_INCOME, "D Salary"),
+        (ACCOUNT_TYPE_EXPENSE, "E Groceries"),
+    ):
+        AccountFactory(team=team, name=name, account_group=AccountGroupFactory(team=team, account_type=kind))
+    feed_transaction(team, account, amount=amount, description="ORDER ROW")
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(account.book)
+
+    kinds = categorize.listed_kinds()
+    assert kinds[: len(first_kinds)] == first_kinds, kinds
+    # Equity (Reconciliation Adjustments) is always last.
+    assert kinds[-1] == "equity"
+    # The row's own account is never offered: that would be a transfer to itself.
+    assert "Order Chequing" not in categorize.listed_names()

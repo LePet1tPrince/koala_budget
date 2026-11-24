@@ -49,6 +49,7 @@ export * from './BudgetSectionEnum';
 export * from './CategorizeTransactionRow';
 export * from './CategorizeTransactionsRequest';
 export * from './CategorySuggestion';
+export * from './CategoryUsage';
 export * from './CheckoutSessionRequest';
 export * from './CoaAddedAccount';
 export * from './CoaEdits';

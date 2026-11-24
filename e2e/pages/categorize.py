@@ -15,7 +15,7 @@ class CategorizePage(BasePage):
         """Navigate to categorize mode (optionally with a `?account=…&start=…&end=…` scope)
         and wait for the first card to render."""
         self.page.goto(self.url(self.path(book)) + query)
-        self.page.wait_for_selector("input[placeholder='Search accounts...']", timeout=15_000)
+        self.page.wait_for_selector("[data-testid='categorize-search']", timeout=15_000)
 
     # ------------------------------------------------------------------
     # Queries
@@ -23,7 +23,7 @@ class CategorizePage(BasePage):
 
     @property
     def search_box(self):
-        return self.page.locator("input[placeholder='Search accounts...']")
+        return self.page.locator("[data-testid='categorize-search']")
 
     def current_card_title(self) -> str:
         """The payee on the card at the top of the stack (an editable field, not a heading)."""
@@ -91,6 +91,16 @@ class CategorizePage(BasePage):
 
     def revert_details(self):
         self.page.locator("[data-testid='categorize-details-revert']").click()
+
+    def listed_kinds(self) -> list[str]:
+        """The kind of each category in the list below the suggestions, top to bottom, repeats collapsed."""
+        self.page.wait_for_selector("[data-testid='category-row']", state="attached", timeout=10_000)
+        kinds = self.page.locator("[data-testid='category-row']").evaluate_all("els => els.map(e => e.dataset.kind)")
+        return [k for i, k in enumerate(kinds) if i == 0 or k != kinds[i - 1]]
+
+    def listed_names(self) -> list[str]:
+        rows = self.page.locator("[data-testid='category-row'] .font-medium")
+        return [rows.nth(i).inner_text().strip() for i in range(rows.count())]
 
     def wait_for_suggestions(self):
         self.page.wait_for_selector("[data-testid='category-suggestions']", timeout=10_000)

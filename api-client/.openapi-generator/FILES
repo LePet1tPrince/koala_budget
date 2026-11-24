@@ -70,6 +70,7 @@ models/BudgetSectionEnum.ts
 models/CategorizeTransactionRow.ts
 models/CategorizeTransactionsRequest.ts
 models/CategorySuggestion.ts
+models/CategoryUsage.ts
 models/CheckoutSessionRequest.ts
 models/CoaAddedAccount.ts
 models/CoaEdits.ts
