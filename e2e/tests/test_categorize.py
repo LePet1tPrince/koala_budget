@@ -383,16 +383,16 @@ def test_inbox_hands_its_account_filter_to_categorize_mode(
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize(
-    "amount, first_kinds",
+    "amount, expected_kinds",
     [
-        # Money out: expenses, then transfers (a card payment before another bank account).
-        (Decimal("25.00"), ["expense", "liability", "asset"]),
-        # Money in: income, then transfers (another bank account before a card).
-        (Decimal("-25.00"), ["income", "asset", "liability"]),
+        # Money out: expenses, transfers (a card payment before another bank account), income, equity.
+        (Decimal("25.00"), ["expense", "liability", "asset", "income", "equity"]),
+        # Money in: income, transfers (another bank account before a card), expenses, equity.
+        (Decimal("-25.00"), ["income", "asset", "liability", "expense", "equity"]),
     ],
 )
 def test_categories_are_ordered_by_the_transactions_direction(
-    requires_vite, authenticated_page: Page, live_server, team, amount, first_kinds
+    requires_vite, authenticated_page: Page, live_server, team, amount, expected_kinds
 ):
     account = AssetAccountFactory(team=team, name="Order Chequing", has_feed=True)
     # One category of each kind, in groups whose names would sort the other way.
@@ -409,9 +409,6 @@ def test_categories_are_ordered_by_the_transactions_direction(
     categorize = CategorizePage(authenticated_page, live_server.url)
     categorize.goto(account.book)
 
-    kinds = categorize.listed_kinds()
-    assert kinds[: len(first_kinds)] == first_kinds, kinds
-    # Equity (Reconciliation Adjustments) is always last.
-    assert kinds[-1] == "equity"
+    assert categorize.listed_kinds() == expected_kinds
     # The row's own account is never offered: that would be a transfer to itself.
     assert "Order Chequing" not in categorize.listed_names()

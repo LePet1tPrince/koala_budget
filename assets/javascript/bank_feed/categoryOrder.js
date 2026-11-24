@@ -5,9 +5,9 @@ import { accountKind } from '../common/accountKind';
  *
  * 1. Tier, by the transaction's direction. Money out is most often an expense,
  *    money in most often income; a transfer between your own accounts is the
- *    next most likely either way. What's left follows: goals (spending saved
- *    money), the opposite type (a refund, a returned payment), and equity
- *    (Reconciliation Adjustments, for opening balances) always last.
+ *    next most likely either way. What's left follows -- money out: income (a
+ *    returned payment), then goals; money in: expenses (a refund), then goals --
+ *    and equity (Reconciliation Adjustments, for opening balances) always last.
  *
  * 2. Within the transfer tier, the likelier side first. Money leaving a bank
  *    account is usually a card or loan payment, so liabilities lead; every other
@@ -26,7 +26,7 @@ import { accountKind } from '../common/accountKind';
  */
 
 const TIERS = {
-  out: ['expense', 'transfer', 'goal', 'income', 'equity'],
+  out: ['expense', 'transfer', 'income', 'goal', 'equity'],
   in: ['income', 'transfer', 'expense', 'goal', 'equity'],
 };
 
