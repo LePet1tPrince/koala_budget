@@ -62,11 +62,34 @@
     {% endif %}
   </div>
 
-  <a href="{% url 'journal:transactions_home' nav_team.slug nav_book.slug %}"
-     class="side-link {% if active_tab == 'transactions' %}side-link-active{% endif %}">
-    {% icon "list" class="inline-block shrink-0 w-4 h-4" %}
-    {% translate "Transactions" %}
-  </a>
+  {# Transactions: expands to what shapes them -- recurring transactions and rules. #}
+  <div x-data="sideGroup({% if active_tab == 'transactions' and transactions_section %}true{% else %}false{% endif %})" x-bind="group" class="side-group flex flex-col">
+    <div class="side-row" x-ref="row">
+      <a x-ref="link" href="{% url 'journal:transactions_home' nav_team.slug nav_book.slug %}"
+         class="side-link flex-1 {% if active_tab == 'transactions' and not transactions_section %}side-link-active{% endif %}" data-testid="nav-transactions">
+        {% icon "list" class="inline-block shrink-0 w-4 h-4" %}
+        {% translate "Transactions" %}
+      </a>
+      <button type="button" x-bind="toggle" class="side-link-toggle" data-testid="nav-transactions-toggle" aria-label="{% translate 'Toggle Transactions submenu' %}">
+        <span :class="open && !flyout ? 'rotate-90' : ''" class="inline-block transition-transform">
+          {% icon "chevron-right" class="inline-block shrink-0 w-3.5 h-3.5" %}
+        </span>
+      </button>
+    </div>
+    <div x-ref="panel" x-show="open" x-cloak class="side-sub" :class="flyout ? 'side-flyout' : 'flex flex-col gap-0.5'" :style="flyout ? panelStyle : ''">
+      <div class="side-flyout-title">{% translate "Transactions" %}</div>
+      <a href="{% url 'bank_feed:recurring_list' nav_team.slug nav_book.slug %}"
+         class="side-link side-link-sub {% if transactions_section == 'recurring' %}side-link-active{% endif %}" data-testid="nav-transactions-recurring">
+        {% icon "repeat" class="inline-block shrink-0 w-4 h-4" %}
+        {% translate "Recurring" %}
+      </a>
+      <a href="{% url 'rules:rules_home' nav_team.slug nav_book.slug %}"
+         class="side-link side-link-sub {% if transactions_section == 'rules' %}side-link-active{% endif %}" data-testid="nav-transactions-rules">
+        {% icon "wand-magic-sparkles" class="inline-block shrink-0 w-4 h-4" %}
+        {% translate "Rules" %}
+      </a>
+    </div>
+  </div>
 
   <a href="{% url 'budget:budget_home' nav_team.slug nav_book.slug %}"
      class="side-link {% if active_tab == 'budget' %}side-link-active{% endif %}" data-testid="nav-budget">
@@ -115,66 +138,17 @@
   </div>
 
   {% comment %}
-    Audit log, Team and Subscription used to sit here. They are sections of
-    Settings now, reached from the user menu at the foot of the sidebar — they
-    are account and workspace administration, not product navigation. Manage
-    (the chart of accounts and its section pages) stays: it is the ledger's own
-    structure, and it is used while working rather than while configuring.
+    One link for the chart of accounts (its page has Accounts, Payees and
+    Institutions tabs). Audit log, Team and Subscription are sections of Settings;
+    rules and recurring transactions sit under Transactions; reconciling starts
+    from an account's own page.
   {% endcomment %}
   {% if not user.is_anonymous %}
-    {# Manage: expands to the chart-of-accounts pages, reconciliations, recurring transactions and rules. #}
-    <div x-data="sideGroup({% if active_tab == 'accounts' %}true{% else %}false{% endif %})" x-bind="group" class="side-group flex flex-col">
-      <div class="side-row" x-ref="row">
-        <a x-ref="link" href="{% url 'accounts:accounts_home' nav_team.slug nav_book.slug %}"
-           class="side-link flex-1 {% if active_tab == 'accounts' and not accounts_section %}side-link-active{% endif %}">
-          {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
-          {% translate "Manage" %}
-        </a>
-        <button type="button" x-bind="toggle" class="side-link-toggle" data-testid="nav-accounts-toggle" aria-label="{% translate 'Toggle Manage submenu' %}">
-          <span :class="open && !flyout ? 'rotate-90' : ''" class="inline-block transition-transform">
-            {% icon "chevron-right" class="inline-block shrink-0 w-3.5 h-3.5" %}
-          </span>
-        </button>
-      </div>
-      <div x-ref="panel" x-show="open" x-cloak class="side-sub" :class="flyout ? 'side-flyout' : 'flex flex-col gap-0.5'" :style="flyout ? panelStyle : ''">
-        <div class="side-flyout-title">{% translate "Manage" %}</div>
-        <a href="{% url 'accounts:accounts_home' nav_team.slug nav_book.slug %}"
-           class="side-link side-link-sub {% if accounts_section == 'accounts' %}side-link-active{% endif %}" data-testid="nav-accounts-list">
-          {% icon "list" class="inline-block shrink-0 w-4 h-4" %}
-          {% translate "Accounts" %}
-        </a>
-        <a href="{% url 'accounts:accountgroup_list' nav_team.slug nav_book.slug %}"
-           class="side-link side-link-sub {% if accounts_section == 'groups' %}side-link-active{% endif %}" data-testid="nav-accounts-groups">
-          {% icon "layer-group" class="inline-block shrink-0 w-4 h-4" %}
-          {% translate "Groups" %}
-        </a>
-        <a href="{% url 'accounts:payee_list' nav_team.slug nav_book.slug %}"
-           class="side-link side-link-sub {% if accounts_section == 'payees' %}side-link-active{% endif %}" data-testid="nav-accounts-payees">
-          {% icon "users" class="inline-block shrink-0 w-4 h-4" %}
-          {% translate "Payees" %}
-        </a>
-        <a href="{% url 'accounts:institution_list' nav_team.slug nav_book.slug %}"
-           class="side-link side-link-sub {% if accounts_section == 'institutions' %}side-link-active{% endif %}" data-testid="nav-accounts-institutions">
-          {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
-          {% translate "Institutions" %}
-        </a>
-        <a href="{% url 'reconciliation:hub' nav_team.slug nav_book.slug %}"
-           class="side-link side-link-sub {% if accounts_section == 'reconciliations' %}side-link-active{% endif %}" data-testid="nav-accounts-reconciliations">
-          {% icon "check-circle" class="inline-block shrink-0 w-4 h-4" %}
-          {% translate "Reconciliations" %}
-        </a>
-        <a href="{% url 'bank_feed:recurring_list' nav_team.slug nav_book.slug %}"
-           class="side-link side-link-sub {% if accounts_section == 'recurring' %}side-link-active{% endif %}" data-testid="nav-accounts-recurring">
-          {% icon "repeat" class="inline-block shrink-0 w-4 h-4" %}
-          {% translate "Recurring transactions" %}
-        </a>
-        <a href="{% url 'rules:rules_home' nav_team.slug nav_book.slug %}"
-           class="side-link side-link-sub {% if accounts_section == 'rules' %}side-link-active{% endif %}" data-testid="nav-accounts-rules">
-          {% icon "wand-magic-sparkles" class="inline-block shrink-0 w-4 h-4" %}
-          {% translate "Rules" %}
-        </a>
-      </div>
-    </div>
+    <a href="{% url 'accounts:accounts_home' nav_team.slug nav_book.slug %}"
+       class="side-link {% if active_tab == 'accounts' %}side-link-active{% endif %}" data-testid="nav-accounts">
+      {% icon "university" class="inline-block shrink-0 w-4 h-4" %}
+      {% translate "Accounts & categories" %}
+    </a>
   {% endif %}
 {% endif %}
 

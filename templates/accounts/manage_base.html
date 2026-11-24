@@ -1,9 +1,10 @@
 {% extends "web/app/app_base.html" %}
 {% load i18n %}
 {% comment %}
-Shell for the four chart-of-accounts section pages (Accounts, Groups, Payees,
-Institutions): title + one-line explanation + primary action, then the section
-tabs, then the page's own content.
+Shell for the chart-of-accounts pages (Accounts, Groups, Payees, Institutions)
+and the few pages that borrow its look (Rules, Recurring, Reconciliations, which
+empty `manage_tabs`): title + one-line explanation + primary action, then the
+section tabs, then the page's own content.
 {% endcomment %}
 {% block app %}
 <section class="app-card">
@@ -14,7 +15,7 @@ tabs, then the page's own content.
     </div>
     <div class="flex flex-wrap gap-2">{% block manage_actions %}{% endblock %}</div>
   </div>
-  {% include "accounts/components/manage_tabs.html" %}
+  {% block manage_tabs %}{% include "accounts/components/manage_tabs.html" %}{% endblock %}
   {% block manage_content %}{% endblock %}
 </section>
 {% block dialogs %}{% endblock %}

@@ -448,7 +448,8 @@ def rules_home(request, team_slug, book_slug):
         "rules/rules_home.html",
         {
             "page_title": _("Rules | {name}").format(name=book_display_name(request.book)),
-            "active_tab": "accounts",
-            "accounts_section": "rules",
+            # Beside Transactions in the sidebar.
+            "active_tab": "transactions",
+            "transactions_section": "rules",
         },
     )

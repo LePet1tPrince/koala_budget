@@ -2,7 +2,7 @@
 {% load i18n %}
 {% load icons %}
 {% load django_vite %}
-{% block manage_title %}{% translate "Accounts" %}{% endblock %}
+{% block manage_title %}{% translate "Accounts & categories" %}{% endblock %}
 {% block manage_subtitle %}{% translate "Drag accounts to reorder them or move them between groups — this order is used across reports and budgets." %}{% endblock %}
 {% block manage_actions %}
   <a href="{% url 'accounts:account_create' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-manage-modal="account" data-after-save="reload" data-testid="new-account-btn">
@@ -20,7 +20,8 @@
 
   <noscript>
     <div class="alert alert-warning mt-4">
-      {% translate "The accounts board requires JavaScript. Use the Groups tab to manage the chart of accounts instead." %}
+      {% url 'accounts:accountgroup_list' request.team.slug request.book.slug as groups_url %}
+      {% blocktranslate trimmed %}The accounts board requires JavaScript. Use the <a class="link" href="{{ groups_url }}">groups list</a> instead.{% endblocktranslate %}
     </div>
   </noscript>
 {% endblock %}

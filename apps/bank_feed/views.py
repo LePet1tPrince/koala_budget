@@ -1965,8 +1965,8 @@ def recurring_list(request, team_slug, book_slug):
         "bank_feed/recurring_list.html",
         {
             "rules": rules,
-            # A tab of the Manage section (templates/accounts/components/manage_tabs.html).
-            "active_tab": "accounts",
-            "accounts_section": "recurring",
+            # Beside Transactions in the sidebar.
+            "active_tab": "transactions",
+            "transactions_section": "recurring",
         },
     )

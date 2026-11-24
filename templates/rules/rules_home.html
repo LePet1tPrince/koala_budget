@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load django_vite %}
 
+{% block manage_tabs %}{% endblock %}
 {% block manage_title %}{% translate "Rules" %}{% endblock %}
 {% block manage_subtitle %}{% blocktranslate trimmed %}
   A rule categorizes bank transactions that match it: as a suggestion you confirm, or automatically.
