@@ -1,7 +1,8 @@
 import React, { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 import DateRangePicker from '../../common/DateRangePicker';
-import EditTransactionModal from './EditTransactionModal';
+import TransactionModal from './TransactionModal';
+import { feedTransaction } from './feedTransaction';
 import TransferMatchPanel from './TransferMatchPanel';
 import ScheduledTransactions from './ScheduledTransactions';
 import { Toast } from '../../common/Toast';
@@ -171,7 +172,6 @@ const LineTable = ({
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
-  const [modalMode, setModalMode] = useState('edit'); // 'create' | 'edit'
 
   // Id of the row whose checkbox was last clicked, used as the anchor for
   // shift-click range selection (within the page on screen)
@@ -230,13 +230,11 @@ const LineTable = ({
 
   const handleEditClick = (rowData) => {
     setEditingTransaction(rowData);
-    setModalMode('edit');
     setEditModalOpen(true);
   };
 
   const handleAddClick = () => {
     setEditingTransaction(null);
-    setModalMode('create');
     setEditModalOpen(true);
   };
 
@@ -822,17 +820,18 @@ const LineTable = ({
         </div>
       </div>
 
-      <EditTransactionModal
+      <TransactionModal
         open={editModalOpen}
         onClose={handleEditModalClose}
         transaction={editingTransaction}
+        source={feedTransaction}
         allAccounts={allAccounts}
         allPayees={allPayees}
         categorySuggestions={categorySuggestions}
         book={book}
         onSave={handleEditSave}
-        mode={modalMode}
-        feedAccounts={accounts}
+        // Adding asks which account: the Inbox shows every one, so it can't be assumed.
+        accounts={editingTransaction ? undefined : accounts}
         defaultAccountId={defaultAccountId}
         onAccountCreated={onAccountCreated}
         allowRecurring

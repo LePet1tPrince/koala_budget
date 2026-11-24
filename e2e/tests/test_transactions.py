@@ -400,7 +400,7 @@ def test_a_date_can_be_typed_in_the_editor(requires_vite, authenticated_page: Pa
     transactions.type_date("transaction-date", "09032026")
 
     assert transactions.date_label("transaction-date") == "Mar 9, 2026"
-    assert authenticated_page.locator("[data-testid='transaction-edit-modal']").is_visible()
+    assert authenticated_page.locator("[data-testid='edit-transaction-modal']").is_visible()
     transactions.save_editor()
 
     editable.plain.refresh_from_db()
@@ -452,10 +452,9 @@ def test_split_legs_must_add_up_before_saving(requires_vite, authenticated_page:
     transactions.open_editor("Costco run")
 
     transactions.set_split_amount(0, "10.00")
-    authenticated_page.locator("[data-testid='modal-save-btn']").click()
 
     assert "add up" in transactions.split_error()
-    assert authenticated_page.locator("[data-testid='transaction-edit-modal']").is_visible()
+    assert authenticated_page.locator("[data-testid='modal-save-btn']").is_disabled()
 
 
 @pytest.mark.django_db(transaction=True)

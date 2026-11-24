@@ -4,7 +4,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import TransactionsTable from './TransactionsTable';
-import TransactionEditModal from './TransactionEditModal';
+import TransactionModal from '../bank_feed/react/TransactionModal';
+import { ledgerTransaction } from './ledgerTransaction';
 import { getTransactionsApi, transactionQuery } from './transactionsApi';
 import Toast from '../common/Toast';
 import { readBook } from '../common/book';
@@ -81,7 +82,7 @@ const TransactionsApp = ({ book, api, pickers }) => {
   // The transactions the edit modal is open on. An array from the outset: the
   // modal already handles a selection, so wiring checkboxes up later changes
   // what fills this and nothing else.
-  const [editing, setEditing] = useState([]);
+  const [editing, setEditing] = useState(null);
   const [toast, setToast] = useState(null);
 
   // Grows when an account is created from the edit modal's category picker
@@ -190,7 +191,7 @@ const TransactionsApp = ({ book, api, pickers }) => {
       // modal actually opens on.
       try {
         const detail = await api.fetchDetail(row.id);
-        setEditing([detail]);
+        setEditing(detail);
       } catch (err) {
         setToast({ message: err.message, severity: 'error' });
       }
@@ -288,16 +289,18 @@ const TransactionsApp = ({ book, api, pickers }) => {
         onEditRow={openEditor}
       />
 
-      <TransactionEditModal
-        open={editing.length > 0}
-        transactions={editing}
+      <TransactionModal
+        open={Boolean(editing)}
+        transaction={editing}
+        source={ledgerTransaction}
         allAccounts={allAccounts}
+        accounts={allAccounts}
         allPayees={allPayees}
         book={book}
-        onSave={handleSave}
-        onDelete={handleDelete}
-        onSetStatus={handleSetStatus}
-        onClose={() => setEditing([])}
+        onSave={(updates) => handleSave([editing.id], updates)}
+        onDelete={() => handleDelete([editing.id])}
+        onSetStatus={(statusValue) => handleSetStatus([editing.id], statusValue)}
+        onClose={() => setEditing(null)}
         onAccountCreated={(account) =>
           setAllAccounts((prev) => (prev.some((a) => a.id === account.id) ? prev : [...prev, account]))
         }

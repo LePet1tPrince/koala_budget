@@ -4,7 +4,8 @@ import Modal from '../common/Modal';
 import { Toast } from '../common/Toast';
 import { formatMoney } from '../common/amount';
 import { fireConfetti } from '../common/confetti';
-import EditTransactionModal from '../bank_feed/react/EditTransactionModal';
+import TransactionModal from '../bank_feed/react/TransactionModal';
+import { feedTransaction } from '../bank_feed/react/feedTransaction';
 import { getTransactionApi } from '../bank_feed/bank_feed.js';
 import { bookFromBase } from '../common/book';
 import History from './History';
@@ -294,11 +295,11 @@ const ReconcileApp = ({ props, api }) => {
       </Modal>
 
       {account.has_feed && addOpen && (
-        <EditTransactionModal
+        <TransactionModal
           open={addOpen}
           onClose={() => setAddOpen(false)}
           transaction={null}
-          mode="create"
+          source={feedTransaction}
           allAccounts={props.all_accounts}
           allPayees={props.all_payees}
           book={bookFromBase(props.book_base)}

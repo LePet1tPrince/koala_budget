@@ -157,14 +157,14 @@ class TransactionsPage(BasePage):
     def open_editor(self, description: str):
         """Click the row carrying `description` and wait for its modal."""
         self.page.locator("[data-testid='transaction-row']").filter(has_text=description).first.click()
-        self.page.wait_for_selector("[data-testid='transaction-edit-modal']", timeout=15_000)
+        self.page.wait_for_selector("[data-testid='edit-transaction-modal']", timeout=15_000)
         # The modal opens on a detail fetch, so its fields arrive a tick later.
         self.page.wait_for_selector("[data-testid='transaction-account'], [data-testid='modal-error']", timeout=15_000)
 
     def save_editor(self):
         """Save and wait for the modal to close and the list to settle."""
         self.page.locator("[data-testid='modal-save-btn']").click()
-        self.page.wait_for_selector("[data-testid='transaction-edit-modal']", state="hidden", timeout=15_000)
+        self.page.wait_for_selector("[data-testid='edit-transaction-modal']", state="hidden", timeout=15_000)
         self._wait_for_refetch()
 
     def field_value(self, testid: str) -> str:
@@ -234,7 +234,7 @@ class TransactionsPage(BasePage):
         """Delete through the inline confirm step."""
         self.page.locator("[data-testid='modal-delete-btn']").click()
         self.page.locator("[data-testid='modal-delete-confirm']").click()
-        self.page.wait_for_selector("[data-testid='transaction-edit-modal']", state="hidden", timeout=15_000)
+        self.page.wait_for_selector("[data-testid='edit-transaction-modal']", state="hidden", timeout=15_000)
 
     def can_delete(self) -> bool:
         return self.page.locator("[data-testid='modal-delete-btn']").count() > 0
@@ -242,7 +242,7 @@ class TransactionsPage(BasePage):
     def toggle_void(self):
         """Void the transaction, or restore it if it is already void."""
         self.page.locator("[data-testid='modal-void-btn']").click()
-        self.page.wait_for_selector("[data-testid='transaction-edit-modal']", state="hidden", timeout=15_000)
+        self.page.wait_for_selector("[data-testid='edit-transaction-modal']", state="hidden", timeout=15_000)
         self._wait_for_refetch()
 
     def void_button_label(self) -> str:

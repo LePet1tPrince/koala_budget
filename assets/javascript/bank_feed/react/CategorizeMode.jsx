@@ -4,7 +4,8 @@ import { createConfetti } from '../../common/confetti';
 import { directionOf, orderCategories, usageById, withUse } from '../categoryOrder';
 import { getBatchOperationsApi, getFeedPageApi, getTransactionApi, getUploadApiHelpers } from '../bank_feed';
 import CreateAccountModal from './CSVUploadWizard/CreateAccountModal';
-import EditTransactionModal from './EditTransactionModal';
+import TransactionModal from './TransactionModal';
+import { feedTransaction } from './feedTransaction';
 import Combobox from '../../common/Combobox';
 import DateRangePicker from '../../common/DateRangePicker';
 import Icon from '../../common/Icon';
@@ -1583,10 +1584,11 @@ export default function CategorizeMode({
       {/* The same editor the feed uses, so a split is made one way in the app
           rather than two. It opens straight into split mode via `startSplit`
           below, since that is the only reason to reach it from here. */}
-      <EditTransactionModal
+      <TransactionModal
         open={splitModalOpen}
         onClose={() => setSplitModalOpen(false)}
         transaction={splitTransaction}
+        source={feedTransaction}
         allAccounts={localAccounts}
         allPayees={allPayees}
         book={book}
@@ -1598,7 +1600,6 @@ export default function CategorizeMode({
               : [...prev, account].sort((a, b) => a.name.localeCompare(b.name))
           )
         }
-        mode="edit"
         startSplit
       />
 
