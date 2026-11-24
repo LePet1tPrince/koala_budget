@@ -30,7 +30,7 @@ const isAnswered = (question, value) => {
 };
 
 const OnboardingShell = ({ props }) => {
-  const { questions, phases, state, teamName, firstName, homeUrl, ynabUrl, api } = props;
+  const { questions, phases, state, firstName, homeUrl, ynabUrl, api } = props;
 
   const [answers, setAnswers] = useState(() => state.answers || {});
   const [started, setStarted] = useState(() => state.phase !== 'welcome');
@@ -199,8 +199,7 @@ const OnboardingShell = ({ props }) => {
       <div className="onboarding-panel app-card" role="dialog" aria-modal="true" aria-label={greeting}>
         {!started ? (
           <div className="onboarding-question" data-testid="onboarding-welcome">
-            <p className="text-sm font-semibold uppercase tracking-[0.08em] text-base-content/70">{teamName}</p>
-            <h1 className="mt-2 text-[1.75rem] font-semibold tracking-tight">{greeting}</h1>
+            <h1 className="text-[1.75rem] font-semibold tracking-tight">{greeting}</h1>
             <p className="mt-3 max-w-prose text-base-content/70">
               {gettext(
                 'A few quick questions and we’ll set up a chart of accounts that matches your life. It takes about a minute, and you can change anything later.',

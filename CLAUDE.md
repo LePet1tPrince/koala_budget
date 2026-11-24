@@ -114,7 +114,6 @@ Full history and rationale: `docs/feature-history.md` (grep it; don't read it wh
 - Plaid: Canada must be enabled for the client in the Plaid dashboard, and the redirect URI registered there
 - Plaid: foreign-currency accounts are flagged, not converted; there is no per-book currency (`BASE_CURRENCY` is global)
 - Plaid: no dedupe against CSV/YNAB history — linking a bank after importing its CSV imports the overlap again
-- `PROJECT_METADATA["IMAGE"]` (social share image) is still the Pegasus logo
 - Rules are not in book export/import; `wipe_book` deletes them
 
 ---

@@ -589,9 +589,10 @@ WAFFLE_FLAG_MODEL = "teams.Flag"
 PROJECT_METADATA = {
     "NAME": gettext_lazy("Koala Budget"),
     "URL": "http://localhost:8000",
-    "DESCRIPTION": gettext_lazy("Budgeting and expense tracking app for freelancers"),  # noqa: E501
-    "IMAGE": "https://upload.wikimedia.org/wikipedia/commons/2/20/PEO-pegasus_black.svg",
-    "KEYWORDS": "SaaS, django",
+    "DESCRIPTION": gettext_lazy("Budgeting with double-entry accuracy: balances that reconcile, real statements."),
+    # A static path (resolved to an absolute URL by `get_image_url`): the Koala icon.
+    "IMAGE": "/images/favicons/android-chrome-512x512.png",
+    "KEYWORDS": "budget, budgeting app, personal finance, Canada",
     "CONTACT_EMAIL": "timothylbender@gmail.com",
 }
 

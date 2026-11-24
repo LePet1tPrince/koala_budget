@@ -50,7 +50,7 @@ def render_checkbox_input(form_field, **attrs):
       <div>
         <label class="font-bold cursor-pointer flex items-center gap-2">
           {{ form_field }}
-          {{ form_field.label }}
+          <span>{{ form_field.label }}</span>
         </label>
       </div>
       <small class="text-base-content/70">{{ form_field.help_text|safe }}</small>
