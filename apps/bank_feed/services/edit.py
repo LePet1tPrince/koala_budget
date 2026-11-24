@@ -7,6 +7,9 @@ before anything is written; `apply_fields` writes it. Neither opens its own
 check of period locks: callers ask `period_lock.row_refusal` alongside `refusal`,
 because the batch endpoint names every refused row at once.
 
+`update_row` is the feed API's whole-row edit (the transaction modal's Save):
+every field and the categorization at once, checked before anything is written.
+
 `decategorize` is the one way back to "uncategorized" for a feed row.
 """
 
@@ -14,19 +17,29 @@ from django.db import transaction
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
+from apps.accounts.guards import assert_category_allowed
 from apps.accounts.models import Payee
 from apps.journal.models import JournalEntry
 from apps.journal.services import period_lock
 from apps.journal.services.lines import repoint_line
-from apps.reconciliation.services.guards import ReconciledLineError, assert_date_change_allowed, assert_entry_removable
+from apps.reconciliation.services.guards import (
+    ReconciledLineError,
+    assert_date_change_allowed,
+    assert_entry_removable,
+    assert_line_mutable,
+)
+from apps.utils.errors import Refused
 
 from ..models import VOID_ROW_MESSAGE, BankTransaction, VoidRowError
 from .categorize import MIRROR_EDIT_ERROR, create_entry, repoint_category
-from .splits import apply_splits, is_split
+from .splits import apply_splits, check_legs_total, is_split, parse_legs
 from .transfer_mirror import is_split_mirror, sync_transfer, would_orphan_primary
 
 VOID_EDIT_ERROR = "This transaction is void. Restore it before editing it."
 SPLIT_MIRROR_ERROR = "This is one part of a split transaction in another account. Open the split there to change it."
+RECONCILED_DECATEGORIZE_ERROR = "This transaction is reconciled. Unreconcile it before removing its category."
+RECONCILED_AMOUNT_ERROR = "This transaction is reconciled. Unreconcile it before changing its amount."
+SPLIT_NOT_SENT_ERROR = "This transaction is split across categories. Send its splits, or remove the split first."
 
 
 def refusal(tx, *, category=None, target_account=None, new_date=None):
@@ -136,6 +149,107 @@ def apply_fields(
 
     # Keep a transfer's counterpart leg aligned with any date/payee/desc edit.
     sync_transfer(tx)
+
+
+def update_row(tx, *, account, category, splits, remove_split, amount, date, payee_name, description):
+    """
+    Replace `tx`'s account, signed `amount`, date, payee, description and
+    categorization.
+
+    `category` None with no `splits` leaves the row uncategorized; `splits` is the
+    raw leg list `parse_legs` reads. Every rule is checked before anything is
+    written; a broken one raises `Refused` saying what to do instead.
+    """
+    entry = tx.journal_entry
+    # A category the entry already uses stays allowed even if it is a system one,
+    # so re-saving an adjustment untouched keeps working.
+    lines = entry.lines.all() if entry else ()
+    current_ids = {line.account_id for line in lines if line.account_id != tx.account_id}
+    reconciled = entry is not None and entry.lines.filter(account=tx.account, is_reconciled=True).exists()
+    decategorizes = category is None and splits is None
+
+    # A void row counts toward nothing; editing it would change what the user
+    # restores later without them seeing it.
+    if tx.is_void:
+        raise Refused(VOID_EDIT_ERROR)
+    if category is not None:
+        assert_category_allowed(category, keep_ids=current_ids)
+    # A split's transfer leg shows here as a mirror row; editing it would rewrite
+    # a split the user made in the other account.
+    if is_split_mirror(tx):
+        raise Refused(SPLIT_MIRROR_ERROR)
+    # Re-pointing (or clearing) a mirror leg's category would orphan the primary.
+    if would_orphan_primary(tx, category):
+        raise Refused(MIRROR_EDIT_ERROR)
+    # Dropping the category takes confirmed history out of the ledger. Splits
+    # re-apportion rather than decategorize, so they pass.
+    if decategorizes and reconciled:
+        raise Refused(RECONCILED_DECATEGORIZE_ERROR)
+
+    legs = None
+    if splits is not None:
+        legs = parse_legs(splits, keep_ids=current_ids)
+        check_legs_total(legs, total=amount)
+    # An existing split is sent with its legs or explicitly collapsed: folding it
+    # silently into one category would lose the user's apportionment.
+    if legs is None and category is not None and not remove_split and is_split(entry):
+        raise Refused(SPLIT_NOT_SENT_ERROR)
+    # Reconciliation is a fact about the bank line: re-splitting keeps its amount
+    # and is allowed; changing the total is not.
+    if reconciled and amount != tx.amount:
+        raise Refused(RECONCILED_AMOUNT_ERROR)
+
+    # The rest of what can change a reconciled line: a move, a re-date past its
+    # statement, or dropping a transfer's other side. `apply_splits` guards legs.
+    if entry is not None:
+        if account.id != tx.account_id:
+            for line in entry.lines.filter(account=tx.account):
+                assert_line_mutable(line, new_account=account)
+        assert_date_change_allowed(entry, date)
+        if decategorizes:
+            assert_entry_removable(entry, own_account_id=tx.account_id, verb=gettext("removing its category"))
+    period_lock.assert_row_edit_allowed(tx, book=tx.book, new_date=date, categorizes=not decategorizes)
+
+    payee = payee_for(tx.book, payee_name)
+    with transaction.atomic():
+        # The bank line is found by the row's *current* account, so the old one is
+        # kept to re-point its lines after the move.
+        old_account = tx.account
+        tx.account = account
+        tx.amount = amount
+        tx.posted_date = date
+        tx.description = description
+        tx.merchant_name = payee_name
+        tx.save()
+
+        # `apply_splits` writes the lines in every case -- one category is a split
+        # with one leg -- so one place decides each line's side and checks balance.
+        entry_legs = legs if legs is not None else [(category, amount)]
+        if decategorizes:
+            if entry is not None:
+                decategorize(tx)
+        elif entry is not None:
+            entry.entry_date = date
+            entry.description = description
+            entry.payee = payee
+            entry.save()
+            # Re-pointed one save at a time, so the audit signals fire.
+            moved = entry.lines.filter(account=old_account) if old_account != account else ()
+            apply_splits(tx, entry_legs, total=amount, move_lines=moved)
+        else:
+            tx.journal_entry = JournalEntry.objects.create(
+                book=tx.book,
+                entry_date=date,
+                description=description,
+                payee=payee,
+                source=JournalEntry.SOURCE_MANUAL,
+                status=JournalEntry.STATUS_POSTED,
+            )
+            tx.save()
+            apply_splits(tx, entry_legs, total=amount)
+
+        # Moves, creates or removes a transfer's counterpart leg to match.
+        sync_transfer(tx)
 
 
 @transaction.atomic

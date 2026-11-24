@@ -11,7 +11,6 @@ from django.db.models import Count, F, Max
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils import timezone
-from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
@@ -44,11 +43,6 @@ from apps.budget.services import picker_accounts_data
 from apps.journal.models import JournalEntry
 from apps.journal.services import period_lock, voiding
 from apps.reconciliation.models import Reconciliation
-from apps.reconciliation.services.guards import (
-    assert_date_change_allowed,
-    assert_entry_removable,
-    assert_line_mutable,
-)
 from apps.reconciliation.services.integrity import intact_map
 from apps.rules.services import feedback as rules_feedback
 
@@ -76,17 +70,15 @@ from .serializers import (
     bank_transaction_to_feed_row,
 )
 from .services import edit, feed_query, recurring
-from .services.categorize import MIRROR_EDIT_ERROR, create_entry, repoint_category
+from .services.categorize import create_entry, repoint_category
 from .services.category_usage import category_usage
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
-from .services.edit import SPLIT_MIRROR_ERROR, VOID_EDIT_ERROR
 from .services.manual import create_manual_transaction
 from .services.sample_csv import build_sample_csv
 from .services.similar_transactions import suggest_categories
-from .services.splits import apply_splits, check_legs_total, is_split, parse_legs
+from .services.splits import check_legs_total, parse_legs
 from .services.transfer_detection import find_transfer_candidates
 from .services.transfer_match import MatchError, ProposalChanged, match_transfer, propose_pairs
-from .services.transfer_mirror import is_split_mirror, sync_transfer, would_orphan_primary
 
 # How far back a new recurring transaction may start (its catch-up is written at once).
 RECURRING_MAX_DAYS_BACK = 366
@@ -269,6 +261,8 @@ class ManualTransactionSerializer(serializers.Serializer):
             raise serializers.ValidationError("Specify either inflow or outflow, not both.")
         if inflow == 0 and outflow == 0:
             raise serializers.ValidationError("Either inflow or outflow must be greater than zero.")
+        # Signed, positive for an outflow (the Plaid convention the ledger uses).
+        data["amount"] = outflow - inflow
         # The leg contents are validated by `parse_legs`, so the rules and their
         # wording live in one place; only the either/or belongs here.
         if data.get("splits") is not None and data.get("category") is not None:
@@ -598,10 +592,7 @@ class BankFeedViewSet(
             category_account = get_or_404(Account.for_book, "Category account not found", id=data["category"])
             assert_category_allowed(category_account)
 
-        # Calculate amount (Plaid convention: positive = outflow, negative = inflow)
-        inflow = data.get("inflow", Decimal("0")) or Decimal("0")
-        outflow = data.get("outflow", Decimal("0")) or Decimal("0")
-        amount = outflow - inflow  # positive = outflow
+        amount = data["amount"]
 
         # Split legs, when the client sent them. Validated before anything is
         # written, so a bad payload never opens a transaction.
@@ -655,208 +646,36 @@ class BankFeedViewSet(
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     def update(self, request, team_slug=None, book_slug=None, pk=None):
-        """
-        Update an existing bank transaction and its associated journal entry.
-
-        Request body:
-        - date: Transaction date (YYYY-MM-DD)
-        - category: Category account ID
-        - inflow: Money coming in (default 0)
-        - outflow: Money going out (default 0)
-        - payee: Payee/merchant name (optional)
-        - description: Transaction description (optional)
-        - account: Bank account ID
-        """
+        """Replace a feed row's fields and categorization (`services.edit.update_row`)."""
         bank_tx = get_or_404(
             BankTransaction.objects.select_related("account", "journal_entry"),
             "Transaction not found",
             id=pk,
             book=request.book,
         )
-
-        # A void transaction counts toward nothing; editing it would change what
-        # the user restores later without them seeing it. Restore first.
-        if bank_tx.is_void:
-            return error_response(VOID_EDIT_ERROR)
-
         serializer = ManualTransactionSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
         data = serializer.validated_data
 
-        bank_account = get_or_404(Account.for_book, "Bank account not found", id=data["account"])
-
-        # Category is optional — clearing it de-categorizes the transaction.
-        # An account the entry already uses stays allowed even if it's a system
-        # one, so re-saving an adjustment untouched keeps working.
-        current_category_ids = (
-            {line.account_id for line in bank_tx.journal_entry.lines.all() if line.account_id != bank_tx.account_id}
-            if bank_tx.journal_entry_id
-            else set()
-        )
-        category_account = None
-        if data.get("category") is not None:
-            category_account = get_or_404(Account.for_book, "Category account not found", id=data["category"])
-            assert_category_allowed(category_account, keep_ids=current_category_ids)
-
-        # A split's transfer leg shows here as a mirror row; any edit to it would
-        # rewrite a split the user made in the other account.
-        if is_split_mirror(bank_tx):
-            return error_response(SPLIT_MIRROR_ERROR)
-
-        # Re-pointing (or clearing) the mirror leg's category would orphan the real
-        # primary transaction; reject it (edit the original transaction instead).
-        if would_orphan_primary(bank_tx, category_account):
-            return error_response(MIRROR_EDIT_ERROR)
-
-        # Removing the category from a reconciled transaction would drop confirmed
-        # history out of the ledger; refuse until it is unreconciled. A request
-        # carrying `splits` has no single category by design and is re-apportioning
-        # rather than de-categorizing, so it is not this guard's business -- the
-        # bank line keeps its amount either way.
-        if (
-            category_account is None
-            and data.get("splits") is None
-            and bank_tx.journal_entry
-            and bank_tx.journal_entry.lines.filter(account=bank_tx.account, is_reconciled=True).exists()
-        ):
-            return error_response("This transaction is reconciled. Unreconcile it before removing its category.")
-
-        # Calculate amount (Plaid convention: positive = outflow, negative = inflow)
-        inflow = data.get("inflow", Decimal("0")) or Decimal("0")
-        outflow = data.get("outflow", Decimal("0")) or Decimal("0")
-        amount = outflow - inflow  # positive = outflow
-
-        # Split legs, when the client sent them. Validated (and their sum checked
-        # against the total) before anything is written, so a bad payload never
-        # opens a transaction.
-        legs = None
-        if data.get("splits") is not None:
-            legs = parse_legs(data["splits"], keep_ids=current_category_ids)
-            check_legs_total(legs, total=amount)
-
-        # An existing split must be sent with its legs, or explicitly collapsed.
-        # Dropping them silently would fold the user's apportionment into whatever
-        # single category the request happened to carry -- which is exactly what the
-        # old code did, and why a split could not survive being opened.
-        if (
-            legs is None
-            and category_account is not None
-            and not data.get("remove_split")
-            and is_split(bank_tx.journal_entry)
-        ):
-            return error_response(
-                "This transaction is split across categories. Send its splits, or remove the split first."
-            )
-
-        # Reconciliation is a fact about the bank line, whose amount does not change
-        # when legs are re-apportioned -- so re-splitting a reconciled transaction is
-        # allowed, and changing its total is not.
-        if (
-            amount != bank_tx.amount
-            and bank_tx.journal_entry_id
-            and bank_tx.journal_entry.lines.filter(account=bank_tx.account, is_reconciled=True).exists()
-        ):
-            return error_response("This transaction is reconciled. Unreconcile it before changing its amount.")
-
-        # The rest of what can change a reconciled line: moving it to another
-        # account, re-dating it past its statement, or dropping the other side of
-        # a transfer by de-categorizing. `apply_splits` guards the legs themselves.
-        entry = bank_tx.journal_entry
-        if entry is not None:
-            if bank_account.id != bank_tx.account_id:
-                for line in entry.lines.filter(account=bank_tx.account):
-                    assert_line_mutable(line, new_account=bank_account)
-            assert_date_change_allowed(entry, data["date"])
-            if category_account is None and data.get("splits") is None:
-                assert_entry_removable(entry, own_account_id=bank_tx.account_id, verb=gettext("removing its category"))
-
-        period_lock.assert_row_edit_allowed(
+        category_id = data.get("category")
+        edit.update_row(
             bank_tx,
-            book=request.book,
-            new_date=data["date"],
-            categorizes=category_account is not None or legs is not None,
+            account=get_or_404(Account.for_book, "Bank account not found", id=data["account"]),
+            category=None
+            if category_id is None
+            else get_or_404(Account.for_book, "Category account not found", id=category_id),
+            splits=data.get("splits"),
+            remove_split=data.get("remove_split", False),
+            amount=data["amount"],
+            date=data["date"],
+            payee_name=data.get("payee", ""),
+            description=data.get("description", ""),
         )
-
-        # Get or create payee if provided
-        payee = None
-        payee_name = data.get("payee", "")
-        if payee_name:
-            payee, _ = Payee.objects.get_or_create(
-                book=request.book,
-                name=payee_name,
-            )
-
-        with transaction.atomic():
-            # Remember the original bank account so we can still identify the bank-side
-            # journal line after the account is reassigned
-            old_account = bank_tx.account
-
-            # Update bank transaction
-            bank_tx.account = bank_account
-            bank_tx.amount = amount
-            bank_tx.posted_date = data["date"]
-            bank_tx.description = data.get("description", "")
-            bank_tx.merchant_name = payee_name
-            bank_tx.save()
-
-            # Update, create, or remove the journal entry depending on the category.
-            # `apply_splits` writes the lines in every case -- a plain transaction is
-            # just a split with one leg -- so there is one place that decides which
-            # side of a line an amount lands on, and one place that checks the
-            # entry balances.
-            journal_entry = bank_tx.journal_entry
-            entry_legs = legs if legs is not None else [(category_account, amount)]
-
-            if category_account is None and legs is None:
-                # Blank category: leave the transaction uncategorized. Drop any
-                # existing journal entry (and its mirror leg) so it disappears from
-                # balances and reappears as an uncategorized feed row.
-                if journal_entry is not None:
-                    edit.decategorize(bank_tx)
-            elif journal_entry:
-                # Update existing journal entry
-                journal_entry.entry_date = data["date"]
-                journal_entry.description = data.get("description", "")
-                journal_entry.payee = payee
-                journal_entry.save()
-
-                # Follow an account move before the lines are rewritten: the writer
-                # finds the bank line by the transaction's *current* account, so the
-                # old account's lines are re-pointed first (one save at a time, so
-                # the audit signals fire).
-                moved = journal_entry.lines.filter(account=old_account) if old_account != bank_account else ()
-                apply_splits(bank_tx, entry_legs, total=amount, move_lines=moved)
-            else:
-                # Create the entry; `apply_splits` writes its bank line and legs.
-                journal_entry = JournalEntry.objects.create(
-                    book=request.book,
-                    entry_date=data["date"],
-                    description=data.get("description", ""),
-                    payee=payee,
-                    source=JournalEntry.SOURCE_MANUAL,
-                    status=JournalEntry.STATUS_POSTED,
-                )
-
-                bank_tx.journal_entry = journal_entry
-                bank_tx.save()
-
-                apply_splits(bank_tx, entry_legs, total=amount)
-
-            # Keep the transfer's two legs in lockstep — moves/creates/removes the
-            # counterpart leg and syncs its display fields, in either direction.
-            sync_transfer(bank_tx)
-
         rules_feedback.record([bank_tx])
 
-        # Reload to get updated data
         bank_tx.refresh_from_db()
-
-        # Return the updated transaction as a feed row
-        row = bank_transaction_to_feed_row(bank_tx)
-        response_serializer = BankFeedRowSerializer(row)
-        return Response(response_serializer.data)
+        return Response(BankFeedRowSerializer(bank_transaction_to_feed_row(bank_tx)).data)
 
     @extend_schema(
         operation_id="bank_feed_sample_csv",
