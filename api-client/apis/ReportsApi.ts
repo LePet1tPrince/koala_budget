@@ -15,32 +15,15 @@
 
 import * as runtime from '../runtime';
 import type {
-  BudgetGoalsReport,
   NetWorthReport,
-  ReportsHome,
   SpendingReport,
 } from '../models/index';
 import {
-    BudgetGoalsReportFromJSON,
-    BudgetGoalsReportToJSON,
     NetWorthReportFromJSON,
     NetWorthReportToJSON,
-    ReportsHomeFromJSON,
-    ReportsHomeToJSON,
     SpendingReportFromJSON,
     SpendingReportToJSON,
 } from '../models/index';
-
-export interface ReportsBudgetGoalsRetrieveRequest {
-    bookSlug: string;
-    teamSlug: string;
-    month?: string;
-}
-
-export interface ReportsHomeRetrieveRequest {
-    bookSlug: string;
-    teamSlug: string;
-}
 
 export interface ReportsNetWorthRetrieveRequest {
     bookSlug: string;
@@ -61,106 +44,6 @@ export interface ReportsSpendingRetrieveRequest {
  * 
  */
 export class ReportsApi extends runtime.BaseAPI {
-
-    /**
-     * Budget & Goals for one month: where every dollar of net worth is going -- each goal, the budget envelopes in total, and what is still unassigned. The month defaults to this one.
-     */
-    async reportsBudgetGoalsRetrieveRaw(requestParameters: ReportsBudgetGoalsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BudgetGoalsReport>> {
-        if (requestParameters['bookSlug'] == null) {
-            throw new runtime.RequiredError(
-                'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling reportsBudgetGoalsRetrieve().'
-            );
-        }
-
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling reportsBudgetGoalsRetrieve().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        if (requestParameters['month'] != null) {
-            queryParameters['month'] = requestParameters['month'];
-        }
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/reports/api/budget-and-goals/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => BudgetGoalsReportFromJSON(jsonValue));
-    }
-
-    /**
-     * Budget & Goals for one month: where every dollar of net worth is going -- each goal, the budget envelopes in total, and what is still unassigned. The month defaults to this one.
-     */
-    async reportsBudgetGoalsRetrieve(requestParameters: ReportsBudgetGoalsRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BudgetGoalsReport> {
-        const response = await this.reportsBudgetGoalsRetrieveRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
-
-    /**
-     * What the reports home shows beside its links: whether last month has been reviewed.
-     */
-    async reportsHomeRetrieveRaw(requestParameters: ReportsHomeRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<ReportsHome>> {
-        if (requestParameters['bookSlug'] == null) {
-            throw new runtime.RequiredError(
-                'bookSlug',
-                'Required parameter "bookSlug" was null or undefined when calling reportsHomeRetrieve().'
-            );
-        }
-
-        if (requestParameters['teamSlug'] == null) {
-            throw new runtime.RequiredError(
-                'teamSlug',
-                'Required parameter "teamSlug" was null or undefined when calling reportsHomeRetrieve().'
-            );
-        }
-
-        const queryParameters: any = {};
-
-        const headerParameters: runtime.HTTPHeaders = {};
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
-        }
-
-        if (this.configuration && this.configuration.apiKey) {
-            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
-        }
-
-        const response = await this.request({
-            path: `/a/{team_slug}/{book_slug}/reports/api/home/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
-            method: 'GET',
-            headers: headerParameters,
-            query: queryParameters,
-        }, initOverrides);
-
-        return new runtime.JSONApiResponse(response, (jsonValue) => ReportsHomeFromJSON(jsonValue));
-    }
-
-    /**
-     * What the reports home shows beside its links: whether last month has been reviewed.
-     */
-    async reportsHomeRetrieve(requestParameters: ReportsHomeRetrieveRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<ReportsHome> {
-        const response = await this.reportsHomeRetrieveRaw(requestParameters, initOverrides);
-        return await response.value();
-    }
 
     /**
      * Net Worth: what you own and owe at the end of a range of whole months and what changed since its start, by section, group and account; the month-end trend and composition. The range defaults to the book\'s report timeframe, else the last 12 months; it never runs past today.

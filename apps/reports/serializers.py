@@ -11,13 +11,11 @@ from rest_framework import serializers
 
 from apps.accounts.serializers import DateRangeQuerySerializer
 from apps.api.base import MonthField
-from apps.budget.unassigned import STATE_NEGATIVE, STATE_POSITIVE, STATE_ZERO
 
 from .consolidated import COLUMN_PERIODS
 
 COLUMN_CHOICES = ["total", *COLUMN_PERIODS]
 NET_WORTH_SECTION_KEYS = ["assets", "liabilities"]
-WATERFALL_KEYS = ["net_worth", "envelopes", "goals", "unassigned"]
 
 
 def _money(**kwargs):
@@ -26,18 +24,6 @@ def _money(**kwargs):
 
 def _money_list(**kwargs):
     return serializers.ListField(child=_money(), **kwargs)
-
-
-# --- Reports home ---------------------------------------------------------------
-
-
-class ReportsHomeMonthlyReviewSerializer(serializers.Serializer):
-    month = MonthField(help_text="Last month, the one the Monthly Review opens on.")
-    reviewed = serializers.BooleanField(help_text="Its review was completed.")
-
-
-class ReportsHomeSerializer(serializers.Serializer):
-    monthly_review = ReportsHomeMonthlyReviewSerializer()
 
 
 # --- Income & Spending ----------------------------------------------------------
@@ -224,79 +210,3 @@ class NetWorthReportSerializer(serializers.Serializer):
     composition = CompositionSerializer(
         allow_null=True, source="composition_data", help_text="Month-end balance per group; null with no groups."
     )
-
-
-# --- Budget & Goals --------------------------------------------------------------
-
-
-class BudgetGoalsUnassignedSerializer(serializers.Serializer):
-    amount = _money(help_text="Net worth − envelopes − goals.")
-    state = serializers.ChoiceField(choices=[STATE_POSITIVE, STATE_ZERO, STATE_NEGATIVE])
-    label = serializers.CharField(help_text="“Unassigned”, or “Over-assigned” when negative.")
-    net_worth = _money()
-    envelopes = _money(help_text="Unspent expense budget (an overspent envelope counts as 0).")
-    goals = _money(help_text="Left in goals (an overspent goal counts as 0).")
-    expects_income = serializers.BooleanField(help_text="The book budgets income before it arrives.")
-    income_due = _money(help_text="Expected income: budgeted income not yet received.")
-    overspent = _money(help_text="Expense envelopes still showing as negative.")
-    goals_overspent = _money()
-
-
-class WaterfallStepSerializer(serializers.Serializer):
-    key = serializers.ChoiceField(choices=WATERFALL_KEYS)
-    label = serializers.CharField()
-    value = _money()
-    start = _money()
-    end = _money()
-    total = serializers.BooleanField(help_text="A total bar (from zero) rather than a step.")
-
-
-class BudgetGoalsGoalSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    name = serializers.CharField()
-    has_target = serializers.BooleanField()
-    target_amount = _money()
-    target_date = serializers.DateField(allow_null=True)
-    allocated = _money(help_text="Set aside so far.")
-    spent = _money(help_text="Spent from the goal so far.")
-    progress_percentage = serializers.FloatField()
-
-
-class BudgetGoalsGoalRowSerializer(serializers.Serializer):
-    goal = BudgetGoalsGoalSerializer()
-    needed = _money(allow_null=True, help_text="This month's plan; null with no plan or once funded (see `note`).")
-    note = serializers.ChoiceField(choices=["", "funded", "no_target_date"], allow_blank=True)
-    assigned = _money(help_text="Assigned to the goal this month.")
-    spent = _money(help_text="Spent from the goal this month.")
-    left = _money()
-    pct = serializers.FloatField(allow_null=True, help_text="Assigned / needed × 100.")
-    pct_capped = serializers.FloatField()
-
-
-class BudgetGoalsGoalTotalsSerializer(serializers.Serializer):
-    needed = _money()
-    assigned = _money()
-    spent = _money()
-    allocated = _money(help_text="Σ allocated over every open goal: the Goals page's Total Saved.")
-    left = _money()
-
-
-class BudgetGoalsEnvelopesSerializer(serializers.Serializer):
-    total = _money(help_text="What sits in the envelopes (a term of Unassigned).")
-    leftover = _money(help_text="Left over from last month.")
-    assigned = _money()
-    spent = _money()
-    available = _money()
-    overspent = _money()
-
-
-class BudgetGoalsReportSerializer(serializers.Serializer):
-    """Budget & Goals for one month: where every dollar of net worth is going."""
-
-    month = MonthField()
-    unassigned = BudgetGoalsUnassignedSerializer()
-    expected_income_label = serializers.CharField()
-    waterfall = WaterfallStepSerializer(many=True, help_text="Net worth stepping down to Unassigned.")
-    goal_rows = BudgetGoalsGoalRowSerializer(many=True)
-    goal_totals = BudgetGoalsGoalTotalsSerializer()
-    envelopes = BudgetGoalsEnvelopesSerializer()

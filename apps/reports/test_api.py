@@ -1,13 +1,11 @@
 """The reports API (`apps/reports/api.py`): the same figures as the pages, with ids and structured drills."""
 
 from datetime import date
-from decimal import Decimal
 
 from django.test import TestCase
 from django.urls import reverse
 
 from apps.books.tests.factories import build_book_data, second_book
-from apps.monthly_review.models import MonthlyReviewState
 from apps.teams.models import Team
 from apps.teams.roles import ROLE_MEMBER
 from apps.users.models import CustomUser
@@ -118,49 +116,3 @@ class NetWorthApiTest(ReportsApiTestCase):
 
     def test_refuses_outsiders(self):
         self.assert_refuses_outsiders("reports:api_net_worth")
-
-
-class BudgetGoalsApiTest(ReportsApiTestCase):
-    def get(self, **params):
-        return self.client.get(self.url("reports:api_budget_goals"), params)
-
-    def test_month_figures_with_goal_ids(self):
-        response = self.get(month="2026-03")
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data["month"], "2026-03")
-        self.assertEqual(data["unassigned"]["net_worth"], "-42.00")
-        self.assertEqual([step["key"] for step in data["waterfall"]], ["net_worth", "envelopes", "goals", "unassigned"])
-        row = data["goal_rows"][0]
-        self.assertEqual(row["goal"]["id"], self.a.goal.id)
-        self.assertEqual(Decimal(row["assigned"]), Decimal(data["goal_totals"]["assigned"]))
-        self.assertNotIn(MARK_B, response.content.decode())
-
-    def test_defaults_to_this_month(self):
-        self.assertEqual(self.get().json()["month"], format_month(date.today()))
-
-    def test_malformed_month_is_a_400(self):
-        response = self.get(month="2026-03-01")
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("month", response.json())
-
-    def test_refuses_outsiders(self):
-        self.assert_refuses_outsiders("reports:api_budget_goals")
-
-
-class ReportsHomeApiTest(ReportsApiTestCase):
-    def test_last_month_review_status(self):
-        last_month = add_months(date.today(), -1)
-        url = self.url("reports:api_home")
-        self.assertEqual(
-            self.client.get(url).json(), {"monthly_review": {"month": format_month(last_month), "reviewed": False}}
-        )
-        state = MonthlyReviewState.objects.create(book=self.a.book, month=last_month)
-        state.complete()
-        state.save()
-        # Book B's review of the same month says nothing about book A.
-        MonthlyReviewState.objects.create(book=self.b.book, month=add_months(last_month, -1))
-        self.assertTrue(self.client.get(url).json()["monthly_review"]["reviewed"])
-
-    def test_refuses_outsiders(self):
-        self.assert_refuses_outsiders("reports:api_home")

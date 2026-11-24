@@ -22,7 +22,7 @@ from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
 from apps.utils.months import add_months
 
-from .consolidated import bucket_for, budget_goals_report, net_worth_report, spending_report
+from .consolidated import bucket_for, net_worth_report, spending_report
 
 
 class ConsolidatedReportsBase(TestCase):
@@ -302,74 +302,6 @@ class PlanFixture(ConsolidatedReportsBase):
         )
         set_goal_allocation(cls.book, cls.goal, may, Decimal("200"))
         set_goal_allocation(cls.book, cls.goal, june, Decimal("100"))
-
-
-class BudgetGoalsReportTest(PlanFixture):
-    def test_envelopes_are_one_total(self):
-        from apps.budget.unassigned import compute_unassigned
-
-        report = budget_goals_report(self.book, date(2026, 6, 1))
-        unassigned = compute_unassigned(self.book, date(2026, 6, 1))
-        envelopes = report["envelopes"]
-        self.assertEqual(envelopes["total"], unassigned.envelopes)
-        # The Expenses tab's own sidebar: 300 left over (Food) + 1400 assigned − 1700 spent.
-        self.assertEqual(envelopes["leftover"], Decimal("300.00"))
-        self.assertEqual(envelopes["assigned"], Decimal("1400.00"))
-        self.assertEqual(envelopes["spent"], Decimal("1700.00"))
-        self.assertEqual(envelopes["available"], envelopes["leftover"] + envelopes["assigned"] - envelopes["spent"])
-        self.assertEqual(envelopes["available"], Decimal("0.00"))  # Food +100, Rent −100
-        # Rent's −100 claims nothing: it already came out of Unassigned.
-        self.assertEqual(envelopes["total"], Decimal("100.00"))
-        self.assertEqual(envelopes["total"], envelopes["available"] + envelopes["overspent"])
-        self.assertEqual(envelopes["overspent"], Decimal("100.00"))  # Rent, carried negative
-        self.assertEqual(envelopes["overspent"], unassigned.overspent)
-        self.assertNotIn("spending", report)
-
-    def test_leftover_matches_the_budget_sidebar(self):
-        response = self.client.get(
-            reverse("budget:budget_home", args=self.book.url_args), {"month": "2026-06-01", "tab": "expense"}
-        )
-        sidebar = response.context["sidebar_summary"]["expense"]
-        envelopes = budget_goals_report(self.book, date(2026, 6, 1))["envelopes"]
-        self.assertEqual(envelopes["leftover"], sidebar["leftover_last_month"])
-        self.assertEqual(envelopes["available"], sidebar["available"])
-
-    def test_goals_saved_includes_open_ended_goals(self):
-        Goal.objects.create(book=self.book, name="Zq RESP", target_amount=Decimal("0"), monthly_contribution=10)
-        resp = Goal.objects.get(book=self.book, name="Zq RESP")
-        set_goal_allocation(self.book, resp, date(2026, 6, 1), Decimal("50"))
-        response = self.client.get(self.url("budget_goals"), {"month": "2026-06"})
-        self.assertContains(response, "$350.00 saved")
-
-    def test_goals_and_unassigned(self):
-        from apps.budget.unassigned import compute_unassigned
-
-        report = budget_goals_report(self.book, date(2026, 6, 1))
-        row = report["goal_rows"][0]
-        self.assertEqual(row["assigned"], Decimal("100"))
-        self.assertEqual(row["needed"], Decimal("166.67"))  # (1200 − 200) over the 6 months Jun..Nov
-        self.assertEqual(report["goal_totals"]["allocated"], Decimal("300"))
-        self.assertEqual(report["unassigned"].amount, compute_unassigned(self.book, date(2026, 6, 1)).amount)
-        self.assertEqual(report["waterfall"][-1]["value"], float(report["unassigned"].amount))
-
-    def test_view_renders_month_without_listing_categories(self):
-        response = self.client.get(self.url("budget_goals"), {"month": "2026-06"})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["prev_month"], date(2026, 5, 1))
-        self.assertContains(response, "Zq Car")
-        self.assertContains(response, 'data-testid="plan-envelopes-card"')
-        self.assertContains(response, 'data-testid="plan-overspent"')
-        self.assertContains(response, "$100.00 this month")  # goals assigned in June
-        self.assertNotContains(response, "Zq Food")
-        self.assertNotContains(response, "Zq Rent")
-
-    def test_bad_month_falls_back_to_this_month(self):
-        response = self.client.get(self.url("budget_goals"), {"month": "garbage"})
-        self.assertEqual(response.context["month"], date.today().replace(day=1))
-
-    def test_requires_membership(self):
-        self.client.logout()
-        self.assertNotEqual(self.client.get(self.url("budget_goals")).status_code, 200)
 
 
 class BudgetPageProgressBarTest(PlanFixture):

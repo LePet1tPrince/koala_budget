@@ -472,29 +472,19 @@ class ReportViewsTest(TestCase):
     def setUp(self):
         self.client.login(username="testuser", password="testpass123")
 
-    def test_reports_home_view(self):
-        """Test reports home view loads successfully."""
-        url = reverse("reports:reports_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "reports/reports_home.html")
+    def test_reports_home_opens_income_and_spending(self):
+        response = self.client.get(reverse("reports:reports_home", args=self.book.url_args))
+        spending = reverse("reports:spending", args=self.book.url_args)
+        self.assertRedirects(response, spending, fetch_redirect_response=False)
 
-    def test_reports_home_lists_the_four_reports(self):
-        """Reports home links Monthly Review and the three reports, and none of the retired ones."""
-        url = reverse("reports:reports_home", kwargs={"team_slug": self.team.slug, "book_slug": self.book.slug})
-        response = self.client.get(url)
-        for testid in ("monthly-review", "spending", "net-worth", "budget-goals"):
-            self.assertContains(response, f'data-testid="report-link-{testid}"')
-        self.assertContains(response, 'data-testid="report-link-', count=4)
-
-    def test_report_nav_lists_the_four_reports(self):
-        """The sidebar's Reports popout carries the same four reports, the open one highlighted."""
+    def test_report_nav_lists_the_three_reports(self):
+        """The sidebar's Reports popout carries Monthly Review and the two reports, the open one highlighted."""
         url = reverse("reports:net_worth", args=self.book.url_args)
         response = self.client.get(url)
-        for testid in ("nav-monthly-review", "nav-report-spending", "nav-report-net-worth", "nav-report-budget-goals"):
+        for testid in ("nav-monthly-review", "nav-report-spending", "nav-report-net-worth"):
             self.assertContains(response, f'data-testid="{testid}"')
         # The menu renders twice: the desktop sidebar and the mobile dropdown.
-        self.assertContains(response, 'data-testid="nav-report-', count=6)
+        self.assertContains(response, 'data-testid="nav-report-', count=4)
         self.assertContains(response, 'side-link-active" data-testid="nav-report-net-worth"')
 
     def test_retired_reports_are_gone(self):
@@ -508,6 +498,7 @@ class ReportViewsTest(TestCase):
             "cash_flow",
             "budget_vs_actual",
             "goal_progress",
+            "budget_goals",
             "dollar_map",
         ):
             with self.assertRaises(NoReverseMatch):

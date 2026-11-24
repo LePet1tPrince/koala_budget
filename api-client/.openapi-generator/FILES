@@ -61,12 +61,6 @@ models/BudgetAutofillActionEnum.ts
 models/BudgetChart.ts
 models/BudgetChartKindEnum.ts
 models/BudgetCoverSourceEnum.ts
-models/BudgetGoalsEnvelopes.ts
-models/BudgetGoalsGoal.ts
-models/BudgetGoalsGoalRow.ts
-models/BudgetGoalsGoalTotals.ts
-models/BudgetGoalsReport.ts
-models/BudgetGoalsUnassigned.ts
 models/BudgetGridActualModeEnum.ts
 models/BudgetGroup.ts
 models/BudgetMonth.ts
@@ -202,7 +196,6 @@ models/NetWorthReport.ts
 models/NetWorthSection.ts
 models/NetWorthSectionKeyEnum.ts
 models/NetWorthStats.ts
-models/NoteEnum.ts
 models/OnboardingAnswersRequest.ts
 models/OnboardingAnswersResponse.ts
 models/OnboardingCatalog.ts
@@ -292,8 +285,6 @@ models/ReorderGroups.ts
 models/ReportColumnsEnum.ts
 models/ReportPeriod.ts
 models/ReportTimeframeEnum.ts
-models/ReportsHome.ts
-models/ReportsHomeMonthlyReview.ts
 models/Review.ts
 models/ReviewBalanceRow.ts
 models/ReviewBalanceRowTypeEnum.ts
@@ -410,8 +401,6 @@ models/UploadValidateDatesResponse.ts
 models/UserInvitationsResponse.ts
 models/VisibilityRequest.ts
 models/VisibilityResponse.ts
-models/WaterfallStep.ts
-models/WaterfallStepKeyEnum.ts
 models/YnabAccount.ts
 models/YnabCategory.ts
 models/YnabChartGroup.ts

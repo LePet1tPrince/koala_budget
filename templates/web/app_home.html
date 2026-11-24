@@ -18,7 +18,7 @@
       <div class="text-2xl font-semibold tracking-tight mt-1 {% if net_worth < 0 %}text-error{% endif %}">
         {{ net_worth|currency }}
       </div>
-      <a href="{% url 'reports:budget_goals' request.team.slug request.book.slug %}" class="link text-xs mt-2 inline-block" data-testid="dashboard-dollar-map-link">{% translate "Where every dollar is going" %}</a>
+      <a href="{% url 'reports:net_worth' request.team.slug request.book.slug %}" class="link text-xs mt-2 inline-block">{% translate "View net worth" %}</a>
     </section>
     <section class="app-card" data-testid="metric-income-ytd">
       <div class="text-sm text-base-content/70">{% translate "Income − expenses (YTD)" %}</div>

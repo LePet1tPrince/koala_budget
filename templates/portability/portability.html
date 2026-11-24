@@ -1,6 +1,7 @@
 {% extends "web/settings/settings_base.html" %}
 {% load i18n %}
 {% load django_vite %}
+{% load icons %}
 
 {% block settings_content %}
   {{ request.book.base_url|json_script:'book-base' }}
@@ -13,6 +14,17 @@
         <p>{% translate "Export & Import needs JavaScript." %}</p>
       </div>
     </noscript>
+
+    <div class="app-card mt-6 flex flex-wrap items-center justify-between gap-3" data-testid="export-transactions-csv">
+      <div>
+        <div class="font-medium">{% translate "Transactions as a spreadsheet" %}</div>
+        <div class="text-sm text-base-content/70">{% translate "Every transaction in this book, as a CSV file." %}</div>
+      </div>
+      <a href="{% url 'reports:export_transactions' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm">
+        {% icon "download" class="inline-block shrink-0 w-4 h-4 mr-2" %}
+        {% translate "Download CSV" %}
+      </a>
+    </div>
   </div>
 {% endblock %}
 

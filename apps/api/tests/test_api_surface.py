@@ -257,7 +257,6 @@ class TemplateDataPropsTest(SimpleTestCase):
         ("web/app_home.html", "home-data"): "book_api:home",
         ("reports/spending.html", "spending-report-data"): "reports:api_spending",
         ("reports/net_worth.html", "net-worth-report-data"): "reports:api_net_worth",
-        ("reports/budget_goals.html", "budget-goals-report-data"): "reports:api_budget_goals",
         ("budget/goals_list.html", "goals-data"): "budget:api_goals",
         ("accounts/account_detail.html", "account-charts-data"): "accounts:account-charts",
     }

@@ -83,7 +83,7 @@
   {# Reports: expands to every report page, including Monthly Review. #}
   <div x-data="sideGroup({% if active_tab == 'reports' or active_tab == 'monthly-review' %}true{% else %}false{% endif %})" x-bind="group" class="side-group flex flex-col">
     <div class="side-row" x-ref="row">
-      <a x-ref="link" href="{% url 'reports:reports_home' nav_team.slug nav_book.slug %}"
+      <a x-ref="link" href="{% url 'reports:spending' nav_team.slug nav_book.slug %}"
          class="side-link flex-1 {% if active_tab == 'reports' %}side-link-active{% endif %}">
         {% icon "chart-bar" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Reports" %}
@@ -110,11 +110,6 @@
          class="side-link side-link-sub {% if active_report == 'net_worth' %}side-link-active{% endif %}" data-testid="nav-report-net-worth">
         {% icon "chart-line" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Net Worth" %}
-      </a>
-      <a href="{% url 'reports:budget_goals' nav_team.slug nav_book.slug %}"
-         class="side-link side-link-sub {% if active_report == 'budget_goals' %}side-link-active{% endif %}" data-testid="nav-report-budget-goals">
-        {% icon "wallet" class="inline-block shrink-0 w-4 h-4" %}
-        {% translate "Budget & Goals" %}
       </a>
     </div>
   </div>

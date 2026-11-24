@@ -14,42 +14,25 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.response import Response
 
-from apps.api.base import BookAPIView, month_parameter, month_query_param
+from apps.api.base import BookAPIView, month_parameter
 from apps.utils.months import add_months
 
 from .consolidated import (
     COLUMN_LABELS,
-    budget_goals_report,
     column_periods,
     net_worth_report,
     period_bounds,
     spending_report,
 )
 from .serializers import (
-    BudgetGoalsReportSerializer,
     NetWorthQuerySerializer,
     NetWorthReportSerializer,
-    ReportsHomeSerializer,
     SpendingQuerySerializer,
     SpendingReportSerializer,
 )
 from .timeframes import default_range
 
 TAGS = ["reports"]
-
-
-class ReportsHomeView(BookAPIView):
-    """What the reports home shows beside its links: whether last month has been reviewed."""
-
-    @extend_schema(operation_id="reports_home_retrieve", tags=TAGS, responses=ReportsHomeSerializer)
-    def get(self, request, team_slug, book_slug):
-        from apps.monthly_review.models import MonthlyReviewState
-
-        last_month = add_months(date.today(), -1)
-        reviewed = MonthlyReviewState.objects.filter(
-            book=self.book, month=last_month, completed_at__isnull=False
-        ).exists()
-        return Response(ReportsHomeSerializer({"monthly_review": {"month": last_month, "reviewed": reviewed}}).data)
 
 
 SPENDING_PARAMETERS = [
@@ -176,40 +159,3 @@ class NetWorthReportView(BookAPIView):
 def net_worth_payload(report, start_date, end_date):
     """The `GET …/reports/api/net-worth/` body for a `net_worth_report`; the Net Worth page embeds the same."""
     return NetWorthReportSerializer({**report, "start_date": start_date, "end_date": end_date}).data
-
-
-class BudgetGoalsReportView(BookAPIView):
-    """
-    Budget & Goals for one month: where every dollar of net worth is going -- each
-    goal, the budget envelopes in total, and what is still unassigned. The month
-    defaults to this one.
-    """
-
-    @extend_schema(
-        operation_id="reports_budget_goals_retrieve",
-        tags=TAGS,
-        parameters=[month_parameter(description="The month, as YYYY-MM (default: this month).")],
-        responses=BudgetGoalsReportSerializer,
-    )
-    def get(self, request, team_slug, book_slug):
-        month = month_query_param(request, default=lambda: date.today().replace(day=1))
-        return Response(budget_goals_payload(budget_goals_report(self.book, month), month))
-
-
-def budget_goals_payload(report, month):
-    """The `GET …/reports/api/budget-and-goals/` body for a `budget_goals_report`; the page embeds the same."""
-    goal_rows = [{**row, "goal": _goal_payload(row["goal"])} for row in report["goal_rows"]]
-    return BudgetGoalsReportSerializer({**report, "month": month, "goal_rows": goal_rows}).data
-
-
-def _goal_payload(goal):
-    return {
-        "id": goal.pk,
-        "name": goal.name,
-        "has_target": goal.has_target,
-        "target_amount": goal.target_amount,
-        "target_date": goal.target_date,
-        "allocated": goal.allocated,
-        "spent": goal.spent,
-        "progress_percentage": goal.progress_percentage,
-    }
