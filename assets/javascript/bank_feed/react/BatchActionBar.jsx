@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import Modal from '../../common/Modal';
 import Icon from '../../common/Icon';
 import BulkEditModal from './BulkEditModal';
+import { formatMoney } from '../../common/amount';
 
 /* globals gettext */
 
@@ -55,14 +56,6 @@ const BatchActionBar = ({
   const anyReconciled = useMemo(() => {
     return selectedRows.some(r => r.isReconciled ?? r.is_reconciled ?? false);
   }, [selectedRows]);
-
-  // Format currency
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
 
   // Export to CSV. Rows selected on other pages (or by "select all matching")
   // are summaries, so the caller fetches them in full first.
@@ -120,15 +113,15 @@ const BatchActionBar = ({
 
           <span className="flex items-center gap-1">
             <span className="text-base-content/70">{gettext('In:')}</span>
-            <span className="money font-bold text-success">{formatCurrency(totalInflow)}</span>
+            <span className="money font-bold text-success">{formatMoney(totalInflow)}</span>
           </span>
           <span className="flex items-center gap-1">
             <span className="text-base-content/70">{gettext('Out:')}</span>
-            <span className="money font-bold text-error">{formatCurrency(totalOutflow)}</span>
+            <span className="money font-bold text-error">{formatMoney(totalOutflow)}</span>
           </span>
           <span className="flex items-center gap-1">
             <span className="text-base-content/70">{gettext('Net:')}</span>
-            <span className={`money font-bold ${money(net)}`}>{formatCurrency(net)}</span>
+            <span className={`money font-bold ${money(net)}`}>{formatMoney(net)}</span>
           </span>
         </div>
 

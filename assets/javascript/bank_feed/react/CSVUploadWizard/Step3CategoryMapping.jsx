@@ -3,8 +3,8 @@
 import React, { useState } from 'react';
 import AccountComboBox from './AccountComboBox';
 import CreateAccountModal from './CreateAccountModal';
-import { formatCurrency } from '../../../utilities/currency';
 import Icon from '../../../common/Icon';
+import { formatMoney } from '../../../common/amount';
 
 /**
  * Build the initial mapping from each category's deterministic suggestion.
@@ -118,13 +118,13 @@ const Step3CategoryMapping = ({ unmappedCategories, initialMappings = {}, allAcc
                 <div className="flex flex-col">
                   <span className="text-xs uppercase tracking-wide text-base-content/70">{gettext('In')}</span>
                   <span className={inflow > 0 ? 'text-success font-medium' : 'text-base-content/40'}>
-                    {formatCurrency(inflow)}
+                    {formatMoney(inflow)}
                   </span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-xs uppercase tracking-wide text-base-content/70">{gettext('Out')}</span>
                   <span className={outflow > 0 ? 'text-error font-medium' : 'text-base-content/40'}>
-                    {formatCurrency(outflow)}
+                    {formatMoney(outflow)}
                   </span>
                 </div>
               </div>

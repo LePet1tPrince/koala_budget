@@ -14,6 +14,7 @@ import {
   resolveNewName,
   resolveRename,
 } from './names';
+import { formatMoney } from '../common/amount';
 
 /**
  * The accounts, with the type we inferred and the evidence for it.
@@ -23,9 +24,6 @@ import {
  * real export, but a guess. Showing the reason next to it is what makes the guess
  * checkable rather than something the user has to take on trust.
  */
-const money = (value) =>
-  `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 const TYPES = [
   { key: 'asset', label: gettext('Things you own') },
   { key: 'liability', label: gettext('Things you owe') },
@@ -220,7 +218,7 @@ const Step2Accounts = ({ accounts, groups, choices, onChange, groupEdits, onGrou
                     />
                   </td>
                   <td className="money text-right">{account.rows.toLocaleString()}</td>
-                  <td className="money text-right">{money(account.closingBalance)}</td>
+                  <td className="money text-right">{formatMoney(account.closingBalance)}</td>
                   <td className="text-center">
                     <input
                       type="checkbox"

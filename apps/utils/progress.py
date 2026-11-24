@@ -29,7 +29,7 @@ import contextlib
 import logging
 
 from celery.result import AsyncResult
-from celery_progress.backend import Progress
+from celery_progress.backend import Progress, ProgressRecorder
 from django.db import DEFAULT_DB_ALIAS, connections
 from django.utils import timezone
 
@@ -130,6 +130,24 @@ class ProgressChannel:
         ]
 
 
+def reporter(task, channel: ProgressChannel):
+    """
+    An import task's `on_progress(percent, step)`: the Celery result backend
+    (Redis, outside the transaction) and `channel` (the database). Neither may
+    fail the import.
+    """
+    recorder = ProgressRecorder(task)
+
+    def report(percent: int, step: str):
+        try:
+            recorder.set_progress(percent, 100, description=step)
+        except Exception:  # noqa: BLE001 - progress is a nicety; the import is not
+            logger.debug("Could not report %s progress to the result backend", channel.label, exc_info=True)
+        channel.report(percent, step)
+
+    return report
+
+
 # ---------------------------------------------------------------------------
 # Reading it back: the status endpoint both import wizards poll
 # ---------------------------------------------------------------------------
@@ -176,8 +194,7 @@ def status_payload(record) -> dict:
     """
     Where an import has got to, for the wizard's status poll.
 
-    `record` is a `YnabImport` or a `DataImport`: a row with `as_dict()`,
-    `is_finished`, `task_id`, `status`/`error`/`finished_at` and `STATUS_FAILED`.
+    `record` is an `ImportJob` (`apps.utils.models`).
 
     The row is authoritative -- a reloaded page must show a finished import as
     finished -- and Celery is consulted only for progress the row has not caught up
@@ -201,11 +218,7 @@ def status_payload(record) -> dict:
         # failed, so that number must never reach the bar while the row still says
         # running -- that is the full-bar-forever the user would otherwise stare at.
         if worker_is_gone(record):
-            record.status = record.STATUS_FAILED
-            record.error = WORKER_DIED_ERROR
-            record.finished_at = timezone.now()
-            record.save(update_fields=["status", "error", "finished_at", "updated_at"])
-            return record.as_dict()
+            return record.fail(WORKER_DIED_ERROR)
         # Still within the moment between the task returning and the row being
         # written: report near-complete rather than complete, and let the next poll
         # see the row itself.

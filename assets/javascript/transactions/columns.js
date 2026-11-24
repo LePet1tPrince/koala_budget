@@ -1,6 +1,6 @@
 /* globals gettext */
 
-import { formatCurrency } from '../utilities/currency';
+import { formatMoney } from '../common/amount';
 
 /**
  * Status codes, with the label and badge colour the table shows. Status isn't a
@@ -57,7 +57,7 @@ export const TRANSACTION_COLUMNS = [
     key: 'amount',
     label: gettext('Amount'),
     align: 'right',
-    formatValue: (value) => formatCurrency(value),
+    formatValue: (value) => formatMoney(value),
     ascLabel: gettext('Smallest first'),
     descLabel: gettext('Largest first'),
   },

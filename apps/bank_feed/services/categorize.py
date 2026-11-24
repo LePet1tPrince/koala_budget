@@ -13,6 +13,7 @@ from django.db import transaction
 from apps.journal.models import JournalEntry
 from apps.journal.services import period_lock
 from apps.journal.services.lines import signed_amount, write_lines
+from apps.utils.errors import Refused
 
 from ..models import VOID_ROW_MESSAGE, VoidRowError
 from .splits import SplitError, is_split
@@ -38,7 +39,7 @@ def create_entry(bank_tx, category_account):
     Raises ValueError when the transaction has no account.
     """
     if not bank_tx.account_id:
-        raise ValueError("Cannot categorize transaction: No bank account linked.")
+        raise Refused("Cannot categorize transaction: No bank account linked.")
     if bank_tx.is_void:
         raise VoidRowError(VOID_ROW_MESSAGE)
 
@@ -81,7 +82,7 @@ def repoint_category(bank_tx, category_account):
     # Re-pointing the mirror leg to a non-feed category would orphan the real
     # primary transaction; reject it (the user must edit the original instead).
     if would_orphan_primary(bank_tx, category_account):
-        raise ValueError(MIRROR_EDIT_ERROR)
+        raise Refused(MIRROR_EDIT_ERROR)
 
     # A split has several category lines, and this re-points one. Doing that to a
     # split would leave the other legs alone -- balanced, and quietly not what the

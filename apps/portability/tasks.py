@@ -14,9 +14,10 @@ able to take the safety copy down with it.
 import logging
 
 from celery import shared_task
-from celery_progress.backend import ProgressRecorder
 from django.conf import settings
 from django.utils import timezone
+
+from apps.utils.progress import reporter
 
 from .models import DataImport
 from .services import apply, read
@@ -37,29 +38,13 @@ def run_data_import(self, import_id: int):
         # same row would wipe and rewrite the book twice.
         return record.as_dict()
 
-    recorder = ProgressRecorder(self)
     channel = ProgressChannel(record.id)
-
-    record.status = DataImport.STATUS_RUNNING
-    record.progress = 0
-    record.step = "Reading your export"
-    record.started_at = timezone.now()
-    record.save(update_fields=["status", "progress", "step", "started_at", "updated_at"])
-
-    def report(percent: int, step: str):
-        try:
-            recorder.set_progress(percent, 100, description=step)
-        except Exception:  # noqa: BLE001 - progress is a nicety; the import is not
-            logger.debug("Could not report data import progress to the result backend", exc_info=True)
-        channel.report(percent, step)
+    report = reporter(self, channel)
+    record.start("Reading your export")
 
     def fail(message: str):
         channel.close()
-        record.status = DataImport.STATUS_FAILED
-        record.error = message
-        record.finished_at = timezone.now()
-        record.save(update_fields=["status", "error", "finished_at", "updated_at"])
-        return record.as_dict()
+        return record.fail(message)
 
     try:
         report(2, "Reading your export")
@@ -100,18 +85,9 @@ def run_data_import(self, import_id: int):
         return fail(f"The import could not be completed: {error}")
 
     channel.close()
-
-    record.status = DataImport.STATUS_DONE
-    record.progress = 100
-    record.step = "Done"
-    record.finished_at = timezone.now()
-    record.result = result.as_dict()
-    # The archive is in the ledger now. Keeping a second copy of someone's
-    # entire financial history in a staging table buys nothing -- the same
-    # reasoning YnabImport clears its staged CSVs on. The safety copy is
-    # deliberately NOT cleared here; it has its own retention window.
-    record.archive = b""
-    record.save()
+    # The archive is in the ledger now. The safety copy is deliberately kept:
+    # it has its own retention window.
+    record.finish(result.as_dict(), archive=b"")
     _finish_onboarding(record)
 
     # AuditEvent.DATA_WIPED and DATA_IMPORTED are already logged inside

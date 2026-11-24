@@ -1,8 +1,4 @@
-export const currency = (value) => {
-  const n = Number(value) || 0;
-  const sign = n < 0 ? '-' : '';
-  return `${sign}$${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
+export { formatMoney as currency } from '../common/amount';
 
 export const compactCurrency = (value) => `$${Number(value).toLocaleString()}`;
 

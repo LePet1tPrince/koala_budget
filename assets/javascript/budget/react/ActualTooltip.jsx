@@ -4,10 +4,10 @@ import Combobox from '../../common/Combobox';
 import PickerPopover from '../../common/PickerPopover';
 import Spinner from '../../common/Spinner';
 import { Toast } from '../../common/Toast';
-import { formatCurrency } from '../../utilities/currency';
 import { buildCategoryOptions } from '../../common/categoryOptions';
 import { getApiConfiguration } from '../../api';
 import { errorMessage } from '../budget-api';
+import { formatMoney } from '../../common/amount';
 
 let journalApi = null;
 const journal = () => (journalApi ??= new JournalApi(getApiConfiguration(window.location.origin)));
@@ -92,7 +92,7 @@ const ActualTooltip = ({ categoryId, categoryName, amount, month, allAccounts, b
       });
       setSnackbar({
         open: true,
-        message: `${formatCurrency(Math.abs(movedAmount))} ${gettext('recategorized to')} ${destName}`,
+        message: `${formatMoney(Math.abs(movedAmount))} ${gettext('recategorized to')} ${destName}`,
         severity: 'success',
       });
     } catch (error) {
@@ -155,7 +155,7 @@ const ActualTooltip = ({ categoryId, categoryName, amount, month, allAccounts, b
   return (
     <>
       <PickerPopover
-        label={formatCurrency(currentAmount)}
+        label={formatMoney(currentAmount)}
         onOpen={fetchTransactions}
         testId={`actual-tooltip-${categoryId}`}
         buttonClassName="money cursor-pointer hover:underline hover:text-primary"
@@ -202,7 +202,7 @@ const ActualTooltip = ({ categoryId, categoryName, amount, month, allAccounts, b
                         <td className="max-w-[150px] truncate" title={tx.description}>
                           {tx.description || '-'}
                         </td>
-                        <td className="money whitespace-nowrap text-right">{formatCurrency(getAmount(tx))}</td>
+                        <td className="money whitespace-nowrap text-right">{formatMoney(getAmount(tx))}</td>
                         <td className="min-w-[10rem]">
                           <Combobox
                             size="sm"
@@ -227,7 +227,7 @@ const ActualTooltip = ({ categoryId, categoryName, amount, month, allAccounts, b
 
             <div className="mt-3 border-t border-base-300 pt-2 text-sm text-base-content/70">
               {transactions.length} {transactions.length === 1 ? gettext('transaction') : gettext('transactions')} |{' '}
-              {gettext('Total')}: {formatCurrency(currentAmount)}
+              {gettext('Total')}: {formatMoney(currentAmount)}
             </div>
           </div>
         )}

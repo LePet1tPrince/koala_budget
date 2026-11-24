@@ -24,6 +24,7 @@ from django.db import models
 from django.utils import timezone
 
 from apps.books.models import BaseBookModel
+from apps.utils.models import ImportJob
 
 # Refuse an upload larger than this. The format is CSV-of-strings, not a
 # denser binary encoding, so a book many times the size of anything real
@@ -38,28 +39,14 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 SAFETY_EXPORT_WINDOW = timedelta(days=7)
 
 
-class DataImport(BaseBookModel):
-    STATUS_UPLOADED = "uploaded"
-    STATUS_RUNNING = "running"
-    STATUS_DONE = "done"
-    STATUS_FAILED = "failed"
-
-    STATUS_CHOICES = [
-        (STATUS_UPLOADED, "Uploaded"),
-        (STATUS_RUNNING, "Running"),
-        (STATUS_DONE, "Done"),
-        (STATUS_FAILED, "Failed"),
-    ]
-
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_UPLOADED)
-
+class DataImport(BaseBookModel, ImportJob):
     archive = models.BinaryField(
         default=b"", blank=True, help_text="The uploaded export (a zip), cleared once applied."
     )
 
-    # Taken automatically inside the apply transaction, immediately before the
-    # wipe (services/apply.py) -- never uploaded by the user. Blank until
-    # then, and blanked again once SAFETY_EXPORT_WINDOW has passed.
+    # Taken automatically right before the wipe (tasks.py) -- never uploaded by
+    # the user. Blank until then, and blanked again once SAFETY_EXPORT_WINDOW
+    # has passed.
     safety_archive = models.BinaryField(
         default=b"",
         blank=True,
@@ -67,15 +54,6 @@ class DataImport(BaseBookModel):
     )
     safety_archive_created_at = models.DateTimeField(null=True, blank=True)
 
-    result = models.JSONField(
-        default=dict, blank=True, help_text="What was written, the wipe counts, and how the checks came out."
-    )
-    error = models.TextField(blank=True)
-    task_id = models.CharField(max_length=255, blank=True, help_text="The Celery task running this import.")
-    progress = models.PositiveSmallIntegerField(default=0, help_text="Percent complete, for the apply screen.")
-    step = models.CharField(max_length=100, blank=True, help_text="What the import is doing right now.")
-
-    started_at = models.DateTimeField(null=True, blank=True, help_text="When the worker picked this import up.")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -83,7 +61,6 @@ class DataImport(BaseBookModel):
         blank=True,
         related_name="data_imports",
     )
-    finished_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -94,46 +71,10 @@ class DataImport(BaseBookModel):
         return f"Data import for {self.book} ({self.status})"
 
     @property
-    def is_finished(self) -> bool:
-        return self.status in (self.STATUS_DONE, self.STATUS_FAILED)
-
-    @property
     def safety_archive_available(self) -> bool:
         if not self.safety_archive or self.safety_archive_created_at is None:
             return False
         return timezone.now() - self.safety_archive_created_at < SAFETY_EXPORT_WINDOW
 
-    @property
-    def elapsed_seconds(self) -> float | None:
-        if self.started_at is None:
-            return None
-        end = self.finished_at or timezone.now()
-        return max(0.0, (end - self.started_at).total_seconds())
-
-    @property
-    def eta_seconds(self) -> int | None:
-        """
-        A guess at what is left, from what the run has managed so far.
-
-        Silent below a tenth of the way in, same reasoning as the YNAB
-        importer's: the wipe and the early inserts are nothing like the rate
-        that dominates the rest of the run.
-        """
-        elapsed = self.elapsed_seconds
-        if self.is_finished or elapsed is None or self.progress < 10:
-            return None
-        return max(0, int(round(elapsed * (100 - self.progress) / self.progress)))
-
     def as_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "status": self.status,
-            "progress": self.progress,
-            "step": self.step,
-            "error": self.error,
-            "result": self.result,
-            "started": self.started_at is not None,
-            "elapsed_seconds": self.elapsed_seconds,
-            "eta_seconds": self.eta_seconds,
-            "safety_archive_available": self.safety_archive_available,
-        }
+        return {**super().as_dict(), "safety_archive_available": self.safety_archive_available}

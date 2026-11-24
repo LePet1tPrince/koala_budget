@@ -41,6 +41,7 @@ from apps.reconciliation.services.guards import (
     assert_entry_removable,
     assert_line_mutable,
 )
+from apps.utils.errors import Refused
 
 from ..models import JournalEntry
 from . import period_lock
@@ -61,7 +62,7 @@ class _Unset:
 UNSET = _Unset()
 
 
-class EditRefused(Exception):
+class EditRefused(Refused):
     """
     An edit that will not be applied, with the reason shown to the user.
 

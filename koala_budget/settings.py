@@ -448,6 +448,8 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PERMISSION_CLASSES": ("apps.api.permissions.IsAuthenticatedOrHasUserAPIKey",),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    # A domain refusal (`apps.utils.errors.Refused`) answers `{"error": message}`.
+    "EXCEPTION_HANDLER": "apps.api.exceptions.exception_handler",
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 100,
     "DEFAULT_THROTTLE_CLASSES": [

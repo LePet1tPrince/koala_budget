@@ -35,7 +35,9 @@ class UnexpectedErrorsAsJson:
         from rest_framework.exceptions import APIException
         from rest_framework.response import Response
 
-        if isinstance(exc, APIException | Http404 | PermissionDenied):
+        from apps.utils.errors import Refused
+
+        if isinstance(exc, APIException | Http404 | PermissionDenied | Refused):
             return super().handle_exception(exc)
         logger.exception("%s failed: %s", self.unexpected_error_label, self.request.path)
         debug = f"{type(exc).__name__}: {exc}" if settings.DEBUG else ""

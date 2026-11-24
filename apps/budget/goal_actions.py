@@ -201,33 +201,21 @@ def log_contribution_edit(request, goal, month, old, amount):
 
 def log_link_changes(request, goal, changes, outflow_before=None):
     """Audit what saving a goal did to its linked accounts and outflow setting."""
-    for link in changes.linked:
-        log_event(
-            AuditEvent.GOAL_ACCOUNT_LINKED,
-            request=request,
-            metadata={
+    for updated, links in ((False, changes.linked), (True, changes.updated)):
+        for link in links:
+            metadata = {
                 "goal_id": goal.pk,
                 "goal_name": goal.name,
                 "account_id": link.account_id,
                 "account_name": link.account.name,
                 "start_date": link.start_date.isoformat(),
                 "include_starting_balance": link.include_starting_balance,
-            },
-        )
-    for link in changes.updated:
-        log_event(
-            AuditEvent.GOAL_ACCOUNT_LINKED,
-            request=request,
-            metadata={
-                "goal_id": goal.pk,
-                "goal_name": goal.name,
-                "account_id": link.account_id,
-                "account_name": link.account.name,
-                "start_date": link.start_date.isoformat(),
-                "include_starting_balance": link.include_starting_balance,
-                "updated": True,
-            },
-        )
+            }
+            log_event(
+                AuditEvent.GOAL_ACCOUNT_LINKED,
+                request=request,
+                metadata={**metadata, "updated": True} if updated else metadata,
+            )
     for link in changes.unlinked:
         log_unlinked(request, goal, link)
     if outflow_before is not None and outflow_before != goal.outflow:

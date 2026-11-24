@@ -27,12 +27,13 @@ from django.utils.translation import gettext as _
 
 from apps.bank_feed.models import BankTransaction
 from apps.reconciliation.services.guards import ReconciledLineError, assert_entry_removable
+from apps.utils.errors import Refused
 
 from ..models import JournalEntry
 from .period_lock import PeriodLockedError, assert_entry_mutable
 
 
-class VoidRefused(ValueError):
+class VoidRefused(Refused):
     """
     Nothing was voided or restored, because some of what was asked can't be.
 

@@ -50,10 +50,12 @@ from datetime import timedelta
 from django.utils.formats import date_format
 from django.utils.translation import gettext as _
 
+from apps.utils.errors import Refused
+
 _EXEMPT = ContextVar("period_lock_exempt", default=False)
 
 
-class PeriodLockedError(ValueError):
+class PeriodLockedError(Refused):
     """A write that would change a transaction in a closed period."""
 
 

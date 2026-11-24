@@ -19,6 +19,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.models import Account
+from apps.api.base import error_response
 from apps.audit.models import AuditEvent
 from apps.audit.utils import log_event
 from apps.bank_feed.models import BankTransaction
@@ -194,10 +195,7 @@ class RuleViewSet(viewsets.ModelViewSet):
         serializer = RuleDraftSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         rule, account_ids = _draft_rule(request.book, serializer.validated_data)
-        try:
-            result = analysis.test(request.book, rule, account_ids)
-        except engine.ConditionError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        result = analysis.test(request.book, rule, account_ids)
         return Response(result)
 
     @extend_schema(operation_id="rules_explain", tags=["rules"], request=ExplainRequestSerializer)
@@ -212,7 +210,7 @@ class RuleViewSet(viewsets.ModelViewSet):
             .first()
         )
         if tx is None:
-            return Response({"error": _("Transaction not found")}, status=status.HTTP_404_NOT_FOUND)
+            return error_response(_("Transaction not found"), status.HTTP_404_NOT_FOUND)
         rule, account_ids = _draft_rule(request.book, serializer.validated_data["rule"])
         return Response(analysis.explain(rule, account_ids, tx))
 
@@ -224,7 +222,7 @@ class RuleViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         tx = BankTransaction.objects.filter(book=request.book, pk=serializer.validated_data["transaction_id"]).first()
         if tx is None:
-            return Response({"error": _("Transaction not found")}, status=status.HTTP_404_NOT_FOUND)
+            return error_response(_("Transaction not found"), status.HTTP_404_NOT_FOUND)
         if not tx.journal_entry_id:
             return Response({"offer": False, "reason": "uncategorized", "rule": None, "coverage": 0})
         return Response(analysis.draft_from_transaction(request.book, tx))
@@ -238,7 +236,7 @@ class RuleViewSet(viewsets.ModelViewSet):
         signature = serializer.validated_data["signature"]
         field, _sep, value = signature.partition(":")
         if field not in (RuleProposal.FIELD_PAYEE, RuleProposal.FIELD_DESCRIPTION) or not value:
-            return Response({"error": _("Unknown signature")}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response(_("Unknown signature"))
         category_id = serializer.validated_data.get("category")
         category = book_accounts(request.book).get(category_id) if category_id else None
         RuleProposal.objects.update_or_create(
@@ -297,10 +295,7 @@ class RuleViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         if serializer.validated_data["accept"]:
             if rule.category_id and rule.category.has_feed:
-                return Response(
-                    {"error": _("A transfer to another bank account is only ever suggested.")},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                return error_response(_("A transfer to another bank account is only ever suggested."))
             rule.mode = Rule.MODE_AUTO_POST
             rule.demoted_at = None
             rule.save(update_fields=["mode", "demoted_at", "updated_at"])
@@ -316,7 +311,7 @@ class RuleViewSet(viewsets.ModelViewSet):
         """ "Save and apply to N existing transactions": post this auto-post rule's current matches."""
         rule = self.get_object()
         if rule.mode != Rule.MODE_AUTO_POST:
-            return Response({"error": _("Only an auto-post rule applies itself.")}, status=status.HTTP_400_BAD_REQUEST)
+            return error_response(_("Only an auto-post rule applies itself."))
         counts = apply.run(request.book, auto_post_rule_ids={rule.pk})
         return Response(counts)
 
@@ -366,11 +361,11 @@ class RuleMatchViewSet(viewsets.GenericViewSet):
     def dismiss(self, request, transaction_id=None, team_slug=None, book_slug=None):
         match = _match_for(request, transaction_id)
         if match is None:
-            return Response({"error": _("Nothing to dismiss")}, status=status.HTTP_404_NOT_FOUND)
+            return error_response(_("Nothing to dismiss"), status.HTTP_404_NOT_FOUND)
         try:
             feedback.dismiss(match)
         except feedback.MatchError as e:
-            return Response({"error": str(e)}, status=status.HTTP_409_CONFLICT)
+            return error_response(str(e), status.HTTP_409_CONFLICT)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(operation_id="rules_matches_undo", tags=["rules"], request=None, responses={204: None})
@@ -378,13 +373,13 @@ class RuleMatchViewSet(viewsets.GenericViewSet):
     def undo(self, request, transaction_id=None, team_slug=None, book_slug=None):
         match = _match_for(request, transaction_id)
         if match is None:
-            return Response({"error": _("Nothing to undo")}, status=status.HTTP_404_NOT_FOUND)
+            return error_response(_("Nothing to undo"), status.HTTP_404_NOT_FOUND)
         try:
             feedback.undo(match)
         except feedback.MatchError as e:
-            return Response({"error": str(e)}, status=status.HTTP_409_CONFLICT)
+            return error_response(str(e), status.HTTP_409_CONFLICT)
         except GUARD_ERRORS as e:
-            return Response({"error": str(e)}, status=status.HTTP_409_CONFLICT)
+            return error_response(str(e), status.HTTP_409_CONFLICT)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -410,7 +405,7 @@ class RuleProposalViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     def dismiss(self, request, pk=None, team_slug=None, book_slug=None):
         proposal = self._proposal(pk)
         if proposal is None:
-            return Response({"error": _("Proposal not found")}, status=status.HTTP_404_NOT_FOUND)
+            return error_response(_("Proposal not found"), status.HTTP_404_NOT_FOUND)
         proposal.status = RuleProposal.STATUS_DISMISSED
         proposal.save(update_fields=["status", "updated_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -421,7 +416,7 @@ class RuleProposalViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         """The rule this proposal stands for, as a draft for the builder. Saving it marks the proposal accepted."""
         proposal = self._proposal(pk)
         if proposal is None:
-            return Response({"error": _("Proposal not found")}, status=status.HTTP_404_NOT_FOUND)
+            return error_response(_("Proposal not found"), status.HTTP_404_NOT_FOUND)
         name = analysis._unique_name(request.book, f"{proposal.value.title()} → {proposal.category.name}")
         return Response(
             {

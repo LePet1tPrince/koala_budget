@@ -3,6 +3,7 @@
 import React from 'react';
 
 import Icon from '../common/Icon';
+import { formatMoney } from '../common/amount';
 
 /**
  * What will be created, and what the import decided on the user's behalf.
@@ -12,9 +13,6 @@ import Icon from '../common/Icon';
  * pass. A failing check is shown rather than hidden -- an import that has quietly
  * lost a transaction is exactly the thing a migration has to be able to say.
  */
-const money = (value) =>
-  `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
 const Stat = ({ label, value, desc }) => (
   <div className="stat px-4 py-3">
     <div className="stat-title text-xs">{label}</div>
@@ -65,7 +63,7 @@ const Step5Preview = ({ preview, loading }) => {
           value={Number(summary.feed_rows ?? 0).toLocaleString()}
           desc={gettext('{n} to categorize').replace('{n}', Number(summary.inbox_rows ?? 0).toLocaleString())}
         />
-        <Stat label={gettext('Net worth')} value={money(summary.net_worth)} desc={gettext('once imported')} />
+        <Stat label={gettext('Net worth')} value={formatMoney(summary.net_worth)} desc={gettext('once imported')} />
       </div>
 
       {reconciliation && (
@@ -108,7 +106,7 @@ const Step5Preview = ({ preview, loading }) => {
           <ul className="mt-2 flex flex-wrap gap-2">
             {goals.map((goal) => (
               <li key={goal.name} className="badge badge-soft badge-success">
-                {goal.name} · {money(goal.target)}
+                {goal.name} · {formatMoney(goal.target)}
               </li>
             ))}
           </ul>

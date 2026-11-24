@@ -13,8 +13,10 @@ the opening-balance dialog and reconciliation.
 
 from django.utils.translation import gettext as _
 
+from apps.utils.errors import Refused
 
-class BudgetAccountError(ValueError):
+
+class BudgetAccountError(Refused):
     """A budget bucket in a real transaction, or a category in a budget entry. A `ValueError` for the 400 paths."""
 
 
@@ -44,7 +46,7 @@ def assert_budget_entry_rules(is_budget_entry, accounts):
             )
 
 
-class SystemCategoryError(ValueError):
+class SystemCategoryError(Refused):
     """A budget bucket was sent as a category. A `ValueError`, so the existing 400 paths catch it."""
 
 

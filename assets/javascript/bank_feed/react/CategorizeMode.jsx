@@ -14,6 +14,7 @@ import { accountKind, ACCOUNT_KIND_LABELS, goalLeftLabel, pickableAccounts } fro
 import { queryFromUrl, scopeSearch } from '../feedQuery';
 import { rulesApiForBook } from '../../rules/api';
 import RuleBuilderDialog, { draftFromRow } from '../../rules/RuleBuilderDialog';
+import { formatMoney } from '../../common/amount';
 
 // How many cards ahead of the current one to look up similar-transaction
 // suggestions for.
@@ -126,10 +127,6 @@ const TOP_LEVEL_FILTERS = [
   { key: 'goal', label: 'Goals', icon: '🎯', types: ['goal'] },
 ];
 
-function formatCurrency(amount) {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-}
-
 function Confetti({ active }) {
   const canvasRef = useRef(null);
 
@@ -182,7 +179,7 @@ function SimilarTransactionsTooltip({ transaction, allTransactions }) {
                 <div className="text-base-content/70">{t.posted_date}</div>
               </div>
               <div className={t.outflow > 0 ? 'text-error font-semibold' : 'text-success font-semibold'}>
-                {t.outflow > 0 ? `-${formatCurrency(t.outflow)}` : `+${formatCurrency(t.inflow)}`}
+                {t.outflow > 0 ? `-${formatMoney(t.outflow)}` : `+${formatMoney(t.inflow)}`}
               </div>
             </div>
           ))}
@@ -331,7 +328,7 @@ function TransactionCard({
           <div className="flex items-center justify-between mt-3">
             <span className="text-sm text-base-content/70">{transaction.posted_date}</span>
             <span className={`text-2xl font-black ${isOutflow ? 'text-error' : 'text-success'}`}>
-              {isOutflow ? `-${formatCurrency(transaction.outflow)}` : `+${formatCurrency(transaction.inflow)}`}
+              {isOutflow ? `-${formatMoney(transaction.outflow)}` : `+${formatMoney(transaction.inflow)}`}
             </span>
           </div>
           {isTop && (
@@ -963,7 +960,7 @@ function SimilarTransactionRow({ transaction, checked, onToggle, locked }) {
         <div className="text-xs text-base-content/70">{transaction.posted_date}</div>
       </div>
       <div className={`text-sm font-semibold shrink-0 ${isOutflow ? 'text-error' : 'text-success'}`}>
-        {isOutflow ? `-${formatCurrency(transaction.outflow)}` : `+${formatCurrency(transaction.inflow)}`}
+        {isOutflow ? `-${formatMoney(transaction.outflow)}` : `+${formatMoney(transaction.inflow)}`}
       </div>
     </label>
   );

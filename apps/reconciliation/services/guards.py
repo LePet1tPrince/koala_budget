@@ -14,8 +14,10 @@ what to do.
 
 from django.utils.translation import gettext as _
 
+from apps.utils.errors import Refused
 
-class ReconciledLineError(ValueError):
+
+class ReconciledLineError(Refused):
     """A change that would alter a reconciled line."""
 
 

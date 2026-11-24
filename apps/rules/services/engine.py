@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
 from apps.bank_feed.services.similar_transactions import normalize
+from apps.utils.errors import Refused
 
 FIELD_PAYEE = "payee"
 FIELD_DESCRIPTION = "description"
@@ -46,7 +47,7 @@ MATCH_ANY = "any"
 _UNSAVED_ID = float("inf")
 
 
-class ConditionError(ValueError):
+class ConditionError(Refused):
     """A condition that cannot be evaluated: unknown field or op, or a bad value."""
 
 
