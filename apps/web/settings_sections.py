@@ -2,7 +2,7 @@
 The Settings area's section list.
 
 Every surface that shows the sections -- the rail down the side of a settings
-page and the cards on the hub -- reads this one list, so adding a section is an
+page, and the Settings link, which opens the first one -- reads this one list, so adding a section is an
 edit here and nowhere else. It is Python rather than template markup because
 which sections a user may see depends on facts only the request knows (whether
 they have a password to change, whether they administer the team), and those
@@ -33,7 +33,6 @@ GROUP_ME = _("Me")
 class SettingsSection:
     key: str
     label: str
-    blurb: str
     icon: str
     url: str
     group: str
@@ -60,7 +59,6 @@ def sections_for(request) -> list[SettingsSection]:
             SettingsSection(
                 key="team",
                 label=_("Members"),
-                blurb=_("Rename the team, invite people and manage who has access."),
                 icon="users",
                 url=reverse("single_team:manage_team", args=[team.slug]),
                 group=GROUP_TEAM,
@@ -70,7 +68,6 @@ def sections_for(request) -> list[SettingsSection]:
             SettingsSection(
                 key="books",
                 label=_("My books"),
-                blurb=_("Keep a business, a rental or anything else apart, each with its own accounts and budget."),
                 icon="layer-group",
                 url=reverse("books_team:list", args=[team.slug]),
                 group=GROUP_TEAM,
@@ -81,7 +78,6 @@ def sections_for(request) -> list[SettingsSection]:
                 SettingsSection(
                     key="subscription",
                     label=_("Subscription"),
-                    blurb=_("Your plan, invoices and billing details."),
                     icon="credit-card",
                     url=reverse("subscriptions_team:subscription_details", args=[team.slug]),
                     group=GROUP_TEAM,
@@ -94,7 +90,6 @@ def sections_for(request) -> list[SettingsSection]:
                 SettingsSection(
                     key="book",
                     label=_("General"),
-                    blurb=_("Its name, web address, how it budgets income and the dates reports open on."),
                     icon="book-open",
                     url=reverse("books:settings", args=book.url_args),
                     group=GROUP_BOOK,
@@ -104,7 +99,6 @@ def sections_for(request) -> list[SettingsSection]:
             SettingsSection(
                 key="data_transfer",
                 label=_("Export & Import"),
-                blurb=_("Download this book, or replace it with a Koala Budget export."),
                 icon="download",
                 url=reverse("portability:home", args=book.url_args),
                 group=GROUP_BOOK,
@@ -112,7 +106,6 @@ def sections_for(request) -> list[SettingsSection]:
             SettingsSection(
                 key="import",
                 label=_("Import from YNAB"),
-                blurb=_("Bring over your accounts, transactions, budgets and goals from a YNAB export."),
                 icon="cloud-upload",
                 url=reverse("ynab_import:home", args=book.url_args),
                 group=GROUP_BOOK,
@@ -120,7 +113,6 @@ def sections_for(request) -> list[SettingsSection]:
             SettingsSection(
                 key="audit",
                 label=_("Audit log"),
-                blurb=_("Logins, imports, syncs and bulk operations for this book."),
                 icon="history",
                 url=reverse("audit:audit_log", args=book.url_args),
                 group=GROUP_BOOK,
@@ -131,7 +123,6 @@ def sections_for(request) -> list[SettingsSection]:
         SettingsSection(
             key="profile",
             label=_("Profile"),
-            blurb=_("Your name, email, avatar, two-factor sign-in and API keys."),
             icon="user",
             url=reverse("users:user_profile"),
             group=GROUP_ME,
@@ -142,7 +133,6 @@ def sections_for(request) -> list[SettingsSection]:
             SettingsSection(
                 key="password",
                 label=_("Change password"),
-                blurb=_("Set a new password for signing in."),
                 icon="unlock-alt",
                 url=reverse("account_change_password"),
                 group=GROUP_ME,

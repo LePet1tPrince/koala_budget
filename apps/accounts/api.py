@@ -202,15 +202,13 @@ class AccountsBoardViewSet(viewsets.GenericViewSet):
 
 
 def _date_range(request, book):
-    """The range from `?start_date&end_date`, else the book's default report range, else this year."""
-    from apps.reports.timeframes import default_range
-
+    """The range from `?start_date&end_date`, else this year."""
     query = DateRangeQuerySerializer(data=request.query_params)
     query.is_valid(raise_exception=True)
     if query.validated_data:
         return query.validated_data["start_date"], query.validated_data["end_date"]
     today = date.today()
-    return default_range(book, (today.replace(month=1, day=1), today))
+    return today.replace(month=1, day=1), today
 
 
 @_crud_schema("accounts_accounts", "account")

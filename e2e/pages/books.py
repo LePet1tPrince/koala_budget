@@ -52,9 +52,6 @@ class BookSettingsPage(BasePage):
     def consequence(self) -> str:
         return self.page.locator("[data-testid='budget-future-income-consequence']").inner_text()
 
-    def set_report_timeframe(self, value: str):
-        self.page.locator("[data-testid='report-timeframe']").select_option(value)
-
     def set_locked_through(self, ddmmyyyy: str):
         """Type the closed-period date into its DateField (`locked-through-input`) and take it."""
         self.page.locator("[data-testid='locked-through-input']").click()

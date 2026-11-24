@@ -30,7 +30,6 @@ from .serializers import (
     SpendingQuerySerializer,
     SpendingReportSerializer,
 )
-from .timeframes import default_range
 
 TAGS = ["reports"]
 
@@ -67,7 +66,7 @@ class SpendingReportView(BookAPIView):
         start_date = query.validated_data.get("start_date")
         end_date = query.validated_data.get("end_date")
         if start_date is None:
-            start_date, end_date = default_range(self.book, (date(today.year, 1, 1), today))
+            start_date, end_date = date(today.year, 1, 1), today
         offered = column_periods(start_date, end_date)
         requested = query.validated_data.get("columns")
         chosen = requested if requested in offered else None
@@ -145,7 +144,7 @@ class NetWorthReportView(BookAPIView):
         today = date.today()
         start_month = query.validated_data.get("start_month")
         if start_month is None:
-            start_date, end_date = default_range(self.book, (date(today.year - 1, today.month, 1), today))
+            start_date, end_date = date(today.year - 1, today.month, 1), today
         else:
             start_date = start_month
             end_date = add_months(query.validated_data["end_month"], 1) - timedelta(days=1)

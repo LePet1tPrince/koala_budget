@@ -183,14 +183,13 @@ def book_delete(request, team_slug, slug):
 @book_admin_required
 def book_settings(request, team_slug, book_slug):
     """
-    Everything about this book on one page: its name, its web address and the
-    future-income setting. The page states that setting's consequence before
+    Everything about this book on one page: its name, the future-income setting
+    and the closed period. The page states that setting's consequence before
     saving -- what Expected income would be this month with it flipped (Unassigned
     doesn't move) -- computed by the same function the pill uses, so the two cannot
     disagree.
     """
     book = request.book
-    old_slug = book.slug
     # Read before validating: `is_valid()` copies the posted values onto the instance.
     before = services.settings_snapshot(book)
     # Not `request.POST or None` alone: an unticked checkbox sends nothing, and
@@ -200,8 +199,6 @@ def book_settings(request, team_slug, book_slug):
         book = form.save()
         services.record_settings_change(request, book, before)
         messages.success(request, _("Saved."))
-        if book.slug != old_slug:
-            messages.info(request, _("The address changed. Links to the old one no longer work."))
         return HttpResponseRedirect(reverse("books:settings", args=book.url_args))
     # An invalid post has copied its values onto the instance; the consequence is
     # stated for the setting as saved.

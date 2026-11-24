@@ -104,7 +104,6 @@ class BookSettingsSerializer(serializers.ModelSerializer):
             "slug",
             "base_url",
             "budget_future_income",
-            "report_timeframe",
             "locked_through",
             "future_income_preview",
         )

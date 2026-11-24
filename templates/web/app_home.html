@@ -11,7 +11,11 @@
     <p class="mt-1 text-sm text-base-content/70" data-testid="dashboard-book-name">{{ book_label }}</p>
   {% endif %}
 
-  {# Headline metrics #}
+  {% if has_net_worth_trend %}
+  {% comment %}
+    Headline metrics and the trend, once the book has activity: before that they
+    are three $0 cards and a flat line.
+  {% endcomment %}
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4" data-testid="dashboard-metrics">
     <section class="app-card" data-testid="metric-net-worth">
       <div class="text-sm text-base-content/70">{% translate "Net worth" %}</div>
@@ -41,15 +45,12 @@
       <h2 class="text-2xl font-semibold">{% translate "Net worth" %}</h2>
       <a href="{% url 'reports:net_worth' request.team.slug request.book.slug %}" class="link text-sm">{% translate "See more reports" %}</a>
     </div>
-    {% if has_net_worth_trend %}
-      {# Drawn from the embedded `GET …/api/home/` body (home-net-worth-chart.js). #}
-      <div class="w-full" style="height: 220px;">
-        <canvas id="home-net-worth-chart" class="w-full h-full"></canvas>
-      </div>
-    {% else %}
-      <p class="text-base-content/70">{% translate "Add accounts and transactions to see your net worth trend." %}</p>
-    {% endif %}
+    {# Drawn from the embedded `GET …/api/home/` body (home-net-worth-chart.js). #}
+    <div class="w-full" style="height: 220px;">
+      <canvas id="home-net-worth-chart" class="w-full h-full"></canvas>
+    </div>
   </section>
+  {% endif %}
 
   {% if show_resume %}
     {% comment %}

@@ -19,7 +19,7 @@ from apps.audit.utils import log_event
 from .helpers import create_book
 from .models import Book
 
-SETTINGS_FIELDS = ("budget_future_income", "report_timeframe", "locked_through")
+SETTINGS_FIELDS = ("budget_future_income", "locked_through")
 
 
 class LastOpenBookError(Exception):
@@ -92,8 +92,6 @@ def record_settings_change(request, book, before: dict):
     changed = {}
     if before["budget_future_income"] != book.budget_future_income:
         changed["budget_future_income"] = book.budget_future_income
-    if before["report_timeframe"] != book.report_timeframe:
-        changed["report_timeframe"] = book.report_timeframe
     lock_before = before["locked_through"]
     if lock_before != book.locked_through:
         # Both ends, so the audit trail says which period was closed or reopened.

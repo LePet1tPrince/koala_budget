@@ -9,7 +9,7 @@ Covers: Reports opens on Income & Spending, the sidebar popout lists the three,
 Income & Spending with seeded data, export CSV button presence.
 """
 
-from datetime import date, timedelta
+from datetime import date
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -22,7 +22,6 @@ from e2e.factories import (
     JournalEntryFactory,
     JournalLineFactory,
 )
-from e2e.pages.books import BookSettingsPage
 from e2e.pages.reports import REPORT_KEYS, ReportsPage
 
 
@@ -100,30 +99,8 @@ def test_a_monthly_value_opens_the_account_for_that_month(authenticated_page: Pa
 
 
 # ----------------------------------------------------------------------
-# Default timeframe and typed dates
+# Typed dates
 # ----------------------------------------------------------------------
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_report_opens_on_the_books_default_timeframe(
-    requires_vite, authenticated_page: Page, live_server, team, book
-):
-    """Set "Last month" in the book's settings and Income & Spending opens on last month."""
-    settings_page = BookSettingsPage(authenticated_page, live_server.url)
-    settings_page.goto(book)
-    settings_page.set_report_timeframe("last_month")
-    settings_page.save()
-
-    last_month_end = date.today().replace(day=1) - timedelta(days=1)
-    last_month_start = last_month_end.replace(day=1)
-    reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_spending(book)
-
-    def label(d):
-        return f"{d:%b} {d.day}, {d.year}"
-
-    assert reports.date_range_label() == f"{label(last_month_start)} – {label(last_month_end)}"
-    assert f"start_date={last_month_start.isoformat()}" in authenticated_page.url
 
 
 @pytest.mark.django_db(transaction=True)

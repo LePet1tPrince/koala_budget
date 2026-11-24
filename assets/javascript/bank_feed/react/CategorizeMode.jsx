@@ -919,16 +919,6 @@ function ProgressBar({ done, total }) {
   );
 }
 
-function StreakCounter({ streak }) {
-  if (streak < 2) return null;
-  const flames = streak >= 10 ? '🔥🔥🔥' : streak >= 5 ? '🔥🔥' : '🔥';
-  return (
-    <div className="flex items-center gap-2 text-sm font-bold text-warning animate-bounce-subtle">
-      {flames} {streak} streak!
-    </div>
-  );
-}
-
 // Same feed (home) account and the same description — the two signals that
 // most reliably mean "this is the same recurring charge/deposit" without
 // being so loose it pulls in unrelated transactions.
@@ -1040,8 +1030,6 @@ export default function CategorizeMode({
   const [scope, setScope] = useState(scopeFromUrl);
   const [categorized, setCategorized] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
-  const [streak, setStreak] = useState(0);
-  const [showConfetti, setShowConfetti] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [undoStack, setUndoStack] = useState([]);
   const [isSkipping, setIsSkipping] = useState(false);
@@ -1156,12 +1144,11 @@ export default function CategorizeMode({
     fetchUncategorized(scope);
   }, []);
 
-  // A new scope is a new queue: progress, streak and skips start over, and the
+  // A new scope is a new queue: progress and skips start over, and the
   // URL follows so a reload keeps it.
   const changeScope = useCallback((next) => {
     setScope(next);
     setCategorized(0);
-    setStreak(0);
     setSkippedCount(0);
     setUndoStack([]);
     setPendingBatch(null);
@@ -1172,14 +1159,12 @@ export default function CategorizeMode({
   }, [fetchUncategorized]);
 
   // Everything that happens once transactions are filed, whichever way they
-  // were filed: the card leaves, the counters and streak move, the confetti
-  // threshold is checked, and the suggestions the decision invalidated are
-  // dropped. Shared by the single-category path and the split modal, so the
+  // were filed: the card leaves, the counter moves, and the suggestions the
+  // decision invalidated are dropped. Shared by the single-category path and the split modal, so the
   // two cannot drift in how the queue behaves.
   const advanceQueue = useCallback((txList, { editedIds = new Set(), includesTop = true } = {}) => {
     const committedIds = new Set(txList.map(t => t.id));
     const newCategorized = categorized + txList.length;
-    const newStreak = streak + 1;
 
     // The decision(s) just made are evidence about every queued transaction
     // that looks like one of them, so those cached suggestions are now out
@@ -1210,15 +1195,9 @@ export default function CategorizeMode({
         });
       }
       setCategorized(newCategorized);
-      setStreak(newStreak);
       setIsExiting(false);
-
-      if (Math.floor(newCategorized / 10) > Math.floor(categorized / 10)) {
-        setShowConfetti(true);
-        setTimeout(() => setShowConfetti(false), 3000);
-      }
     }, includesTop ? 300 : 0);
-  }, [transactions, categorized, streak]);
+  }, [transactions, categorized]);
 
   // Categorizes one or more transactions to `account` in a single batched
   // request. `txList` always includes the top-of-stack transaction when
@@ -1388,7 +1367,6 @@ export default function CategorizeMode({
     setTimeout(() => {
       setTransactions(prev => [...prev.slice(1), prev[0]]);
       setSkippedCount(s => s + 1);
-      setStreak(0);
       setIsSkipping(false);
     }, 300);
   }, [transactions]);
@@ -1444,18 +1422,6 @@ export default function CategorizeMode({
           <div className="flex justify-center mb-4">
             <ScopeBar scope={scope} feedAccounts={feedAccounts} onChange={changeScope} />
           </div>
-          {categorized > 0 && (
-            <div className="stats stats-horizontal shadow mb-4">
-              <div className="stat py-3 px-4">
-                <div className="stat-title text-xs">Categorized</div>
-                <div className="stat-value text-primary text-2xl">{categorized}</div>
-              </div>
-              <div className="stat py-3 px-4">
-                <div className="stat-title text-xs">Best Streak</div>
-                <div className="stat-value text-warning text-2xl">{streak}</div>
-              </div>
-            </div>
-          )}
           <a href={backHref} className="btn btn-primary">
             ← Back to Bank Feed
           </a>
@@ -1466,8 +1432,6 @@ export default function CategorizeMode({
 
   return (
     <div className="min-h-screen bg-base-200 flex flex-col">
-      <Confetti active={showConfetti} />
-
       {/* Header */}
       <div className="bg-base-100 border-b border-base-300 px-6 py-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-4">
@@ -1490,7 +1454,6 @@ export default function CategorizeMode({
           </button>
         )}
         <div className="flex items-center gap-4">
-          <StreakCounter streak={streak} />
           <div className="hidden sm:block w-48">
             <ProgressBar done={categorized} total={totalCount} />
           </div>
@@ -1654,13 +1617,6 @@ export default function CategorizeMode({
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(-8px); }
           to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-bounce-subtle {
-          animation: bounceSoft 0.6s ease-out;
-        }
-        @keyframes bounceSoft {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.15); }
         }
         .animate-pulse-subtle {
           animation: pulseSoft 2s ease-in-out infinite;

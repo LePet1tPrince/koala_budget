@@ -27,7 +27,7 @@ from .exports import (
     export_income_statement_csv,
     export_transactions_csv,
 )
-from .timeframes import date_range_from_request, default_range, month_range_from_request
+from .timeframes import date_range_from_request, month_range_from_request
 
 
 @login_and_book_required
@@ -156,11 +156,11 @@ def net_worth(request, team_slug, book_slug):
 
 def _parse_date_range(request):
     """
-    Parse start_date and end_date from GET params. A missing side takes the book's
-    default report range (else this month to today); an unparseable one, the whole range.
+    Parse start_date and end_date from GET params. A missing side defaults to this
+    month to today; an unparseable one, the whole range.
     """
     today = date.today()
-    default_start, default_end = default_range(request.book, (today.replace(day=1), today))
+    default_start, default_end = today.replace(day=1), today
     start_date_param = request.GET.get("start_date")
     end_date_param = request.GET.get("end_date")
     try:

@@ -2,7 +2,7 @@ from django import forms
 from django.utils.translation import gettext_lazy as _
 
 from .models import Book
-from .validation import clean_book_name, clean_book_slug, clean_confirm_name, clean_locked_through
+from .validation import clean_book_name, clean_confirm_name, clean_locked_through
 
 START_QUESTIONNAIRE = "questionnaire"
 START_YNAB = "ynab"
@@ -46,18 +46,12 @@ class BookCreateForm(BookNameMixin, forms.ModelForm):
 class BookSettingsForm(BookNameMixin, forms.ModelForm):
     class Meta:
         model = Book
-        fields = ["name", "slug", "budget_future_income", "report_timeframe", "locked_through"]
+        fields = ["name", "budget_future_income", "locked_through"]
         labels = {
-            "slug": _("Web address"),
             "budget_future_income": _("Budget income before it arrives"),
-            "report_timeframe": _("Default timeframe"),
             "locked_through": _("Closed through"),
         }
         help_texts = {
-            "slug": _("The part of the address after the team. Changing it breaks links to the old one."),
-            "report_timeframe": _(
-                "The dates a report opens on. “Last 3 months” is the three full months before this one."
-            ),
             "locked_through": _(
                 "Transactions dated on or before this day can't be added, changed, voided or deleted -- for "
                 "example once a tax return for the period is filed. Leave blank to keep every period open. "
@@ -66,8 +60,6 @@ class BookSettingsForm(BookNameMixin, forms.ModelForm):
         }
         widgets = {
             "name": forms.TextInput(attrs={"class": INPUT, "maxlength": 100}),
-            "slug": forms.TextInput(attrs={"class": INPUT + " font-mono", "maxlength": 50}),
-            "report_timeframe": forms.Select(attrs={"class": "select w-full", "data-testid": "report-timeframe"}),
             # A native date input (the no-JS path) that `date-field-mount.jsx` turns into the app's DateField.
             "locked_through": forms.DateInput(
                 format="%Y-%m-%d",
@@ -84,20 +76,12 @@ class BookSettingsForm(BookNameMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.team = self.instance.team
-        # Not required: a post that leaves it out keeps the saved value.
-        self.fields["report_timeframe"].required = False
-
-    def clean_report_timeframe(self):
-        return self.cleaned_data["report_timeframe"] or self.instance.report_timeframe
 
     def clean_locked_through(self):
         # A post that leaves the field out keeps the saved lock; a blank one clears it.
         if self.add_prefix("locked_through") not in self.data:
             return self.instance.locked_through
         return clean_locked_through(self.cleaned_data.get("locked_through"))
-
-    def clean_slug(self):
-        return clean_book_slug(self.team, self.cleaned_data["slug"], exclude_pk=self.instance.pk)
 
 
 class ConfirmNameForm(forms.Form):

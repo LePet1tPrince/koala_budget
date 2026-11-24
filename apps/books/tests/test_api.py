@@ -229,7 +229,6 @@ class BookSettingsAPITest(BooksAPITestCase):
             ({"slug": "budget"}, "slug"),
             ({"slug": "business"}, "slug"),
             ({"name": "BUSINESS"}, "name"),
-            ({"report_timeframe": "forever"}, "report_timeframe"),
             ({"locked_through": (date.today() + timedelta(days=1)).isoformat()}, "locked_through"),
         ):
             with self.subTest(body=body):

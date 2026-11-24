@@ -74,7 +74,8 @@ context-aware quick-assign.
   }
 </style>
 
-<!-- Summary strip. Unassigned is in the sidebar pill; the full breakdown is the Budget & Goals report. -->
+{% if goal_items %}
+{% comment %}Summary strip, only once there are goals: three $0 figures above "No goals yet" say nothing. Unassigned is in the sidebar pill.{% endcomment %}
 <div class="stats stats-vertical sm:stats-horizontal shadow mb-6 w-full" data-testid="goals-summary">
   <div class="stat">
     <div class="stat-title">{% translate "Total Saved" %}</div>
@@ -96,7 +97,6 @@ context-aware quick-assign.
   </div>
 </div>
 
-{% if goal_items %}
 <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
   {% for item in goal_items %}
   <div class="card bg-base-100 shadow-lg {% if item.funded %}is-funded{% endif %}"

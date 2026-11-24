@@ -200,8 +200,10 @@ class LegacyRedirectTest(TestCase):
         self.assertEqual(self.client.get("/a/legacy/budget/").status_code, 404)
 
     def test_team_level_pages_are_not_redirected(self):
-        self.assertEqual(self.client.get(reverse("web_team:settings", args=[self.team.slug])).status_code, 200)
-        self.assertEqual(self.client.get(reverse("single_team:manage_team", args=[self.team.slug])).status_code, 200)
+        # Settings opens its first section (Members) rather than a book's page.
+        members = reverse("single_team:manage_team", args=[self.team.slug])
+        self.assertRedirects(self.client.get(reverse("web_team:settings", args=[self.team.slug])), members)
+        self.assertEqual(self.client.get(members).status_code, 200)
 
 
 class BookCreateTest(TestCase):
@@ -272,22 +274,12 @@ class BookSettingsTest(TestCase):
     def post(self, **data):
         return self.client.post(reverse("books:settings", args=self.book.url_args), data)
 
-    def test_rename_and_change_the_address(self):
+    def test_rename_keeps_the_address(self):
+        """The web address isn't a setting: renaming leaves links and bookmarks working."""
         response = self.post(name="Consulting", slug="consulting")
         self.book.refresh_from_db()
-        self.assertEqual((self.book.name, self.book.slug), ("Consulting", "consulting"))
+        self.assertEqual((self.book.name, self.book.slug), ("Consulting", "business"))
         self.assertRedirects(response, reverse("books:settings", args=self.book.url_args))
-
-    def test_a_reserved_address_is_refused(self):
-        response = self.post(name="Business", slug="budget")
-        self.assertEqual(response.status_code, 200)
-        self.book.refresh_from_db()
-        self.assertEqual(self.book.slug, "business")
-
-    def test_another_books_address_is_refused(self):
-        self.post(name="Business", slug="personal")
-        self.book.refresh_from_db()
-        self.assertEqual(self.book.slug, "business")
 
     def test_a_member_cannot_change_settings(self):
         member = CustomUser.objects.create_user(username="m-settings@example.com", password="pass")
@@ -304,7 +296,7 @@ class BookSettingsTest(TestCase):
         self.assertTrue(self.book.budget_future_income)
 
     def test_an_invalid_post_saves_nothing_and_states_the_saved_setting(self):
-        response = self.post(name="Business", slug="budget", budget_future_income="on")
+        response = self.post(name="", budget_future_income="on")
         self.assertEqual(response.status_code, 200)
         self.book.refresh_from_db()
         self.assertFalse(self.book.budget_future_income)
