@@ -11,14 +11,35 @@
     <p class="mt-1 text-sm text-base-content/70" data-testid="dashboard-book-name">{{ book_label }}</p>
   {% endif %}
 
-  {# Headline metrics #}
+  {# What to do next comes before what happened: the review queue sits above the figures. #}
+  {% if inbox_count %}
+    <div class="alert mt-4" data-testid="review-banner">
+      {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}
+      <span>
+        {% blocktranslate trimmed count counter=inbox_count %}
+          {{ counter }} transaction to review
+        {% plural %}
+          {{ counter }} transactions to review
+        {% endblocktranslate %}
+      </span>
+      <a href="{% url 'bank_feed:bank_feed_home' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm">
+        {% translate "Review" %}
+      </a>
+    </div>
+  {% endif %}
+
+  {% if has_net_worth_trend %}
+  {% comment %}
+    Headline metrics and the trend, once the book has activity: before that they
+    are three $0 cards and a flat line.
+  {% endcomment %}
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4" data-testid="dashboard-metrics">
     <section class="app-card" data-testid="metric-net-worth">
       <div class="text-sm text-base-content/70">{% translate "Net worth" %}</div>
       <div class="text-2xl font-semibold tracking-tight mt-1 {% if net_worth < 0 %}text-error{% endif %}">
         {{ net_worth|currency }}
       </div>
-      <a href="{% url 'reports:budget_goals' request.team.slug request.book.slug %}" class="link text-xs mt-2 inline-block" data-testid="dashboard-dollar-map-link">{% translate "Where every dollar is going" %}</a>
+      <a href="{% url 'reports:net_worth' request.team.slug request.book.slug %}" class="link text-xs mt-2 inline-block">{% translate "View net worth" %}</a>
     </section>
     <section class="app-card" data-testid="metric-income-ytd">
       <div class="text-sm text-base-content/70">{% translate "Income − expenses (YTD)" %}</div>
@@ -41,15 +62,12 @@
       <h2 class="text-2xl font-semibold">{% translate "Net worth" %}</h2>
       <a href="{% url 'reports:net_worth' request.team.slug request.book.slug %}" class="link text-sm">{% translate "See more reports" %}</a>
     </div>
-    {% if has_net_worth_trend %}
-      {# Drawn from the embedded `GET …/api/home/` body (home-net-worth-chart.js). #}
-      <div class="w-full" style="height: 220px;">
-        <canvas id="home-net-worth-chart" class="w-full h-full"></canvas>
-      </div>
-    {% else %}
-      <p class="text-base-content/70">{% translate "Add accounts and transactions to see your net worth trend." %}</p>
-    {% endif %}
+    {# Drawn from the embedded `GET …/api/home/` body (home-net-worth-chart.js). #}
+    <div class="w-full" style="height: 220px;">
+      <canvas id="home-net-worth-chart" class="w-full h-full"></canvas>
+    </div>
   </section>
+  {% endif %}
 
   {% if show_resume %}
     {% comment %}
@@ -123,21 +141,6 @@
     </section>
   {% endif %}
 
-  {% if inbox_count %}
-    <div class="alert mt-6" data-testid="review-banner">
-      {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}
-      <span>
-        {% blocktranslate trimmed count counter=inbox_count %}
-          {{ counter }} transaction to review
-        {% plural %}
-          {{ counter }} transactions to review
-        {% endblocktranslate %}
-      </span>
-      <a href="{% url 'bank_feed:bank_feed_home' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm">
-        {% translate "Review" %}
-      </a>
-    </div>
-  {% endif %}
 
   {# Goals #}
   <section class="app-card mt-6" data-testid="dashboard-goals">

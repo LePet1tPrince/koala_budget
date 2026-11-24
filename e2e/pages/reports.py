@@ -2,8 +2,8 @@
 
 from .base import BasePage
 
-# Reports home and the sidebar's Reports popout list the same four reports.
-REPORT_KEYS = ("monthly-review", "spending", "net-worth", "budget-goals")
+# The sidebar's Reports popout: Monthly Review and the two reports.
+REPORT_KEYS = ("monthly-review", "spending", "net-worth")
 
 
 class ReportsPage(BasePage):
@@ -16,12 +16,6 @@ class ReportsPage(BasePage):
     # ------------------------------------------------------------------
     # Navigation
     # ------------------------------------------------------------------
-
-    def goto_home(self, book):
-        self.goto(
-            self.home_path(book),
-            wait_for="[data-testid='report-link-spending']",
-        )
 
     def goto_spending(self, book, query: str = ""):
         self.goto(
@@ -56,18 +50,6 @@ class ReportsPage(BasePage):
         box.fill(text)
         box.press("Enter")
         return self.page.locator("[role='dialog'] [role='alert']").inner_text().strip()
-
-    # ------------------------------------------------------------------
-    # Reports home queries
-    # ------------------------------------------------------------------
-
-    def report_links(self) -> list[str]:
-        """The keys of the reports linked from Reports home, in page order."""
-        links = self.page.locator("[data-testid^='report-link-']")
-        return [links.nth(i).get_attribute("data-testid").removeprefix("report-link-") for i in range(links.count())]
-
-    def click_report(self, key: str):
-        self.page.locator(f"[data-testid='report-link-{key}']").click()
 
     # ------------------------------------------------------------------
     # Income & Spending queries

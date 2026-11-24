@@ -20,6 +20,13 @@ import {
     AccountGroupToJSON,
     AccountGroupToJSONTyped,
 } from './AccountGroup';
+import type { CategoryUsage } from './CategoryUsage';
+import {
+    CategoryUsageFromJSON,
+    CategoryUsageFromJSONTyped,
+    CategoryUsageToJSON,
+    CategoryUsageToJSONTyped,
+} from './CategoryUsage';
 import type { PickerAccount } from './PickerAccount';
 import {
     PickerAccountFromJSON,
@@ -59,6 +66,12 @@ export interface FeedPickers {
      * @memberof FeedPickers
      */
     accountGroups: Array<AccountGroup>;
+    /**
+     * How often each account was chosen as a category, by direction; Categorize mode orders by it
+     * @type {Array<CategoryUsage>}
+     * @memberof FeedPickers
+     */
+    categoryUsage: Array<CategoryUsage>;
 }
 
 /**
@@ -68,6 +81,7 @@ export function instanceOfFeedPickers(value: object): value is FeedPickers {
     if (!('accounts' in value) || value['accounts'] === undefined) return false;
     if (!('payees' in value) || value['payees'] === undefined) return false;
     if (!('accountGroups' in value) || value['accountGroups'] === undefined) return false;
+    if (!('categoryUsage' in value) || value['categoryUsage'] === undefined) return false;
     return true;
 }
 
@@ -84,6 +98,7 @@ export function FeedPickersFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'accounts': ((json['accounts'] as Array<any>).map(PickerAccountFromJSON)),
         'payees': ((json['payees'] as Array<any>).map(PayeeFromJSON)),
         'accountGroups': ((json['account_groups'] as Array<any>).map(AccountGroupFromJSON)),
+        'categoryUsage': ((json['category_usage'] as Array<any>).map(CategoryUsageFromJSON)),
     };
 }
 
@@ -101,6 +116,7 @@ export function FeedPickersFromJSONTyped(json: any, ignoreDiscriminator: boolean
         'accounts': ((value['accounts'] as Array<any>).map(PickerAccountToJSON)),
         'payees': ((value['payees'] as Array<any>).map(PayeeToJSON)),
         'account_groups': ((value['accountGroups'] as Array<any>).map(AccountGroupToJSON)),
+        'category_usage': ((value['categoryUsage'] as Array<any>).map(CategoryUsageToJSON)),
     };
 }
 

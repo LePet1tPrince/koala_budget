@@ -39,17 +39,18 @@ class SettingsHubTest(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 404)
 
-    def test_renders_for_a_member(self):
+    def test_opens_the_first_section(self):
+        """No hub page: the rail on every settings page already lists the sections."""
         self.client.force_login(self.member)
         response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-testid="settings-hub"')
-        self.assertContains(response, 'data-testid="settings-nav"')
+        first = sections_for(response.wsgi_request)[0]
+        self.assertRedirects(response, first.url)
+        self.assertContains(self.client.get(first.url), 'data-testid="settings-nav"')
 
-    def test_hub_links_to_every_section_it_offers(self):
-        """A card for a section the user cannot reach is worse than no card."""
+    def test_rail_links_to_every_section_it_offers(self):
+        """A link to a section the user cannot reach is worse than no link."""
         self.client.force_login(self.admin)
-        response = self.client.get(self.url)
+        response = self.client.get(self.url, follow=True)
         for section in sections_for(response.wsgi_request):
             with self.subTest(section=section.key):
                 self.assertContains(response, f'href="{section.url}"')
@@ -63,13 +64,13 @@ class SettingsHubTest(TestCase):
 
     def test_sidebar_offers_settings(self):
         self.client.force_login(self.admin)
-        response = self.client.get(self.url)
+        response = self.client.get(self.url, follow=True)
         self.assertContains(response, 'data-testid="nav-settings"')
 
     def test_moved_pages_left_the_sidebars_manage_group(self):
         """
         Asserted against the nav include itself rather than the whole page:
-        the hub and rail link to all three, so counting occurrences on the page
+        the rail links to all three, so counting occurrences on the page
         would measure the wrong thing.
         """
         self.client.force_login(self.admin)
@@ -188,7 +189,7 @@ class SettingsShellOnAccountPagesTest(TestCase):
         other = Team.objects.create(name="Other Team", slug="other-team")
         other_book = other.default_book
         other.members.add(self.user, through_defaults={"role": ROLE_ADMIN})
-        response = self.client.get(reverse("web_team:settings", kwargs={"team_slug": other.slug}))
+        response = self.client.get(reverse("web_team:settings", kwargs={"team_slug": other.slug}), follow=True)
         self.assertContains(response, reverse("budget:budget_home", args=[other.slug, other_book.slug]))
         self.assertNotContains(response, reverse("budget:budget_home", args=[self.team.slug, self.book.slug]))
 

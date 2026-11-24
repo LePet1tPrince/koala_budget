@@ -33,7 +33,7 @@ from .models import (
     Goal,
 )
 from .services import GoalCloseError, GoalService, goal_left_by_account, picker_accounts_data
-from .unassigned import compute_unassigned, waterfall
+from .unassigned import compute_unassigned
 
 AUG = date(2026, 8, 1)
 SEPT = date(2026, 9, 1)
@@ -197,9 +197,6 @@ class UnassignedInvariantTest(GoalsFixture):
         self.assertEqual(result.goals, Decimal("3800"))
         self.assertEqual(result.detail["goals"][0]["amount"], Decimal("3800"))
         self.assertEqual(result.detail["goals"][0]["spent"], Decimal("1200"))
-        bars = {bar["key"]: bar for bar in waterfall(result)}
-        self.assertEqual(bars["goals"]["value"], -3800.0)
-        self.assertEqual(bars["unassigned"]["end"], float(result.amount))
 
     def test_a_funded_goal_keeps_its_claim(self):
         before = self.unassigned()
@@ -662,19 +659,6 @@ class GoalReportsTest(GoalsFixture):
         body = csv.content.decode()
         self.assertIn("GOAL SPENDING", body)
         self.assertIn("Net After Goal Spending,-17600.00", body)
-
-    def test_budget_goals_report_measures_need_from_the_start_of_the_month(self):
-        page = self.client.get(reverse("reports:budget_goals", args=self.book.url_args) + "?month=2026-09")
-        row = page.context["goal_rows"][0]
-        # Needed is measured from the start of the month: (20,000 − 3,000) over
-        # Sept..Feb = 6 months, whatever was assigned in September.
-        self.assertEqual(row["needed"], Decimal("2833.33"))
-        self.assertEqual(row["assigned"], Decimal("2000"))
-        self.assertEqual(row["spent"], Decimal("19400"))
-        goal = row["goal"]
-        self.assertEqual(
-            (goal.allocated, goal.spent, goal.left), (Decimal("5000"), Decimal("19400"), Decimal("-14400"))
-        )
 
     def test_account_activity_reads_a_goal_like_an_expense(self):
         from apps.reports.services import ReportService

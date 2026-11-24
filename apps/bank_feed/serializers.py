@@ -672,12 +672,22 @@ extend_schema_field(BankFeedRowSerializer)(TransferSuggestionSerializer.get_outf
 extend_schema_field(BankFeedRowSerializer)(TransferSuggestionSerializer.get_inflow)
 
 
+class CategoryUsageSerializer(serializers.Serializer):
+    account_id = serializers.IntegerField()
+    outflow = serializers.IntegerField(help_text="Feed rows of money out categorized to it in the last year")
+    inflow = serializers.IntegerField(help_text="Feed rows of money in categorized to it in the last year")
+
+
 class FeedPickersSerializer(serializers.Serializer):
     """The bank feed's pickers: categories, payees and the groups a new account can join."""
 
     accounts = PickerAccountSerializer(many=True, help_text="Every account but budget buckets, by name")
     payees = PayeeSerializer(many=True, help_text="The book's payees, by name")
     account_groups = AccountGroupSerializer(many=True, help_text="Account groups (not budget buckets)")
+    category_usage = CategoryUsageSerializer(
+        many=True,
+        help_text="How often each account was chosen as a category, by direction; Categorize mode orders by it",
+    )
 
 
 class CreateFeedAccountRequestSerializer(serializers.Serializer):

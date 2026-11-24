@@ -1,15 +1,15 @@
 """
 E2E tests for the Reports section.
 
-Reports are Monthly Review plus three server-rendered reports -- Income &
-Spending, Net Worth, Budget & Goals -- with small React date pickers (Vite dev
-server required for those, though the page structure is server-rendered).
+Reports are Monthly Review plus two server-rendered reports -- Income &
+Spending and Net Worth -- with small React date pickers (Vite dev server
+required for those, though the page structure is server-rendered).
 
-Covers: reports home and the sidebar popout list exactly those four, Income &
-Spending with seeded data, export CSV button presence.
+Covers: Reports opens on Income & Spending, the sidebar popout lists the three,
+Income & Spending with seeded data, export CSV button presence.
 """
 
-from datetime import date, timedelta
+from datetime import date
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -22,22 +22,21 @@ from e2e.factories import (
     JournalEntryFactory,
     JournalLineFactory,
 )
-from e2e.pages.books import BookSettingsPage
 from e2e.pages.reports import REPORT_KEYS, ReportsPage
 
 
 @pytest.mark.django_db(transaction=True)
-def test_reports_home_lists_the_four_reports(authenticated_page: Page, live_server, team):
+def test_reports_opens_on_income_and_spending(authenticated_page: Page, live_server, team):
     reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_home(team.default_book)
+    reports.goto(reports.home_path(team.default_book), wait_for="[data-testid='spending-report']")
 
-    assert reports.report_links() == list(REPORT_KEYS)
+    authenticated_page.wait_for_url(f"**{team.default_book.base_url}reports/spending/**", timeout=10_000)
 
 
 @pytest.mark.django_db(transaction=True)
-def test_reports_popout_lists_the_four_reports(authenticated_page: Page, live_server, team):
+def test_reports_popout_lists_the_reports(authenticated_page: Page, live_server, team):
     reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_home(team.default_book)
+    reports.goto_spending(team.default_book)
 
     # The popout is Alpine state: a click that lands before Alpine binds the group does nothing.
     authenticated_page.wait_for_function(
@@ -46,22 +45,10 @@ def test_reports_popout_lists_the_four_reports(authenticated_page: Page, live_se
     )
     authenticated_page.locator("aside [data-testid='nav-reports-toggle']").click()
     sidebar = authenticated_page.locator("aside")
-    for testid in ("nav-monthly-review", "nav-report-spending", "nav-report-net-worth", "nav-report-budget-goals"):
+    for key in REPORT_KEYS:
+        testid = "nav-monthly-review" if key == "monthly-review" else f"nav-report-{key}"
         expect(sidebar.locator(f"[data-testid='{testid}']")).to_be_visible()
-    assert sidebar.locator("[data-testid^='nav-report-']").count() == 3
-
-
-@pytest.mark.django_db(transaction=True)
-@pytest.mark.parametrize(
-    "key, path",
-    [("spending", "spending/"), ("net-worth", "net-worth/"), ("budget-goals", "budget-and-goals/")],
-)
-def test_reports_home_navigates_to_each_report(authenticated_page: Page, live_server, team, key, path):
-    reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_home(team.default_book)
-    reports.click_report(key)
-
-    authenticated_page.wait_for_url(f"**{team.default_book.base_url}reports/{path}", timeout=10_000)
+    assert sidebar.locator("[data-testid^='nav-report-']").count() == 2
 
 
 @pytest.mark.django_db(transaction=True)
@@ -112,30 +99,8 @@ def test_a_monthly_value_opens_the_account_for_that_month(authenticated_page: Pa
 
 
 # ----------------------------------------------------------------------
-# Default timeframe and typed dates
+# Typed dates
 # ----------------------------------------------------------------------
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_report_opens_on_the_books_default_timeframe(
-    requires_vite, authenticated_page: Page, live_server, team, book
-):
-    """Set "Last month" in the book's settings and Income & Spending opens on last month."""
-    settings_page = BookSettingsPage(authenticated_page, live_server.url)
-    settings_page.goto(book)
-    settings_page.set_report_timeframe("last_month")
-    settings_page.save()
-
-    last_month_end = date.today().replace(day=1) - timedelta(days=1)
-    last_month_start = last_month_end.replace(day=1)
-    reports = ReportsPage(authenticated_page, live_server.url)
-    reports.goto_spending(book)
-
-    def label(d):
-        return f"{d:%b} {d.day}, {d.year}"
-
-    assert reports.date_range_label() == f"{label(last_month_start)} – {label(last_month_end)}"
-    assert f"start_date={last_month_start.isoformat()}" in authenticated_page.url
 
 
 @pytest.mark.django_db(transaction=True)

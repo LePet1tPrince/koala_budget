@@ -29,7 +29,7 @@
         <p class="mt-2 text-base-content/70">
           {% blocktranslate trimmed %}
             The guided setup needs JavaScript. You can skip it and start with a standard
-            chart of accounts instead.
+            set of accounts and categories instead.
           {% endblocktranslate %}
         </p>
         <form method="post" action="{% url 'onboarding:skip' request.team.slug request.book.slug %}" class="mt-5">

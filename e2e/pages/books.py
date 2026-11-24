@@ -52,9 +52,6 @@ class BookSettingsPage(BasePage):
     def consequence(self) -> str:
         return self.page.locator("[data-testid='budget-future-income-consequence']").inner_text()
 
-    def set_report_timeframe(self, value: str):
-        self.page.locator("[data-testid='report-timeframe']").select_option(value)
-
     def set_locked_through(self, ddmmyyyy: str):
         """Type the closed-period date into its DateField (`locked-through-input`) and take it."""
         self.page.locator("[data-testid='locked-through-input']").click()
@@ -85,12 +82,18 @@ class BookListPage(BasePage):
     def submit_button(self, action: str, book):
         return self.page.locator(f"[data-testid='book-{action}-submit-{book.slug}']")
 
+    def _submit(self, action: str, book):
+        # The form posts and the server redirects back to My books. Waiting only for
+        # `book-list` would return at once -- the old page has one too -- and the next
+        # step could act on a page about to be replaced, before Alpine binds the new one.
+        with self.page.expect_navigation(wait_until="load"):
+            self.submit_button(action, book).click()
+        self.page.wait_for_function("() => window.Alpine !== undefined")
+
     def archive(self, book, name: str):
         self._confirm("archive", book, name)
-        self.submit_button("archive", book).click()
-        self.page.wait_for_selector("[data-testid='book-list']")
+        self._submit("archive", book)
 
     def delete(self, book, name: str):
         self._confirm("delete", book, name)
-        self.submit_button("delete", book).click()
-        self.page.wait_for_selector("[data-testid='book-list']")
+        self._submit("delete", book)

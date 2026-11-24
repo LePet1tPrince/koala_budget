@@ -27,13 +27,6 @@ import {
     NetWorthStatsToJSON,
     NetWorthStatsToJSONTyped,
 } from './NetWorthStats';
-import type { WealthRank } from './WealthRank';
-import {
-    WealthRankFromJSON,
-    WealthRankFromJSONTyped,
-    WealthRankToJSON,
-    WealthRankToJSONTyped,
-} from './WealthRank';
 import type { NetWorthPoint } from './NetWorthPoint';
 import {
     NetWorthPointFromJSON,
@@ -91,18 +84,6 @@ export interface NetWorthReport {
      * @memberof NetWorthReport
      */
     composition: Composition | null;
-    /**
-     * 
-     * @type {WealthRank}
-     * @memberof NetWorthReport
-     */
-    wealthRank: WealthRank;
-    /**
-     * 
-     * @type {number}
-     * @memberof NetWorthReport
-     */
-    householdAdults: number;
 }
 
 /**
@@ -115,8 +96,6 @@ export function instanceOfNetWorthReport(value: object): value is NetWorthReport
     if (!('sections' in value) || value['sections'] === undefined) return false;
     if (!('trend' in value) || value['trend'] === undefined) return false;
     if (!('composition' in value) || value['composition'] === undefined) return false;
-    if (!('wealthRank' in value) || value['wealthRank'] === undefined) return false;
-    if (!('householdAdults' in value) || value['householdAdults'] === undefined) return false;
     return true;
 }
 
@@ -136,8 +115,6 @@ export function NetWorthReportFromJSONTyped(json: any, ignoreDiscriminator: bool
         'sections': ((json['sections'] as Array<any>).map(NetWorthSectionFromJSON)),
         'trend': ((json['trend'] as Array<any>).map(NetWorthPointFromJSON)),
         'composition': CompositionFromJSON(json['composition']),
-        'wealthRank': WealthRankFromJSON(json['wealth_rank']),
-        'householdAdults': json['household_adults'],
     };
 }
 
@@ -158,8 +135,6 @@ export function NetWorthReportFromJSONTyped(json: any, ignoreDiscriminator: bool
         'sections': ((value['sections'] as Array<any>).map(NetWorthSectionToJSON)),
         'trend': ((value['trend'] as Array<any>).map(NetWorthPointToJSON)),
         'composition': CompositionToJSON(value['composition']),
-        'wealth_rank': WealthRankToJSON(value['wealthRank']),
-        'household_adults': value['householdAdults'],
     };
 }
 

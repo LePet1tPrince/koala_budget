@@ -86,7 +86,7 @@
               <span class="font-medium" data-unassigned-label-text>{% translate "Unassigned" %}</span>
               <span class="block text-xs text-base-content/70">{% translate "Money with no job yet" %}</span>
             </span>
-            <span class="font-mono text-sm" data-cover-unassigned></span>
+            <span class="money text-sm" data-cover-unassigned></span>
           </label>
           {% comment %}The goals themselves come from the budget API when the dialog opens.{% endcomment %}
           <label class="flex items-center gap-3 rounded-box border border-base-300 p-3 cursor-pointer has-[input:checked]:border-primary has-[input:checked]:bg-primary/5"
@@ -101,7 +101,7 @@
         </fieldset>
         <label class="form-control w-full">
           <span class="label-text mb-1">{% translate "Amount" %}</span>
-          <input type="text" inputmode="decimal" autocomplete="off" data-amount-input class="input input-bordered w-full text-right font-mono" name="amount"
+          <input type="text" inputmode="decimal" autocomplete="off" data-amount-input class="input input-bordered w-full text-right money" name="amount"
                  data-testid="cover-amount" required>
         </label>
         <p class="text-xs text-base-content/70" data-cover-explain="unassigned">
@@ -127,7 +127,8 @@
     is already right and the tabs work as plain links without script. With
     script (budget/budget-tabs.js) a click switches in place.
   {% endcomment %}
-  <div id="budget-tabs-bar" class="bg-base-100 rounded-t-lg border-b border-base-300 px-3 py-2">
+  {% comment %}A bar with one tab is a label, not a choice: it shows only when there are two sections.{% endcomment %}
+  <div id="budget-tabs-bar" class="bg-base-100 rounded-t-lg border-b border-base-300 px-3 py-2"{% if sections|length < 2 %} hidden{% endif %}>
     <div role="tablist" aria-label="{% translate 'Budget sections' %}"
          class="tabs tabs-box tabs-sm budget-tabs w-fit max-w-full flex-nowrap overflow-x-auto" data-testid="budget-tabs">
       {% for section in sections %}
@@ -138,7 +139,7 @@
          tabindex="{% if section.key == budget_tab %}0{% else %}-1{% endif %}"
          data-budget-tab="{{ section.key }}" data-testid="budget-tab-{{ section.key }}">
         <span class="font-semibold">{{ section.label }}</span>
-        <span class="font-mono text-xs opacity-70" title="{% translate 'Budgeted this month' %}"
+        <span class="money text-xs opacity-70" title="{% translate 'Budgeted this month' %}"
               data-budget-cell="tab:{{ section.key }}:budgeted">{{ section.totals.budgeted|currency }}</span>
         {% if section.key == "expense" %}
         <span class="badge badge-error badge-xs" data-budget-cell="tab:expense:overspent" data-testid="budget-tab-overspent"
@@ -164,7 +165,7 @@
                    aria-label="{% blocktranslate trimmed with section=section.label %}Select all {{ section }} categories{% endblocktranslate %}">
           </th>
           <th>{% translate "Category" %}</th>
-          <th class="w-28"><span class="sr-only">{% translate "Progress" %}</span></th>
+          <th class="w-28">{% translate "Progress" %}</th>
           <th class="text-right">{% translate "Budgeted" %}</th>
           <th class="text-right">{% translate "Actual" %}</th>
           <th class="text-right">{% translate "Available" %}</th>
@@ -213,13 +214,13 @@
             </td>
             <td></td>
             <td class="text-right">
-              <span class="font-mono text-base-content/70" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:budgeted">{{ group.subtotals.budgeted|currency }}</span>
+              <span class="money text-base-content/70" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:budgeted">{{ group.subtotals.budgeted|currency }}</span>
             </td>
             <td class="text-right">
-              <span class="font-mono text-base-content/70" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:actual">{{ group.subtotals.actual|currency }}</span>
+              <span class="money text-base-content/70" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:actual">{{ group.subtotals.actual|currency }}</span>
             </td>
             <td class="text-right">
-              <span class="font-mono {{ group.subtotals.available|available_class:section.income }}"
+              <span class="money {{ group.subtotals.available|available_class:section.income }}"
                     data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:available">
                 {{ group.subtotals.available|available_text:section.income }}
               </span>
@@ -233,13 +234,13 @@
             <td>{{ group.name }}</td>
             <td></td>
             <td class="text-right">
-              <span class="font-mono" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:budgeted">{{ group.subtotals.budgeted|currency }}</span>
+              <span class="money" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:budgeted">{{ group.subtotals.budgeted|currency }}</span>
             </td>
             <td class="text-right">
-              <span class="font-mono" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:actual">{{ group.subtotals.actual|currency }}</span>
+              <span class="money" data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:actual">{{ group.subtotals.actual|currency }}</span>
             </td>
             <td class="text-right">
-              <span class="font-mono {{ group.subtotals.available|available_class:section.income }}"
+              <span class="money {{ group.subtotals.available|available_class:section.income }}"
                     data-budget-cell="group:{{ section.key }}:{{ forloop.counter0 }}:available">
                 {{ group.subtotals.available|available_text:section.income }}
               </span>
@@ -271,7 +272,7 @@
                 {% with start_iso=month|date:'Y-m-d' end_iso=end_date|date:'Y-m-d' %}
                 {% comment %}The return path is the budget page itself: this table is also rendered by POST endpoints (hide/unhide), whose own path is no place to come back to.{% endcomment %}
                 <a href="{% pass_return_to account_url|add:'?start_date='|add:start_iso|add:'&end_date='|add:end_iso budget_url|add:'?month='|add:start_iso %}"
-                   class="link link-primary font-medium truncate" title="{{ row.category.name }}">{{ row.category.name }}</a>
+                   class="link link-hover font-medium truncate" title="{{ row.category.name }}">{{ row.category.name }}</a>
                 {% endwith %}
                 {% if group.hidden %}<span class="text-xs text-base-content/70 truncate">{{ row.category.account_group.name }}</span>{% endif %}
               </div>
@@ -308,12 +309,12 @@
                    data-category-name="{{ row.category.name }}"
                    data-amount="{{ row.actual }}"
                    data-month="{{ month|date:'Y-m-d' }}">
-                <span class="font-mono">{{ row.actual|currency }}</span>
+                <span class="money">{{ row.actual|currency }}</span>
               </div>
             </td>
 
             <td class="text-right">
-              <span class="font-mono {{ row.available|available_class:section.income }}"
+              <span class="money {{ row.available|available_class:section.income }}"
                     data-budget-cell="row:{{ row.category.pk }}:available">
                 {{ row.available|available_text:section.income }}
               </span>
@@ -368,13 +369,13 @@
           <td>{% if section.key == 'income' %}{% translate "Total Income" %}{% else %}{% translate "Total Expenses" %}{% endif %}</td>
           <td></td>
           <td class="text-right">
-            <span class="font-mono" data-budget-cell="section:{{ section.key }}:budgeted">{{ section.totals.budgeted|currency }}</span>
+            <span class="money" data-budget-cell="section:{{ section.key }}:budgeted">{{ section.totals.budgeted|currency }}</span>
           </td>
           <td class="text-right">
-            <span class="font-mono" data-budget-cell="section:{{ section.key }}:actual">{{ section.totals.actual|currency }}</span>
+            <span class="money" data-budget-cell="section:{{ section.key }}:actual">{{ section.totals.actual|currency }}</span>
           </td>
           <td class="text-right">
-            <span class="font-mono" data-budget-cell="section:{{ section.key }}:available">{{ section.totals.available|available_text:section.income }}</span>
+            <span class="money" data-budget-cell="section:{{ section.key }}:available">{{ section.totals.available|available_text:section.income }}</span>
           </td>
           <td></td>
         </tr>

@@ -1,10 +1,8 @@
 """
-Data for the three reports beside Monthly Review (docs/reports-consolidation.md):
+Data for the two reports beside Monthly Review (docs/reports-consolidation.md):
 
 - spending_report: Income & Spending -- money in/out over a range (Income Statement + Cash Flow)
 - net_worth_report: Net Worth -- balances and their change over a range (Balance Sheet + Net Worth Trend)
-- budget_goals_report: Budget & Goals -- where every dollar is going (Dollar Map + Goal Progress);
-  per-category budget progress lives on the budget page itself
 
 Each builder returns a plain dict for its template; the views only parse params.
 """
@@ -18,7 +16,6 @@ from django.utils.translation import gettext_lazy
 from apps.utils.months import add_months, months_between
 
 from .services import ReportService
-from .wealth_rank import global_rank
 
 ZERO = Decimal("0")
 
@@ -138,8 +135,6 @@ def net_worth_report(book, start_date, end_date):
         "trend": trend,
         "stats": stats,
         "composition_data": composition_data,
-        "wealth_rank": global_rank(end_worth, book.household_adults),
-        "household_adults": book.household_adults,
     }
 
 
@@ -204,64 +199,3 @@ def _balance_section(key, opening_items, closing_items):
     start = sum((g["start"] for g in ordered), ZERO)
     end = sum((g["end"] for g in ordered), ZERO)
     return {"key": key, "groups": ordered, "start": start, "end": end, "change": end - start}
-
-
-# --- C. Budget & Goals ------------------------------------------------------------
-
-
-def budget_goals_report(book, month):
-    """
-    Where every dollar of net worth is going for one month: goals (each listed),
-    budget envelopes (one total -- the per-category detail lives on the budget
-    page) and what is still unassigned.
-    """
-    from apps.accounts.models import ACCOUNT_TYPE_EXPENSE
-    from apps.budget import ledger as budget_ledger
-    from apps.budget.services import BudgetService, GoalService
-    from apps.budget.unassigned import (
-        EXPECTED_INCOME_LABEL,
-        allocation_bar,
-        budget_categories,
-        compute_unassigned,
-        waterfall,
-    )
-
-    month = month.replace(day=1)
-    categories = budget_categories(book)
-    unassigned = compute_unassigned(book, month, categories)
-    goal_rows, goal_totals = GoalService(book).month_rows(month)
-    goal_totals.update(
-        {
-            # Every open goal, open-ended ones included: the Goals page's "Total Saved".
-            "allocated": sum((r["goal"].allocated for r in goal_rows), ZERO),
-            "left": sum((r["goal"].left for r in goal_rows), ZERO),
-        }
-    )
-
-    # The envelopes in the budget page's own terms, so the two pages show the same
-    # numbers: the Expenses tab's Left Over from Last Month + Assigned − Spent is its
-    # Available, and Available plus the overspent envelopes (which claim nothing --
-    # that money already came out of Unassigned) is what sits in the envelopes.
-    expense = [c for c in categories if c.account_group.account_type == ACCOUNT_TYPE_EXPENSE]
-    expense_ids = {c.pk for c in expense}
-    service = BudgetService(book)
-    available, previous = service.get_available_with_previous(month, expense)
-    budgeted = budget_ledger.budgeted_in_month(book, month)
-    actuals = service.get_actuals_by_category(month)
-    envelopes = {
-        "total": unassigned.envelopes,
-        "leftover": sum(previous.values(), ZERO),
-        "assigned": sum((budgeted.get(pk, ZERO) for pk in expense_ids), ZERO),
-        "spent": sum((actuals.get(pk, ZERO) for pk in expense_ids), ZERO),
-        "available": sum(available.values(), ZERO),
-        "overspent": unassigned.overspent,
-    }
-    return {
-        "unassigned": unassigned,
-        "bar": allocation_bar(unassigned),
-        "waterfall": waterfall(unassigned),
-        "goal_rows": goal_rows,
-        "goal_totals": goal_totals,
-        "envelopes": envelopes,
-        "expected_income_label": EXPECTED_INCOME_LABEL,
-    }

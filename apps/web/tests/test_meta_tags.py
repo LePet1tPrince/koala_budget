@@ -23,6 +23,13 @@ class GetImageUrlFunctionTestCase(SimpleTestCase):
         self._run_test("https://example.com/absolute.jpg", "https://example.com/absolute.jpg")
 
     @override_settings(MEDIA_URL="/media/", STATIC_URL="/static/", STORAGES=TEST_STORAGES)
+    def test_a_static_default_is_resolved_too(self):
+        with patch("apps.web.meta.get_server_root") as mock_get_server_root:
+            mock_get_server_root.return_value = "https://example.com"
+            result = get_image_url({"IMAGE": "/default.png"}, "")
+        self.assertEqual(result, "https://example.com/static/default.png")
+
+    @override_settings(MEDIA_URL="/media/", STATIC_URL="/static/", STORAGES=TEST_STORAGES)
     def test_static_resolution(self):
         self._run_test("/static_image.jpg", "https://example.com/static/static_image.jpg")
 
@@ -36,6 +43,22 @@ class GetImageUrlFunctionTestCase(SimpleTestCase):
             "https://example.s3.amazonaws.com/media/media_image.jpg",
             "https://example.s3.amazonaws.com/media/media_image.jpg",
         )
+
+
+class ProjectImageTestCase(SimpleTestCase):
+    def test_the_default_image_is_a_static_file_the_finders_resolve(self):
+        """The name handed to `static()` is relative: with a leading slash the finders raise."""
+        from django.conf import settings
+        from django.contrib.staticfiles import finders
+
+        with (
+            patch("apps.web.templatetags.meta_tags.static", side_effect=lambda name: f"/static/{name}") as static,
+            patch("apps.web.meta.get_server_root", return_value="https://example.com"),
+        ):
+            get_image_url(settings.PROJECT_METADATA, "")
+        name = static.call_args.args[0]
+        self.assertFalse(name.startswith("/"))
+        self.assertIsNotNone(finders.find(name))
 
 
 class AbsoluteUrlTestCase(SimpleTestCase):

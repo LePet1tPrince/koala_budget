@@ -17,7 +17,7 @@ import Icon from '../common/Icon';
  * - onChange: (value) => void
  */
 
-const OptionButton = ({ option, selected, onClick }) => (
+const OptionButton = ({ option, selected, multi, onClick }) => (
   <button
     type="button"
     onClick={onClick}
@@ -25,7 +25,8 @@ const OptionButton = ({ option, selected, onClick }) => (
     data-testid={`option-${option.value}`}
     className={`onboarding-option ${selected ? 'onboarding-option-selected' : ''}`}
   >
-    <span className="onboarding-option-mark" aria-hidden="true">
+    {/* Square for "pick any", round for "pick one": the convention people already read. */}
+    <span className={`onboarding-option-mark ${multi ? 'onboarding-option-mark-multi' : ''}`} aria-hidden="true">
       {selected && <Icon name="check" className="inline-block shrink-0 w-4 h-4" />}
     </span>
     <span className="min-w-0">
@@ -74,6 +75,7 @@ const QuestionCard = ({ question, value, onChange }) => {
               key={option.value}
               option={option}
               selected={isMulti ? selected.includes(option.value) : selected === option.value}
+              multi={isMulti}
               onClick={() => toggle(option.value)}
             />
           ))}

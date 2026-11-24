@@ -4,21 +4,18 @@ Spending, Net Worth, Budget & Goals (docs/reports-consolidation.md) -- and the
 CSV exports they link.
 """
 
-import contextlib
 from datetime import date, datetime
 from urllib.parse import urlencode
 
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext_lazy as _
 
 from apps.books.decorators import login_and_book_required
-from apps.utils.months import add_months
 
-from .api import budget_goals_payload, net_worth_payload, spending_payload
+from .api import net_worth_payload, spending_payload
 from .consolidated import (
     COLUMN_LABELS,
     bucket_for,
-    budget_goals_report,
     column_periods,
     net_worth_report,
     period_bounds,
@@ -30,30 +27,13 @@ from .exports import (
     export_income_statement_csv,
     export_transactions_csv,
 )
-from .timeframes import date_range_from_request, default_range, month_range_from_request
+from .timeframes import date_range_from_request, month_range_from_request
 
 
 @login_and_book_required
 def reports_home(request, team_slug, book_slug):
-    """
-    Reports home page with navigation to different reports.
-    """
-    from apps.monthly_review.models import MonthlyReviewState
-
-    last_reviewable_month = add_months(date.today(), -1)
-    reviewed = MonthlyReviewState.objects.filter(
-        book=request.book, month=last_reviewable_month, completed_at__isnull=False
-    ).exists()
-
-    return render(
-        request,
-        "reports/reports_home.html",
-        {
-            "active_tab": "reports",
-            "page_title": _("Reports"),
-            "monthly_review_reviewed": reviewed,
-        },
-    )
+    """Reports has no landing page of its own: it opens on Income & Spending (the sidebar lists the rest)."""
+    return redirect("reports:spending", team_slug, book_slug)
 
 
 def _parse_month_range(request):
@@ -171,42 +151,16 @@ def net_worth(request, team_slug, book_slug):
     )
 
 
-@login_and_book_required
-def budget_goals(request, team_slug, book_slug):
-    """Budget & Goals: where every dollar is going this month -- goals, envelopes (one total), Unassigned."""
-    month = date.today().replace(day=1)
-    with contextlib.suppress(ValueError):
-        year, month_num = map(int, request.GET.get("month", "").split("-")[:2])
-        month = date(year, month_num, 1)
-
-    report = budget_goals_report(request.book, month)
-    return render(
-        request,
-        "reports/budget_goals.html",
-        {
-            "active_tab": "reports",
-            "active_report": "budget_goals",
-            "page_title": _("Budget & Goals"),
-            **report,
-            # The waterfall draws from the `GET …/reports/api/budget-and-goals/` body, embedded.
-            "report_json": budget_goals_payload(report, month),
-            "month": month,
-            "prev_month": add_months(month, -1),
-            "next_month": add_months(month, 1),
-        },
-    )
-
-
 # --- Export Views ---
 
 
 def _parse_date_range(request):
     """
-    Parse start_date and end_date from GET params. A missing side takes the book's
-    default report range (else this month to today); an unparseable one, the whole range.
+    Parse start_date and end_date from GET params. A missing side defaults to this
+    month to today; an unparseable one, the whole range.
     """
     today = date.today()
-    default_start, default_end = default_range(request.book, (today.replace(day=1), today))
+    default_start, default_end = today.replace(day=1), today
     start_date_param = request.GET.get("start_date")
     end_date_param = request.GET.get("end_date")
     try:

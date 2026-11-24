@@ -61,7 +61,6 @@ export default defineConfig({
         // The report pages' charts, each loaded from the reports API (apps/reports/api.py).
         'spending-report': path.resolve(__dirname, './assets/javascript/reports/spending-report.js'),
         'net-worth-report': path.resolve(__dirname, './assets/javascript/reports/net-worth-report.js'),
-        'budget-goals-report': path.resolve(__dirname, './assets/javascript/reports/budget-goals-report.js'),
         'audit-log': path.resolve(__dirname, './assets/javascript/audit/audit-log.js'),
         'unassigned-pill': path.resolve(__dirname, './assets/javascript/unassigned/unassigned-pill.js'),
       },

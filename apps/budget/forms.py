@@ -91,7 +91,7 @@ class BudgetAmountForm(forms.Form):
                 "autocomplete": "off",
                 "data-amount-input": "",
                 "placeholder": "0.00",
-                "class": "input input-bordered input-xs budget-amount max-w-24 text-right font-mono text-xs",
+                "class": "input input-bordered input-xs budget-amount max-w-24 text-right money text-xs",
             }
         ),
     )

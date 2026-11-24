@@ -67,7 +67,9 @@ const COLUMNS = [
   { key: 'inflow', label: gettext('Inflow'), width: 'w-[6rem]', sortable: true, align: 'text-right' },
   { key: 'outflow', label: gettext('Outflow'), width: 'w-[6rem]', sortable: true, align: 'text-right' },
   { key: 'description', label: gettext('Description'), sortable: true, truncate: true },
-  { key: 'isReconciled', label: gettext('Reconciled'), width: 'w-[6.5rem]', sortable: false, align: 'text-center' },
+  // No header: a status cell that shows a lock only on reconciled rows, and the
+  // spinner while a row saves. Unreconciled rows (most of the Inbox) show nothing.
+  { key: 'status', label: '', width: 'w-10', sortable: false, align: 'text-center' },
 ];
 
 /**
@@ -531,12 +533,12 @@ const LineTable = ({
           </div>
 
           <div className="overflow-x-auto" ref={scrollRef}>
-            {/* The fixed columns add up to ~45rem (~54 with Account); the floor keeps
+            {/* The fixed columns add up to ~41rem (~50 with Account); the floor keeps
                 ~10rem for Description (and its "Match found" chip) on a narrow screen,
                 where the table scrolls sideways instead of squeezing that column. */}
             <table
               className={`table table-sm table-quiet table-fixed w-full ${
-                showAccountColumn ? 'min-w-[65rem]' : 'min-w-[56rem]'
+                showAccountColumn ? 'min-w-[61rem]' : 'min-w-[52rem]'
               } ${refetching ? 'opacity-60' : ''}`}
               data-testid="feed-table"
             >
@@ -766,7 +768,7 @@ const LineTable = ({
                               data-testid={`row-saving-${row.id}`}
                             />
                           ) : (
-                            <ReconciledLock reconciled={reconciled} />
+                            reconciled && <ReconciledLock reconciled />
                           )}
                         </td>
                       </tr>

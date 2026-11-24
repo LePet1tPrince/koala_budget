@@ -272,6 +272,9 @@ class PageTests(ReconciliationTestCase):
         resp = self.web.get(reverse("reconciliation:hub", args=[self.team.slug, self.book.slug]))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Chequing")
+        # Under Transactions in the sidebar, highlighted there.
+        self.assertEqual(resp.context["transactions_section"], "reconciliations")
+        self.assertContains(resp, 'side-link-active" data-testid="nav-transactions-reconciliations"')
 
     def test_account_page_renders_its_mount(self):
         resp = self.web.get(

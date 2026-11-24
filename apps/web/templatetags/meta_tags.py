@@ -22,14 +22,18 @@ def get_description(project_meta, page_description=None):
 
 @register.filter
 def get_image_url(project_meta, page_image=None):
+    # The project default goes through the same resolution, so it can be a static path.
+    page_image = page_image or project_meta["IMAGE"]
     if page_image and page_image.startswith("/"):
         # if it's a local media url make it absolute, otherwise assume static
         if page_image.startswith(settings.MEDIA_URL):
             page_image = meta.absolute_url(page_image)
         else:
-            page_image = meta.absolute_url(static(page_image))
+            # Static names are relative: a leading slash makes the staticfiles
+            # finders refuse the path (SuspiciousFileOperation).
+            page_image = meta.absolute_url(static(page_image.lstrip("/")))
 
-    return page_image or project_meta["IMAGE"]
+    return page_image
 
 
 @register.simple_tag

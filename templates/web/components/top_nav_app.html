@@ -8,6 +8,8 @@
   `menu` styles `li > a`, and these are `li > div > a`, so they keep their
   own .side-link styling.
 {% endcomment %}
+{# The theme toggle lives in the menu here (below): the bar keeps its room for Unassigned. #}
+{% block theme_selector %}{% endblock %}
 {% block navbar_end_extra %}
   <div class="mr-2">
     {% include "budget/components/unassigned_pill.html" with compact=True %}
@@ -48,6 +50,7 @@
         </a>
       </li>
     {% endif %}
+    {% include "web/components/theme_toggle_item.html" %}
     <li>
       <a href="{% url 'account_logout' %}">{% icon "sign-out" class="inline-block shrink-0 h-4 w-4" %}{% translate "Sign out" %}</a>
     </li>

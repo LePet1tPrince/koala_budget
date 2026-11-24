@@ -29,14 +29,15 @@ const STEPS = [
  * Both the walkthrough and the dashboard render from the same data -- changing
  * the baseline is pure client-side reslicing, never a new request.
  *
- * The data-completeness check is not a step: it is a modal that opens whenever
- * the walkthrough starts from the beginning, and can be reopened from either mode.
+ * The data-completeness check is not a step and never opens on its own: it is a
+ * modal behind the "Data check" button (badged when something needs a look), so
+ * the review starts on the numbers rather than on a quiz about reconciliation.
  */
 const ReviewApp = ({ props }) => {
   const { review, state, urls, api } = props;
   const [mode, setMode] = useState(state.isFinished ? 'dashboard' : 'walkthrough');
   const [step, setStep] = useState(Math.min(state.step || 0, STEPS.length - 1));
-  const [healthOpen, setHealthOpen] = useState(mode === 'walkthrough' && step === 0);
+  const [healthOpen, setHealthOpen] = useState(false);
   const [baseline, setBaseline] = useState(
     state.baseline && review.baselines[state.baseline] ? state.baseline : review.default_baseline
   );
@@ -88,7 +89,6 @@ const ReviewApp = ({ props }) => {
           onWalkthrough={() => {
             setStep(0);
             setMode('walkthrough');
-            setHealthOpen(true);
           }}
           onHealthCheck={() => setHealthOpen(true)}
           urls={urls}

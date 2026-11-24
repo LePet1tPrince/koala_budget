@@ -62,9 +62,7 @@ const OnboardingApp = () => {
       props={{
         api,
         questions: catalog.questions,
-        phases: catalog.phases,
         state: page.state,
-        teamName: page.teamName,
         firstName: page.firstName,
         homeUrl: book.base,
         ynabUrl: page.ynabImportEnabled ? `${book.base}ynab-import/` : '',

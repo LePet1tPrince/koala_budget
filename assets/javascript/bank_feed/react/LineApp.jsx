@@ -1273,7 +1273,8 @@ const LineApp = ({
 
       {/* Account cards: a filter on the table below, not a gate in front of it */}
       <section className="app-card">
-        <div className="flex justify-between items-center mb-4">
+        {/* Wraps on a phone: the buttons drop below the heading instead of sitting on it. */}
+        <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
           <button
             type="button"
             className="flex items-center gap-2 min-w-0"

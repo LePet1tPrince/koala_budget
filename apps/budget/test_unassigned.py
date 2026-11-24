@@ -19,10 +19,8 @@ from .services import BudgetService, NetWorthService
 from .unassigned import (
     STATE_NEGATIVE,
     STATE_POSITIVE,
-    allocation_bar,
     compute_unassigned,
     pill_context,
-    waterfall,
 )
 
 AUG = date(2026, 8, 1)
@@ -333,53 +331,6 @@ class GoalTest(UnassignedFixture):
         self.assertEqual(u.amount, Decimal("17500"))
 
 
-class DollarMapGeometryTest(UnassignedFixture):
-    def test_waterfall_steps_chain_down_to_unassigned(self):
-        bars = waterfall(compute_unassigned(self.book, SEPT))
-        self.assertEqual([b["key"] for b in bars], ["net_worth", "envelopes", "goals", "unassigned"])
-        self.assertEqual(bars[-1]["end"], 1500.0)
-        steps = [b for b in bars if not b["total"]]
-        for previous, step in zip([bars[0]] + steps, steps, strict=False):
-            self.assertEqual(step["start"], previous["end"])
-        self.assertEqual(steps[-1]["end"], bars[-1]["end"])
-
-    def test_bar_segments_cover_the_claims(self):
-        bar = allocation_bar(compute_unassigned(self.book, SEPT, detail=True))
-        self.assertEqual(
-            {s["key"]: s["amount"] for s in bar["segments"]},
-            {
-                "goals": Decimal("16000"),
-                "envelopes": Decimal("7500"),
-                "unassigned": Decimal("1500"),
-            },
-        )
-        # The claims fill net worth exactly; Expected income reaches past it.
-        self.assertAlmostEqual(sum(s["pct"] for s in bar["segments"]), 83.333, places=2)
-        self.assertAlmostEqual(bar["net_worth_pct"], 83.333, places=2)
-        self.assertEqual(bar["with_due_pct"], 100.0)
-        self.assertIsNone(bar["overshoot"])
-
-    def test_overshoot_is_over_assignment_only(self):
-        # Overspending isn't a claim, so it can't push the bar past what you have.
-        self.post(date(2026, 9, 7), self.fun, self.checking, "500")
-        self.assertIsNone(allocation_bar(compute_unassigned(self.book, SEPT, detail=True))["overshoot"])
-        self.budget(self.groceries, SEPT, "9000")
-        u = compute_unassigned(self.book, SEPT, detail=True)
-        bar = allocation_bar(u)
-        self.assertEqual(u.amount, Decimal("-4000"))
-        self.assertEqual(bar["overshoot"]["over_assigned"], Decimal("4000"))
-        claims = sum(s["amount"] for s in bar["segments"])
-        self.assertEqual(claims - u.net_worth, Decimal("4000"))
-
-    def test_detail_lists_overspent_envelopes_and_goals(self):
-        self.post(date(2026, 9, 7), self.fun, self.checking, "500")
-        u = compute_unassigned(self.book, SEPT, detail=True)
-        fun = next(e for e in u.detail["envelopes"] if e["name"] == "Fun")
-        self.assertEqual(fun["amount"], Decimal("-500"))
-        self.assertEqual(u.detail["goals"][0]["amount"], Decimal("16000"))
-        self.assertEqual(u.detail["income_due"], [{"name": "Salary", "amount": Decimal("5000")}])
-
-
 class UnassignedViewsTest(UnassignedFixture):
     @classmethod
     def setUpTestData(cls):
@@ -451,39 +402,3 @@ class UnassignedViewsTest(UnassignedFixture):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'data-testid="unassigned-pill"')
         self.assertNotContains(response, 'data-testid="metric-unassigned"')
-        self.assertContains(response, 'data-testid="dashboard-dollar-map-link"')
-
-    def test_budget_goals_report(self):
-        url = reverse("reports:budget_goals", args=[self.team.slug, self.book.slug])
-        response = self.client.get(url, {"month": "2026-09"})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["month"], SEPT)
-        self.assertContains(response, 'data-testid="plan-waterfall"')
-        self.assertContains(response, "House")
-        self.assertEqual(response.context["waterfall"][-1]["key"], "unassigned")
-        self.assertContains(response, 'data-testid="plan-expected-income"')
-        self.assertContains(response, 'data-testid="plan-free-expected"')
-
-    def test_budget_goals_reads_a_full_date_month(self):
-        response = self.client.get(
-            reverse("reports:budget_goals", args=[self.team.slug, self.book.slug]), {"month": "2026-08-01"}
-        )
-        self.assertEqual(response.context["month"], AUG)
-
-    def test_budget_goals_ignores_a_malformed_month(self):
-        response = self.client.get(
-            reverse("reports:budget_goals", args=[self.team.slug, self.book.slug]), {"month": "nope"}
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["month"], date.today().replace(day=1))
-
-    def test_budget_goals_refuses_non_members(self):
-        self.client.logout()
-        self.client.login(username="outsider-u@example.com", password="testpass123")
-        self.assertEqual(
-            self.client.get(reverse("reports:budget_goals", args=[self.team.slug, self.book.slug])).status_code, 404
-        )
-
-    def test_reports_home_links_budget_and_goals(self):
-        response = self.client.get(reverse("reports:reports_home", args=[self.team.slug, self.book.slug]))
-        self.assertContains(response, 'data-testid="report-link-budget-goals"')

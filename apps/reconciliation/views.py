@@ -279,8 +279,9 @@ def hub(request, team_slug, book_slug):
         {
             **_hub_payload(request.book),
             # A tab of the Accounts section (templates/accounts/components/manage_tabs.html).
-            "active_tab": "accounts",
-            "accounts_section": "reconciliations",
+            # Beside Transactions in the sidebar, with Recurring and Rules.
+            "active_tab": "transactions",
+            "transactions_section": "reconciliations",
         },
     )
 
@@ -293,7 +294,7 @@ def account_page(request, team_slug, book_slug, account_id):
     return render(
         request,
         "reconciliation/account.html",
-        {"account": account, "active_tab": "accounts", "accounts_section": "reconciliations"},
+        {"account": account, "active_tab": "transactions", "transactions_section": "reconciliations"},
     )
 
 
@@ -312,7 +313,8 @@ def statement_page(request, team_slug, book_slug, pk):
         {
             "statement": presenters.completed_payload(rec),
             "rec": rec,
-            "active_tab": "accounts",
-            "accounts_section": "reconciliations",
+            # Beside Transactions in the sidebar, with Recurring and Rules.
+            "active_tab": "transactions",
+            "transactions_section": "reconciliations",
         },
     )

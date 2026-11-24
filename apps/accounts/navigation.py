@@ -71,8 +71,6 @@ BACK_LABELS = {
     "accounts:institution_detail": _named("accounts.Institution"),
     "reports:spending": lambda r, k: _("Back to Income & Spending"),
     "reports:net_worth": lambda r, k: _("Back to Net Worth"),
-    "reports:budget_goals": lambda r, k: _("Back to Budget & Goals"),
-    "reports:reports_home": lambda r, k: _("Back to Reports"),
     "budget:budget_home": lambda r, k: _("Back to Budget"),
     "journal:transactions_home": lambda r, k: _("Back to Transactions"),
     "bank_feed:bank_feed_home": lambda r, k: _("Back to Inbox"),

@@ -39,13 +39,6 @@ CASES = {
         {"start_month": "2026-02", "end_month": format_month(MONTH)},
         False,
     ),
-    ("reports/budget_goals.html", "budget-goals-report-data"): (
-        "reports:budget_goals",
-        {"month": format_month(MONTH)},
-        "reports:api_budget_goals",
-        {"month": format_month(MONTH)},
-        False,
-    ),
     ("budget/goals_list.html", "goals-data"): (
         "budget:goals_list",
         {"month": MONTH.isoformat()},

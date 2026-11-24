@@ -27,14 +27,13 @@ from apps.reports.services import ReportService
 from apps.utils.months import add_months
 
 # A pool of greetings that rotates day-to-day (deterministic per day, not per request)
-# so a user doesn't see the same one on every visit.
+# so a user doesn't see the same one on every visit. None says "back" or "again":
+# the first visit gets one too. Each has a form without a name, for users who
+# haven't given one -- an email address is not a name.
 GREETINGS = [
-    "Hello, {name}",
-    "Welcome back, {name}",
-    "Good to see you, {name}",
-    "Great to have you back, {name}",
-    "Hey {name}, welcome back",
-    "Nice to see you again, {name}",
+    ("Hello, {name}", "Hello"),
+    ("Good to see you, {name}", "Good to see you"),
+    ("Hi {name}", "Hi there"),
 ]
 
 # The dashboard lists the first few open goals; the Goals page has the rest.
@@ -47,9 +46,10 @@ _UNSET = object()
 
 
 def greeting_for(user, today):
-    name = user.first_name or user.email
-    template = gettext(GREETINGS[today.toordinal() % len(GREETINGS)])
-    return template.format(name=name)
+    with_name, without_name = GREETINGS[today.toordinal() % len(GREETINGS)]
+    if user.first_name:
+        return gettext(with_name).format(name=user.first_name)
+    return gettext(without_name)
 
 
 def onboarding_state(book):

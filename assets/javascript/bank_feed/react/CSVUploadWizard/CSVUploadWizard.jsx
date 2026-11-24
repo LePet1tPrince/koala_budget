@@ -62,8 +62,9 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
   const [previewResult, setPreviewResult] = useState(null);
   const [importProgress, setImportProgress] = useState(null); // { completed, total }
 
-  // Derived helpers — step 3 is always shown once we have a preview result
-  const showStep3 = originalUnmappedCategories !== null;
+  // Derived helpers — step 3 only when the file has categories we couldn't match:
+  // a step that says "nothing to map" is a click for nothing.
+  const showStep3 = originalUnmappedCategories?.length > 0;
   const showStep4 = previewResult?.duplicate_count > 0;
 
   /**
@@ -117,9 +118,10 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
       setPreviewResult(result);
       setExcludedDuplicateRows(new Set());
       // Freeze the original list so Step 3 can always show it, even after mappings are applied
-      setOriginalUnmappedCategories(result.unmapped_categories || []);
-      // Always visit step 3 so the user can review/map categories
-      setCurrentStep(3);
+      const unmapped = result.unmapped_categories || [];
+      setOriginalUnmappedCategories(unmapped);
+      // Map categories only when there are some to map; otherwise straight on.
+      setCurrentStep(unmapped.length > 0 ? 3 : result.duplicate_count > 0 ? 4 : 5);
     } catch (err) {
       console.error('Preview error:', err);
       setError(err.message || gettext('Failed to preview transactions'));
@@ -243,7 +245,7 @@ const CSVUploadWizard = ({ selectedAccount, allAccounts, allAccountGroups, uploa
 
   return (
     <div className="modal modal-open">
-      <div className="modal-box max-w-5xl">
+      <div className="modal-box max-w-5xl csv-wizard">
         <h3 className="font-bold text-lg mb-2">
           {gettext('Upload Transactions to')} {selectedAccount.name}
         </h3>

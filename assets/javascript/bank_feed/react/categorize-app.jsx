@@ -23,6 +23,7 @@ getFeedPageApi(book.base)
         allAccounts={pickers.accounts}
         allAccountGroups={pickers.account_groups}
         allPayees={pickers.payees}
+        categoryUsage={pickers.category_usage}
         backUrl={backUrl}
       />,
     );

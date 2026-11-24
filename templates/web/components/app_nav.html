@@ -76,39 +76,7 @@
             {% include "web/components/team_nav_items.html" %}
           </ul>
         </li>
-        {% comment %}
-          The stored theme is read client-side rather than rendered: it lives in
-          localStorage, which the server never sees. syncDarkMode() has already
-          migrated any legacy name by the time Alpine runs.
-        {% endcomment %}
-        {% translate "Light" as t_light %}{% translate "Dark" as t_dark %}{% translate "System" as t_system %}
-        <li x-data="{ theme: localStorage.getItem('theme') || 'system',
-                      light: '{{ light_theme|default:'koala' }}', dark: '{{ dark_theme|default:'koala-dark' }}',
-                      pick(t) { localStorage.setItem('theme', t); syncDarkMode(); this.theme = t; } }">
-          <div class="flex cursor-default items-center justify-between gap-2 hover:bg-transparent active:bg-transparent">
-            <span class="flex items-center gap-2">
-              {% icon "sun-o" class="inline-block shrink-0 h-4 w-4" %}{% translate "Theme" %}
-            </span>
-            <div class="join" role="radiogroup" aria-label="{% translate 'Theme' %}" data-testid="theme-toggle">
-              <button type="button" role="radio" class="btn btn-xs join-item" data-theme-choice="light"
-                      title="{{ t_light }}" aria-label="{{ t_light }}"
-                      :aria-checked="theme === light" :class="{ 'btn-primary': theme === light }" @click="pick(light)">
-                {% icon "sun-o" class="inline-block shrink-0 h-3.5 w-3.5" %}
-              </button>
-              <button type="button" role="radio" class="btn btn-xs join-item" data-theme-choice="dark"
-                      title="{{ t_dark }}" aria-label="{{ t_dark }}"
-                      :aria-checked="theme === dark" :class="{ 'btn-primary': theme === dark }" @click="pick(dark)">
-                {% icon "moon-o" class="inline-block shrink-0 h-3.5 w-3.5" %}
-              </button>
-              <button type="button" role="radio" class="btn btn-xs join-item" data-theme-choice="system"
-                      title="{{ t_system }}" aria-label="{{ t_system }}"
-                      :aria-checked="theme !== light && theme !== dark"
-                      :class="{ 'btn-primary': theme !== light && theme !== dark }" @click="pick('system')">
-                {% icon "desktop" class="inline-block shrink-0 h-3.5 w-3.5" %}
-              </button>
-            </div>
-          </div>
-        </li>
+        {% include "web/components/theme_toggle_item.html" %}
         <li class="menu-title pt-2"><hr class="border-base-300"/></li>
         <li>
           <a href="{% url 'account_logout' %}">{% icon "sign-out" class="inline-block shrink-0 h-4 w-4" %}{% translate "Sign out" %}</a>

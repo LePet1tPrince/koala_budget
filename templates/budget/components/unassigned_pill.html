@@ -26,8 +26,8 @@
        data-hint-zero="{% translate 'Every dollar has a job' %}"
        data-hint-negative="{% translate 'promised more than you have' %}"
        data-testid="unassigned-pill{% if compact %}-compact{% endif %}">
-    <a href="{% url 'reports:budget_goals' nav_team.slug nav_book.slug %}" class="unassigned-pill-main"
-       title="{% translate 'See where every dollar is going' %}">
+    <a href="{% url 'budget:budget_home' nav_team.slug nav_book.slug %}" class="unassigned-pill-main"
+       title="{% translate 'Give it a job on the Budget page' %}">
       <span class="unassigned-pill-label" data-unassigned-pill-label>{{ unassigned_pill.label }}</span>
       <span class="unassigned-pill-value money" data-unassigned-pill-value>{{ unassigned_pill.display }}</span>
     </a>

@@ -22,11 +22,10 @@
           {% if form.password2 %}
             {% render_field form.password2 %}
           {% endif %}
+          {% comment %}No team name here: the team is named after the email and can be renamed in Settings.{% endcomment %}
           {% if invitation %}
             <input type="hidden" name="invitation_id" value="{{ invitation.id }}">
             {{ form.invitation_id.errors }}
-          {% else %}
-            {% render_field form.team_name %}
           {% endif %}
           {% render_field form.terms_agreement %}
           <div class="relative overflow-hidden">

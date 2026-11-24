@@ -1307,6 +1307,13 @@ class ManagementPagesTest(TestCase):
         self.assertEqual(response.context["current_balance"]["label"], "Balance owed")
         self.assertEqual(response.context["current_balance"]["amount"], Decimal("80"))
 
+    def test_the_sidebar_has_one_link_for_the_chart_of_accounts(self):
+        response = self.client.get(self.url("payee_list"))
+        self.assertContains(response, 'side-link-active" data-testid="nav-accounts"')
+        self.assertNotContains(response, 'data-testid="nav-accounts-toggle"')
+        # Three tabs: the board (which edits groups), payees and institutions.
+        self.assertContains(response, 'role="tab"', count=3)
+
     def test_sections_highlight_their_sidebar_item(self):
         pages = (("accountgroup_list", "groups"), ("payee_list", "payees"), ("institution_list", "institutions"))
         for name, section in pages:

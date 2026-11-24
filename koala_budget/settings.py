@@ -501,7 +501,6 @@ SPECTACULAR_SETTINGS = {
         # Reports and the monthly review (apps/reports/serializers.py, apps/monthly_review/serializers.py).
         "ReportColumnsEnum": "apps.reports.serializers.COLUMN_CHOICES",
         "NetWorthSectionKeyEnum": "apps.reports.serializers.NET_WORTH_SECTION_KEYS",
-        "WaterfallStepKeyEnum": "apps.reports.serializers.WATERFALL_KEYS",
         "ReviewBaselineEnum": "apps.monthly_review.serializers.BASELINE_IDS",
         # The goal API's (apps/budget/api/goal_serializers.py).
         "GoalStateEnum": "apps.budget.api.goal_serializers.GOAL_STATES",
@@ -597,9 +596,10 @@ WAFFLE_FLAG_MODEL = "teams.Flag"
 PROJECT_METADATA = {
     "NAME": gettext_lazy("Koala Budget"),
     "URL": "http://localhost:8000",
-    "DESCRIPTION": gettext_lazy("Budgeting and expense tracking app for freelancers"),  # noqa: E501
-    "IMAGE": "https://upload.wikimedia.org/wikipedia/commons/2/20/PEO-pegasus_black.svg",
-    "KEYWORDS": "SaaS, django",
+    "DESCRIPTION": gettext_lazy("Budgeting with double-entry accuracy: balances that reconcile, real statements."),
+    # A static path (resolved to an absolute URL by `get_image_url`): the Koala icon.
+    "IMAGE": "/images/favicons/android-chrome-512x512.png",
+    "KEYWORDS": "budget, budgeting app, personal finance, Canada",
     "CONTACT_EMAIL": "timothylbender@gmail.com",
 }
 

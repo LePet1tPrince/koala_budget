@@ -1,9 +1,8 @@
 from django.conf import settings
 from django.contrib import messages
 from django.http import Http404, HttpResponseRedirect
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 from health_check.views import MainView
 
@@ -15,6 +14,7 @@ from apps.utils.months import format_month
 
 from .api import book_home_payload
 from .services import home as home_service
+from .settings_sections import sections_for
 
 
 def home(request):
@@ -95,15 +95,8 @@ class HealthCheck(MainView):
 @login_and_team_required
 def settings_home(request, team_slug):
     """
-    The Settings hub: one card per section, and the target of the sidebar's
-    Settings link. The sections themselves come from `settings_sections.py`, so
-    this view holds no list of its own.
+    The sidebar's Settings link. Settings has no page of its own -- the rail on
+    every settings page lists the sections -- so it opens the first section this
+    user can see (`settings_sections.py`).
     """
-    return render(
-        request,
-        "web/settings/settings_home.html",
-        {
-            "active_tab": "settings",
-            "page_title": gettext("Settings"),
-        },
-    )
+    return redirect(sections_for(request)[0].url)
