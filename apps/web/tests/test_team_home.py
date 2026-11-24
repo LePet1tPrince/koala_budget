@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.test import TestCase
@@ -64,6 +64,18 @@ class TeamHomeDashboardTest(TestCase):
             set_goal_allocation(self.book, goal, date(2026, 1, 1), Decimal("250.00"))
         response = self.client.get(self.url)
         self.assertContains(response, "Vacation")
+
+    def test_greeting_without_a_name_never_uses_the_email_or_says_back(self):
+        from apps.web.services.home import GREETINGS, greeting_for
+
+        self.user.first_name = ""
+        self.user.email = "ada@example.com"
+        for offset in range(len(GREETINGS)):
+            greeting = greeting_for(self.user, date(2026, 1, 1) + timedelta(days=offset))
+            with self.subTest(greeting=greeting):
+                self.assertNotIn(self.user.email, greeting)
+                self.assertNotIn("back", greeting.lower())
+                self.assertNotIn("again", greeting.lower())
 
     def test_greeting_includes_first_name(self):
         self.user.first_name = "Timmy"

@@ -318,6 +318,10 @@
   @apply mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border border-base-300 text-[0.625rem];
 }
 
+.onboarding-option-mark-multi {
+  @apply rounded-sm;
+}
+
 .onboarding-option-selected .onboarding-option-mark {
   @apply border-primary bg-primary text-primary-content;
 }
@@ -329,15 +333,11 @@
 }
 
 .onboarding-progress {
-  @apply mb-6 flex items-center gap-2;
+  @apply mb-6 h-1.5 w-full overflow-hidden rounded-selector bg-base-300;
 }
 
-.onboarding-dot {
-  @apply h-1.5 w-8 rounded-selector bg-base-300 transition-colors duration-300;
-}
-
-.onboarding-dot.is-filled {
-  @apply bg-primary;
+.onboarding-progress-fill {
+  @apply block h-full rounded-selector bg-primary transition-[width] duration-300;
 }
 
 .onboarding-actions {

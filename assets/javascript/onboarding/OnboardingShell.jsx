@@ -1,6 +1,6 @@
 /* globals gettext */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import CoaReview from './CoaReview';
 import GoalCard from './GoalCard';
@@ -30,7 +30,7 @@ const isAnswered = (question, value) => {
 };
 
 const OnboardingShell = ({ props }) => {
-  const { questions, phases, state, firstName, homeUrl, ynabUrl, api } = props;
+  const { questions, state, firstName, homeUrl, ynabUrl, api } = props;
 
   const [answers, setAnswers] = useState(() => state.answers || {});
   const [started, setStarted] = useState(() => state.phase !== 'welcome');
@@ -74,8 +74,6 @@ const OnboardingShell = ({ props }) => {
   const isLast = index === questions.length - 1;
   const answeredHere = question ? isAnswered(question, answers[question.id]) : true;
   const canContinue = !question?.required || answeredHere;
-
-  const phaseIndex = useMemo(() => phases.findIndex((p) => p.key === question?.phase), [phases, question]);
 
   const setAnswer = useCallback((value) => setAnswers((prev) => ({ ...prev, [question.id]: value })), [question]);
 
@@ -202,7 +200,7 @@ const OnboardingShell = ({ props }) => {
             <h1 className="text-[1.75rem] font-semibold tracking-tight">{greeting}</h1>
             <p className="mt-3 max-w-prose text-base-content/70">
               {gettext(
-                'A few quick questions and we’ll set up a chart of accounts that matches your life. It takes about a minute, and you can change anything later.',
+                'A few quick questions and we’ll set up the accounts and categories that match your life. You can change anything later.',
               )}
             </p>
             {ynabUrl && (
@@ -242,15 +240,12 @@ const OnboardingShell = ({ props }) => {
           </div>
         ) : (
           <>
+            {/* One bar for the same steps the "N of M" counter counts (the review is the last). */}
             <div className="onboarding-progress" aria-hidden="true">
-              {phases.map((phase, i) => (
-                <span
-                  key={phase.key}
-                  className={`onboarding-dot ${reviewing || i <= phaseIndex ? 'is-filled' : ''}`}
-                  title={phase.label}
-                />
-              ))}
-              <span className={`onboarding-dot ${reviewing ? 'is-filled' : ''}`} title={gettext('Your accounts')} />
+              <span
+                className="onboarding-progress-fill"
+                style={{ width: `${(reviewing ? 1 : (index + 1) / (questions.length + 1)) * 100}%` }}
+              />
             </div>
 
             {reviewing ? (

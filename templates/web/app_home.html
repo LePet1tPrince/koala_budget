@@ -11,6 +11,23 @@
     <p class="mt-1 text-sm text-base-content/70" data-testid="dashboard-book-name">{{ book_label }}</p>
   {% endif %}
 
+  {# What to do next comes before what happened: the review queue sits above the figures. #}
+  {% if inbox_count %}
+    <div class="alert mt-4" data-testid="review-banner">
+      {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}
+      <span>
+        {% blocktranslate trimmed count counter=inbox_count %}
+          {{ counter }} transaction to review
+        {% plural %}
+          {{ counter }} transactions to review
+        {% endblocktranslate %}
+      </span>
+      <a href="{% url 'bank_feed:bank_feed_home' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm">
+        {% translate "Review" %}
+      </a>
+    </div>
+  {% endif %}
+
   {% if has_net_worth_trend %}
   {% comment %}
     Headline metrics and the trend, once the book has activity: before that they
@@ -124,21 +141,6 @@
     </section>
   {% endif %}
 
-  {% if inbox_count %}
-    <div class="alert mt-6" data-testid="review-banner">
-      {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}
-      <span>
-        {% blocktranslate trimmed count counter=inbox_count %}
-          {{ counter }} transaction to review
-        {% plural %}
-          {{ counter }} transactions to review
-        {% endblocktranslate %}
-      </span>
-      <a href="{% url 'bank_feed:bank_feed_home' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm">
-        {% translate "Review" %}
-      </a>
-    </div>
-  {% endif %}
 
   {# Goals #}
   <section class="app-card mt-6" data-testid="dashboard-goals">

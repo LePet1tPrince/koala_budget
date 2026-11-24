@@ -62,7 +62,6 @@ const OnboardingApp = () => {
       props={{
         api,
         questions: catalog.questions,
-        phases: catalog.phases,
         state: page.state,
         firstName: page.firstName,
         homeUrl: book.base,
