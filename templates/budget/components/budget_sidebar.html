@@ -40,27 +40,27 @@
       <div class="flex flex-col gap-2">
         <div class="flex justify-between items-center">
           <span class="text-sm">{% translate "Left Over from Last Month" %}</span>
-          <span class="font-mono text-sm font-semibold {{ section.summary.leftover_last_month|available_class:section.income }}"
+          <span class="money text-sm font-semibold {{ section.summary.leftover_last_month|available_class:section.income }}"
                 data-budget-cell="sidebar:{{ section.key }}:leftover">
             {{ section.summary.leftover_last_month|available_text:section.income }}
           </span>
         </div>
         <div class="flex justify-between items-center">
           <span class="text-sm">{% translate "Assigned in" %} <span data-budget-month-name>{{ month|date:"F" }}</span></span>
-          <span class="font-mono text-sm font-semibold" data-budget-cell="sidebar:{{ section.key }}:assigned">
+          <span class="money text-sm font-semibold" data-budget-cell="sidebar:{{ section.key }}:assigned">
             {{ section.summary.assigned_this_month|currency }}
           </span>
         </div>
         <div class="flex justify-between items-center">
           <span class="text-sm">{% if section.key == "income" %}{% translate "Received" %}{% else %}{% translate "Spent" %}{% endif %}</span>
-          <span class="font-mono text-sm font-semibold" data-budget-cell="sidebar:{{ section.key }}:activity">
+          <span class="money text-sm font-semibold" data-budget-cell="sidebar:{{ section.key }}:activity">
             {{ section.summary.activity_this_month|currency }}
           </span>
         </div>
         <div class="divider my-0"></div>
         <div class="flex justify-between items-center">
           <span class="text-sm font-bold">{% translate "Available" %}</span>
-          <span class="font-mono text-sm font-bold {{ section.summary.available|available_class:section.income }}"
+          <span class="money text-sm font-bold {{ section.summary.available|available_class:section.income }}"
                 data-budget-cell="sidebar:{{ section.key }}:available">
             {{ section.summary.available|available_text:section.income }}
           </span>

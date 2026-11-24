@@ -615,6 +615,21 @@
    These rules are unlayered, so they win over daisyUI's `table-sm` padding --
    and over any padding utility on a cell, which is why the category column's
    indent and width live here too rather than as classes on the cell. */
+/* The CSV wizard can be taller than the window (the column mapping step is), so
+   each step's buttons stick to the bottom of the scrolling modal: Next is always
+   on screen. The negative offset is the modal-box's own padding, so the bar sits
+   flush with its edge. */
+.csv-wizard .modal-action {
+  position: sticky;
+  bottom: -1.5rem;
+  z-index: 10;
+  margin-inline: -1.5rem;
+  margin-bottom: -1.5rem;
+  padding: 0.75rem 1.5rem;
+  border-top: 1px solid var(--color-base-300);
+  background: var(--color-base-100);
+}
+
 .budget-table :where(th, td) {
   padding-block: 0.125rem;
   padding-inline: 0.5rem;
@@ -643,20 +658,18 @@
   border-radius: 0.25rem;
 }
 
-/* Fields and checkboxes are soft filled wells rather than outlined boxes: a
-   column of grey borders reads as a form, a column of tints as a table. The
-   tint is mixed from the theme's own ink over its surface, so it holds in dark
-   mode. With the border gone, focus and error need a state of their own, or
-   they would vanish with it. */
+/* Fields are white boxes with a light outline: a grey filled well read as a
+   disabled field. The outline is mixed from the theme's own ink over its
+   surface, so it holds in dark mode; it darkens on row hover to say "type here". */
 .budget-table .input.budget-amount {
-  border-color: transparent;
-  background-color: color-mix(in oklab, var(--color-base-content) 7%, var(--color-base-100));
+  border-color: color-mix(in oklab, var(--color-base-content) 18%, var(--color-base-100));
+  background-color: var(--color-base-100);
   box-shadow: none;
-  transition: background-color 120ms ease-out;
+  transition: border-color 120ms ease-out;
 }
 
 .budget-table tr:hover .input.budget-amount {
-  background-color: color-mix(in oklab, var(--color-base-content) 11%, var(--color-base-100));
+  border-color: color-mix(in oklab, var(--color-base-content) 35%, var(--color-base-100));
 }
 
 .budget-table .input.budget-amount:focus {
