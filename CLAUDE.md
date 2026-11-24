@@ -32,6 +32,7 @@ deploy/            # Docker Compose and DigitalOcean configs
 | `subscriptions` | Stripe billing via dj-stripe |
 | `reports` | Income statements, balance sheets, Sankey diagrams |
 | `rules` | Transaction rules — Rule, RuleMatch, RuleProposal |
+| `emails` | Transactional email — EmailPreferences, SentEmail; bank, overspend and billing alerts |
 
 **Account number convention:** 1000s = assets · 2000s = liabilities · 3000s = equity/goals · 4000s = income · 5000s = expenses
 
@@ -86,6 +87,7 @@ Full history and rationale: `docs/feature-history.md` (grep it; don't read it wh
 - Reconciled-line rules: call `apps.reconciliation.services.guards`; category rules: `apps.accounts.guards.assert_category_allowed`. Don't restate them.
 - Unassigned: `apps/budget/unassigned.py::compute_unassigned` is the single source.
 - Manual feed rows: `apps/bank_feed/services/manual.py::create_manual_transaction` (the feed API's create and recurring schedules). Recurring occurrences: `services/recurring.py::materialize` only.
+- Emails of our own (alerts, billing notices): `apps/emails/services.py::send` only — it checks a confirmed address, the user's preference and a dedupe key, and adds one-click unsubscribe. New kinds go in `apps/emails/kinds.py`.
 - Feed field edits (category/account/payee/description/date, decategorize): `apps/bank_feed/services/edit.py`. Rule application: `apps/rules/services/apply.py::run` only; a new user categorization path must call `apps.rules.services.feedback.record`.
 
 **Shared helpers (don't re-add copies):** `apps/utils/months.py`, `apps/utils/json_views.py`, `apps/utils/progress.py`, `apps/utils/amounts.py`, `apps/api/base.py` (`BookAPIView`, `parse_month_param`, `MonthField`, `UploadField`); frontend `api.js` (`apiCall`, `apiJson`, `apiErrorMessage`), `common/amount.js`, `common/book.js`, `common/Modal.jsx`, `common/Combobox.jsx`, `common/DateField.jsx`, `common/popoverPosition.js`. Icons: `{% icon %}` / `<Icon>`; add new ones via `assets/icons/build_icons.py`.

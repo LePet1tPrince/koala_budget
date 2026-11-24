@@ -1,0 +1,19 @@
+{% extends 'account/email/email_template_base.html' %}
+{% load i18n %}
+{% comment %}
+  Every email apps.emails sends: the shared layout plus a footer that says why
+  the person got it and how to stop it (`unsubscribe_url` is set only for
+  optional emails).
+{% endcomment %}
+{% block footer %}
+      <div style='margin:0px auto;max-width:600px;'>
+        <div style='padding:20px 45px;color:#555555;font-family:Helvetica, Arial, sans-serif;font-size:13px;line-height:20px;text-align:left;'>
+          {% block footer_reason %}{% endblock %}
+          <br>
+          <a href='{{ preferences_url }}' style='color:#555555;'>{% translate "Email preferences" %}</a>
+          {% if unsubscribe_url %}
+            &middot; <a href='{{ unsubscribe_url }}' style='color:#555555;'>{% translate "Unsubscribe from these alerts" %}</a>
+          {% endif %}
+        </div>
+      </div>
+{% endblock footer %}

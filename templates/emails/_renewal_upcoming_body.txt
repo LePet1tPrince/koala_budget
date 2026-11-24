@@ -1,0 +1,5 @@
+{% load i18n %}{% if renews_on %}{% blocktranslate trimmed with team=team.name amount=amount date=renews_on|date:"DATE_FORMAT" %}
+{{ team }}'s annual subscription renews on {{ date }} for {{ amount }}. Nothing to do if you'd like to keep it; to change or cancel, visit the subscription page before then.
+{% endblocktranslate %}{% else %}{% blocktranslate trimmed with team=team.name amount=amount %}
+{{ team }}'s annual subscription renews soon for {{ amount }}. Nothing to do if you'd like to keep it; to change or cancel, visit the subscription page before then.
+{% endblocktranslate %}{% endif %}

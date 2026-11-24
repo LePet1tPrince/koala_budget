@@ -1,0 +1,7 @@
+{% load i18n %}{% blocktranslate trimmed with team=team.name amount=amount %}
+We couldn't charge {{ amount }} for {{ team }}'s subscription.
+{% endblocktranslate %} {% if next_attempt %}{% blocktranslate trimmed with date=next_attempt|date:"DATE_FORMAT" %}
+We'll try again on {{ date }}. Update your payment method before then to keep your subscription active.
+{% endblocktranslate %}{% else %}{% blocktranslate trimmed %}
+Update your payment method to keep your subscription active.
+{% endblocktranslate %}{% endif %}

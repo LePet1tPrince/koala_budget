@@ -269,6 +269,14 @@ make test-e2e-accounts  # Run specific test file
 - `test_learning.py`: 4-of-4 proposes, 3-of-4 and too-few don't, dismissed stays dismissed, covered merchants and stale proposals dropped
 - Isolation: `rules:*` URLs are in `apps/books/tests/test_isolation.py`; the factory gives each book a rule, a match and a proposal (`rule_match` objects are addressed by their feed row's id)
 
+### Transactional email (`apps/emails/tests/test_emails.py`)
+
+- Emails land in `django.core.mail.outbox` (`settings_test` uses the locmem backend); Celery is eager
+- Triggers queue on commit: wrap the write in `self.captureOnCommitCallbacks(execute=True)` (Plaid `set_status`, the Stripe receiver) or the email never sends
+- Every address must be confirmed: the fixture's `make_user` adds a verified `EmailAddress`; `SendTest` covers unconfirmed, `ACCOUNT_EMAIL_VERIFICATION="none"`, inactive, opted out, dedupe, and a failed send leaving no `SentEmail`
+- `OverspendTest` builds the month from `timezone.localdate()`; `BillingTest` creates a djstripe `Customer` and `Subscription` and passes Stripe-shaped dicts to `alerts.*`
+- Unsubscribe is posted with `Client(enforce_csrf_checks=True)` to prove the one-click POST needs no CSRF token
+
 ## Known Coverage Gaps
 
 - `reports/` app has minimal test coverage — complex aggregation logic is untested

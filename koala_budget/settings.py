@@ -107,6 +107,7 @@ PROJECT_APPS = [
     "apps.portability.apps.PortabilityConfig",
     "apps.reconciliation.apps.ReconciliationConfig",
     "apps.rules.apps.RulesConfig",
+    "apps.emails.apps.EmailsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PEGASUS_APPS + PROJECT_APPS
@@ -572,6 +573,12 @@ SCHEDULED_TASKS = {
     "learn-rules": {
         "task": "apps.rules.tasks.learn_rules",
         "schedule": schedules.crontab(minute=41, hour=3),
+    },
+    # Email each book's team when spending took a category below zero (apps.emails.alerts).
+    # 12:17 UTC is morning across Canada.
+    "overspend-alerts": {
+        "task": "apps.emails.tasks.send_overspend_alerts",
+        "schedule": schedules.crontab(minute=17, hour=12),
     },
 }
 

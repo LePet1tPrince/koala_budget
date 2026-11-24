@@ -1,0 +1,10 @@
+{% load i18n currency_tags %}{% autoescape off %}{% blocktranslate trimmed with book=book.name month=month|date:"F Y" %}
+Spending in {{ book }} has gone past what's available in these categories for {{ month }}:
+{% endblocktranslate %}
+{% for row in rows %}
+- {{ row.category.name }}: {% blocktranslate trimmed with over=row.over_by|currency spent=row.spent|currency %}{{ over }} over ({{ spent }} spent this month){% endblocktranslate %}{% endfor %}
+
+{% translate "Move money from another category or a goal to cover it on the budget page." %}
+{{ budget_url }}
+
+{% translate "You get this because you are a member of this book's team. You hear about each category once a month." as reason %}{% include "emails/footer.txt" with reason=reason %}{% endautoescape %}

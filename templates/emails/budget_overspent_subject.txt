@@ -1,0 +1,1 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate trimmed count counter=rows|length with book=book.name month=month|date:"F" %}{{ book }}: a category is overspent in {{ month }}{% plural %}{{ book }}: {{ counter }} categories are overspent in {{ month }}{% endblocktranslate %}{% endautoescape %}

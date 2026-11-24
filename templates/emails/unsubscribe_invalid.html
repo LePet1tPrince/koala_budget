@@ -1,0 +1,9 @@
+{% extends "account/base.html" %}
+{% load i18n %}
+{% block content %}
+  <div class="app-card" data-testid="unsubscribe-invalid">
+    <h1 class="text-2xl font-bold mb-2">{% translate "This link doesn't work" %}</h1>
+    <p class="mb-4">{% translate "It may have been copied incompletely. You can change which emails you get after signing in." %}</p>
+    <a href="{% url 'emails:preferences' %}" class="link">{% translate "Email preferences" %}</a>
+  </div>
+{% endblock %}

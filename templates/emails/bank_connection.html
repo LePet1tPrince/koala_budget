@@ -1,0 +1,11 @@
+{% extends 'emails/base.html' %}
+{% load i18n %}
+{% block message_body %}
+<p>{% include "emails/_bank_connection_body.txt" %}</p>
+{% if item.error_message %}
+<p style='font-size:15px;color:#555555;'>{% translate "The bank said:" %} {{ item.error_message }}</p>
+{% endif %}
+{% endblock %}
+{% block cta_link %}{{ inbox_url }}{% endblock %}
+{% block cta_text %}{% translate "Open your Inbox" %}{% endblock %}
+{% block footer_reason %}{% translate "You get this because you are a member of this book's team." %}{% endblock %}
