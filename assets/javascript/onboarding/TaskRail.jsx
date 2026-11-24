@@ -92,7 +92,9 @@ const TaskRail = ({ props }) => {
 
   const [tasks, setTasks] = useState([]);
   const [active, setActive] = useState(true);
-  const [open, setOpen] = useState(true);
+  // Collapsed to its header on a phone-sized screen, where the open list covers
+  // half the page; one tap opens it. Open from `lg` up, beside the content.
+  const [open, setOpen] = useState(() => !window.matchMedia?.('(max-width: 1023px)').matches);
   const [coachDismissed, setCoachDismissed] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [finish, setFinish] = useState(null);

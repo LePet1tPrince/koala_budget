@@ -7,7 +7,7 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h8m-8 6h16" /></svg>
         </label>
       </div>
-      <ul tabindex="0" class="menu menu-compact dropdown-content mt-3 p-2 shadow-2xs bg-base-100 rounded-box w-52 z-10">
+      <ul tabindex="0" class="menu menu-compact dropdown-content mt-3 p-2 shadow-2xs bg-base-100 rounded-box w-52 z-40">
         {% block mobile_nav %}
         <li>
           <a class="{% if request.path == '/' %}active{% endif %}" href="{% url 'web:home' %}">
@@ -35,6 +35,6 @@
       {% translate "Sign In" %}
     </a>
     {% endif %}
-    {% include "web/components/dark_mode_selector.html" %}
+    {% block theme_selector %}{% include "web/components/dark_mode_selector.html" %}{% endblock %}
   </div>
 </div>
