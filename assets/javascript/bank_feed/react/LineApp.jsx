@@ -27,6 +27,7 @@ import { BankFeedRowFromJSON } from 'api-client';
 import { rulesApiForBook } from '../../rules/api';
 import RuleBuilderDialog, { draftFromRow } from '../../rules/RuleBuilderDialog';
 import { formatMoney } from '../../common/amount';
+import CategorizeOverlay from './CategorizeOverlay';
 
 /** How long the feed waits after its last write settles before re-reading it. */
 const QUIET_REFRESH_DELAY_MS = 500;
@@ -227,6 +228,43 @@ const LineApp = ({
     setSnackbar({ open: true, message, severity, action });
   }, []);
   const handleCloseSnackbar = () => setSnackbar((s) => ({ ...s, open: false }));
+
+  // --- Categorize Mode, over the Inbox -----------------------------------
+
+  /**
+   * Categorize Mode opens over the table without a page load. The URL becomes
+   * its own page's (so a reload lands there, and Back closes it), carrying the
+   * scope it opens on: the Inbox's filters, or `scope` when given.
+   */
+  const [categorizeOpen, setCategorizeOpen] = useState(false);
+  const openCategorize = useCallback(
+    (scope = null) => {
+      const search = scopeSearch(scope ?? queryRef.current);
+      window.history.pushState({ categorize: true }, '', `${book.base}bankfeed/categorize/${search}`);
+      setCategorizeOpen(true);
+    },
+    [book],
+  );
+  const closeCategorize = useCallback(() => {
+    // Back to the Inbox's own URL; `popstate` closes the overlay.
+    if (window.history.state?.categorize) window.history.back();
+    else setCategorizeOpen(false);
+  }, []);
+
+  /** "Sort them now": the button a snackbar offers after new rows arrive. */
+  const sortNowAction = (scope) => (
+    <button
+      type="button"
+      className="btn btn-primary btn-xs"
+      onClick={() => {
+        setSnackbar((s) => ({ ...s, open: false }));
+        openCategorize(scope);
+      }}
+      data-testid="sort-now"
+    >
+      ⚡ {gettext('Sort them now')}
+    </button>
+  );
 
   // --- possible transfers ----------------------------------------------
 
@@ -771,12 +809,23 @@ const LineApp = ({
           return;
         }
       }
+      const waiting = (list) => list.reduce((n, a) => n + (a.uncategorized_count || 0), 0);
+      const before = waiting(accounts);
       await Promise.all(itemIds.map((id) => plaidClient.plaidItemsSync({ ...book.params, id })));
       for (const delay of [2000, 4000, 6000]) {
         await new Promise((resolve) => setTimeout(resolve, delay));
         await fetchPage(queryRef.current, { quiet: true });
       }
-      await Promise.all([loadPlaidStatus(), loadMatches(), loadAccounts()]);
+      const [fresh] = await Promise.all([batchApi.fetchFeedAccounts(), loadPlaidStatus(), loadMatches()]);
+      setAccounts(fresh);
+      const added = waiting(fresh) - before;
+      if (added > 0) {
+        showSnackbar(
+          interpolate(ngettext('%s new transaction to sort', '%s new transactions to sort', added), [added]),
+          'info',
+          sortNowAction(null),
+        );
+      }
     } catch (err) {
       console.error('Failed to refresh:', err);
       setError(gettext('Failed to refresh bank feed. Please try again.'));
@@ -784,6 +833,41 @@ const LineApp = ({
       setRefreshing(false);
     }
   };
+
+  // Closing Categorize Mode (Back, Escape twice, the browser's Back) shows what
+  // it filed; Forward opens it again.
+  useEffect(() => {
+    const onPop = (e) => {
+      if (e.state?.categorize) {
+        setCategorizeOpen(true);
+        return;
+      }
+      setCategorizeOpen((open) => {
+        if (open) {
+          writeEpochRef.current += 1;
+          scheduleQuietRefresh();
+        }
+        return false;
+      });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [scheduleQuietRefresh]);
+
+  // `C` opens Categorize Mode from anywhere on the Inbox but a field or a dialog.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (categorizeOpen || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key !== 'c' && e.key !== 'C') return;
+      const t = e.target;
+      if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return;
+      if (document.querySelector('dialog[open]')) return;
+      e.preventDefault();
+      openCategorize();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [categorizeOpen, openCategorize]);
 
   /** Handle successful Plaid Link - reload page to show new accounts */
   const handlePlaidSuccess = () => {
@@ -1310,10 +1394,18 @@ const LineApp = ({
             )}
             <a
               href={`${book.base}bankfeed/categorize/${categorizeSearch}`}
+              onClick={(e) => {
+                // A plain click opens it over the Inbox; a modified one (new tab) follows the link.
+                if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                e.preventDefault();
+                openCategorize();
+              }}
               className="btn btn-primary btn-sm gap-1"
+              title={gettext('Categorize Mode (C)')}
               data-testid="categorize-mode-btn"
             >
               ⚡ {gettext('Categorize Mode')}
+              <kbd className="kbd kbd-xs hidden md:inline-flex text-base-content">C</kbd>
             </a>
           </div>
         </div>
@@ -1545,7 +1637,15 @@ const LineApp = ({
               if (skipped > 0) {
                 parts.push(`${skipped} ${gettext('skipped')}`);
               }
-              showSnackbar(parts.join(', '), 'success');
+              // The import's own account: what is new to sort is there.
+              const importedTo = uploadAccount?.id;
+              showSnackbar(
+                parts.join(', '),
+                'success',
+                created > 0 && importedTo
+                  ? sortNowAction({ accounts: [importedTo], startDate: '', endDate: '' })
+                  : null,
+              );
             }
           }}
           onCancel={() => setUploadAccount(null)}
@@ -1612,6 +1712,8 @@ const LineApp = ({
         action={snackbar.action}
         testId="batch-toast"
       />
+
+      {categorizeOpen && <CategorizeOverlay book={book} backUrl={`${book.base}bankfeed/`} onExit={closeCategorize} />}
     </div>
   );
 };

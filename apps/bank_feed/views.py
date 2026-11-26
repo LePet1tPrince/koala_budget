@@ -51,6 +51,7 @@ from .serializers import (
     BankFeedRowSerializer,
     BatchEditRequestSerializer,
     BatchIdsSerializer,
+    CategorizeQueueSerializer,
     CategorizeTransactionsRequestSerializer,
     CategorySuggestionSerializer,
     CreateFeedAccountRequestSerializer,
@@ -71,6 +72,7 @@ from .serializers import (
 )
 from .services import edit, feed_query, recurring
 from .services.categorize import create_entry, repoint_category
+from .services.categorize_queue import build_queue
 from .services.category_usage import category_usage
 from .services.csv_upload import create_transactions, parse_file, preview_transactions, validate_date_column
 from .services.manual import create_manual_transaction
@@ -471,6 +473,91 @@ class BankFeedViewSet(
 
         rules_feedback.record(transactions)
         log_event(AuditEvent.BULK_CATEGORIZE, request=request, metadata={"count": len(transactions)})
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        operation_id="bank_feed_categorize_queue",
+        tags=["bank-feed"],
+        parameters=[
+            OpenApiParameter(
+                name="account",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Comma-separated ledger account ids; absent = every account on a feed",
+                required=False,
+            ),
+            OpenApiParameter(name="start_date", type=OpenApiTypes.DATE, required=False),
+            OpenApiParameter(name="end_date", type=OpenApiTypes.DATE, required=False),
+        ],
+        responses={200: CategorizeQueueSerializer},
+    )
+    @action(detail=False, methods=["get"], url_path="categorize_queue", pagination_class=None)
+    def categorize_queue(self, request, team_slug=None, book_slug=None):
+        """
+        Categorize Mode's queue: the uncategorized rows in scope (the set the Inbox
+        badge counts) grouped by account, direction and merchant, each group with
+        its suggested categories and whether the first is confident enough to file
+        in one click (`services/categorize_queue.py`). Ids only: the rows
+        themselves come from the feed list.
+        """
+        params = feed_query.FeedParams(
+            accounts=self.feed_params.accounts,
+            uncategorized=True,
+            start_date=self.feed_params.start_date,
+            end_date=self.feed_params.end_date,
+        )
+        rows = (
+            feed_query.filtered(request.book, params)
+            .select_related("rule_match__category")
+            .order_by(*feed_query.DEFAULT_ORDER)
+        )
+        return Response(CategorizeQueueSerializer({"groups": build_queue(request.book, rows)}).data)
+
+    @extend_schema(
+        operation_id="bank_feed_uncategorize",
+        tags=["bank-feed"],
+        request=BatchIdsSerializer,
+        responses={204: None},
+    )
+    @action(detail=False, methods=["post"], url_path="uncategorize")
+    def uncategorize(self, request, team_slug=None, book_slug=None):
+        """
+        Put feed rows back to uncategorized (Categorize Mode's Undo): each row's
+        entry is removed (`edit.decategorize`) and a rule suggestion the filing
+        settled stands again. Payee and description stay as they are. All or
+        nothing: a void, reconciled, closed-period or mirror row refuses the batch,
+        naming it. Rows already uncategorized are left alone.
+        """
+        serializer = BatchIdsSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        ids = set(serializer.validated_data["ids"])
+        transactions = list(
+            BankTransaction.objects.filter(id__in=ids, book=request.book).select_related("account", "journal_entry")
+        )
+        if len(transactions) != len(ids):
+            return error_response("One or more transactions not found", status.HTTP_404_NOT_FOUND)
+
+        refused = [
+            {"kind": "row", "id": tx.id, "error": str(error)}
+            for tx in transactions
+            if (error := edit.uncategorize_refusal(tx))
+        ]
+        if refused:
+            return refused_response(refused)
+
+        categorized = [tx for tx in transactions if tx.journal_entry_id]
+        with transaction.atomic():
+            for tx in categorized:
+                edit.decategorize(tx)
+            rules_feedback.record(categorized)
+            rules_feedback.reopen(categorized)
+
+        log_event(
+            AuditEvent.BULK_EDIT,
+            request=request,
+            metadata={"count": len(categorized), "fields": ["category_id"], "uncategorized": True},
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def list(self, request, team_slug=None, book_slug=None):

@@ -278,6 +278,26 @@ def create_split_entry(tx, legs, *, payee=None):
     return tx.journal_entry
 
 
+def uncategorize_refusal(tx):
+    """
+    Why `tx` cannot go back to uncategorized, or None. An uncategorized row has
+    nothing to take back and is never refused.
+    """
+    if tx.is_void:
+        return VOID_EDIT_ERROR
+    if is_split_mirror(tx):
+        return SPLIT_MIRROR_ERROR
+    if tx.is_transfer_mirror:
+        return MIRROR_EDIT_ERROR
+    if tx.journal_entry_id is None:
+        return None
+    try:
+        assert_entry_removable(tx.journal_entry, own_account_id=tx.account_id, verb=gettext("removing its category"))
+    except ReconciledLineError as exc:
+        return str(exc)
+    return period_lock.row_refusal(tx, book=tx.book)
+
+
 @transaction.atomic
 def decategorize(bank_tx):
     """

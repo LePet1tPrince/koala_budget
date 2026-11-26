@@ -1,4 +1,4 @@
-import { BankFeedApi, PlaidApi, JournalApi } from 'api-client';
+import { BankFeedApi, BudgetApi, PlaidApi, JournalApi } from 'api-client';
 import { apiDate, apiJson, getApiConfiguration } from '../api';
 import { bookFromBase } from '../common/book';
 
@@ -53,8 +53,26 @@ export function getFeedPageApi(bookBase) {
         if (!data.next) return rows;
       }
     },
+    /**
+     * Categorize Mode's queue for `scope`: `{groups: [{key, ids, suggestions, confident}]}`, the
+     * uncategorized rows grouped by account, direction and merchant (`services/categorize_queue.py`).
+     */
+    categorizeQueue: (scope) =>
+      apiJson(
+        feedClient().bankFeedCategorizeQueueRaw({
+          ...params,
+          account: scope.accounts.length ? scope.accounts.join(',') : undefined,
+          startDate: apiDate(scope.startDate),
+          endDate: apiDate(scope.endDate),
+        }),
+      ),
     /** The categories used on transactions similar to each of `ids`. */
     similarCategories: (ids) => apiJson(feedClient().bankFeedSimilarCategoriesRaw({ ...params, ids: ids.join(',') })),
+    /** Put these feed rows (BankTransaction ids) back to uncategorized: Categorize Mode's Undo. */
+    uncategorize: (ids) => apiJson(feedClient().bankFeedUncategorizeRaw({ ...params, batchIds: { ids } })),
+    /** The budget page's figures for `month` (`YYYY-MM`): each category's budgeted, actual and available. */
+    budgetMonth: (month) =>
+      apiJson(new BudgetApi(getApiConfiguration(window.location.origin)).budgetMonthRetrieveRaw({ ...params, month })),
     /** File these feed rows (BankTransaction ids) under one category. */
     categorize: (ids, categoryId) =>
       apiJson(

@@ -90,6 +90,7 @@ READS = {
     "bank_feed:bank-feed-sample-csv": {},
     "bank_feed:bank-feed-similar-categories": lambda a, b: {"ids": f"{b.uncategorized_tx.id},{a.uncategorized_tx.id}"},
     "bank_feed:bank-feed-transfer-suggestions": {},
+    "bank_feed:bank-feed-categorize-queue": lambda a, b: {"account": f"{a.chequing.id},{b.chequing.id}"},
     # Another book's account ids and row ids select and locate nothing.
     "bank_feed:bank-feed-selection": lambda a, b: {"account": f"{a.chequing.id},{b.chequing.id}"},
     "bank_feed:bank-feed-locate": lambda a, b: {"row": b.uncategorized_tx.id},
@@ -258,6 +259,7 @@ WRITES = {
     "bank_feed:bank-feed-batch-delete": lambda a, b: {"ids": [b.categorized_tx.id]},
     "bank_feed:bank-feed-batch-duplicate": lambda a, b: {"ids": [b.categorized_tx.id]},
     "bank_feed:bank-feed-batch-edit": lambda a, b: {"ids": [b.categorized_tx.id], "category_id": a.groceries.id},
+    "bank_feed:bank-feed-uncategorize": lambda a, b: {"ids": [b.categorized_tx.id]},
     "bank_feed:bank-feed-categorize": lambda a, b: {
         "rows": [{"id": b.uncategorized_tx.id}],
         "category_id": b.groceries.id,

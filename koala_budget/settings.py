@@ -511,6 +511,9 @@ SPECTACULAR_SETTINGS = {
         "GoalActivityKindEnum": "apps.budget.api.goal_serializers.GOAL_ACTIVITY_KINDS",
         # A rule's stored direction (the rule builder's draft keeps its own `RuleDraftDirectionEnum`).
         "RuleDirectionEnum": "apps.rules.models.Rule.DIRECTION_CHOICES",
+        # Similar-transaction suggestions under the name they had first; Categorize Mode's queue adds "rule".
+        "MatchTypeEnum": ["payee", "description", "similar"],
+        "QueueMatchTypeEnum": ["rule", "payee", "description", "similar"],
     },
     "APPEND_COMPONENTS": {
         "securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Authorization"}}

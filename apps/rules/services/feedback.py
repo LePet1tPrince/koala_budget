@@ -4,7 +4,8 @@ What the user did with a rule's work, and what the rule learns from it.
 `record` runs after every user categorization in the feed (categorize, edit,
 batch edit, Categorize Mode): it compares the row's categorization now with what
 its rule offered or posted, and marks the match confirmed or overridden. `accept`,
-`dismiss` and `undo` are the explicit actions on a match.
+`dismiss` and `undo` are the explicit actions on a match; `reopen` takes back a
+`record` when the user undoes their own filing.
 
 From those outcomes: a suggest rule confirmed `GRADUATE_STREAK` times running is
 offered auto-post (`graduation_offers`); an auto-post rule overridden
@@ -16,6 +17,7 @@ from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import F
+from django.db.models.functions import Greatest
 from django.utils import timezone
 
 from apps.audit.models import AuditEvent
@@ -114,6 +116,37 @@ def record(transactions):
         _overridden(match)
         counts["overridden"] += 1
     return counts
+
+
+def reopen(transactions):
+    """
+    After the user took back their own filing of `transactions` (Categorize Mode's
+    Undo): a suggestion the filing confirmed or overrode stands again, and the
+    rule forgets that decision -- an undone confirmation is not one in its streak.
+    An auto-post's undo is `undo`'s, and stays overridden. Returns how many reopened.
+    """
+    ids = [getattr(t, "pk", t) for t in transactions]
+    matches = RuleMatch.objects.filter(
+        transaction_id__in=ids,
+        status__in=(RuleMatch.STATUS_CONFIRMED, RuleMatch.STATUS_OVERRIDDEN),
+        was_auto_posted=False,
+    )
+    reopened = 0
+    for match in matches:
+        if match.rule_id:
+            if match.status == RuleMatch.STATUS_CONFIRMED:
+                _bump(
+                    match.rule_id,
+                    times_confirmed=Greatest(F("times_confirmed") - 1, 0),
+                    confirm_streak=Greatest(F("confirm_streak") - 1, 0),
+                )
+            else:
+                _bump(match.rule_id, times_overridden=Greatest(F("times_overridden") - 1, 0))
+        match.status = RuleMatch.STATUS_SUGGESTED
+        match.resolved_at = None
+        match.save(update_fields=["status", "resolved_at", "updated_at"])
+        reopened += 1
+    return reopened
 
 
 @transaction.atomic

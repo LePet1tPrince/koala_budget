@@ -25,9 +25,20 @@ class CategorizePage(BasePage):
     def search_box(self):
         return self.page.locator("[data-testid='categorize-search']")
 
+    def details_open(self) -> bool:
+        return self.page.locator("[data-testid='categorize-details-editor']").count() > 0
+
+    def open_details(self):
+        """Open the payee/description editor on the top card (collapsed until asked for)."""
+        if not self.details_open():
+            self.page.locator("[data-testid='categorize-edit-details']").click()
+            self.page.wait_for_selector("[data-testid='categorize-details-editor']")
+
     def current_card_title(self) -> str:
-        """The payee on the card at the top of the stack (an editable field, not a heading)."""
-        return self.payee_field.input_value().strip()
+        """The payee on the card at the top of the stack: its field when the editor is open, else its heading."""
+        if self.details_open():
+            return self.payee_field.input_value().strip()
+        return self.page.locator("[data-testid='categorize-card-payee']").inner_text().strip()
 
     @property
     def payee_field(self):
@@ -38,7 +49,9 @@ class CategorizePage(BasePage):
         return self.page.locator("[data-testid='categorize-description']")
 
     def current_card_description(self) -> str:
-        return self.description_field.input_value().strip()
+        if self.details_open():
+            return self.description_field.input_value().strip()
+        return self.page.locator("[data-testid='categorize-card-description']").inner_text().strip()
 
     def details_are_dirty(self) -> bool:
         return self.page.locator("[data-testid='categorize-details-dirty']").count() > 0
@@ -51,9 +64,9 @@ class CategorizePage(BasePage):
         return row.first.inner_text().strip().splitlines()[0]
 
     def suggestion_notes(self) -> list[str]:
-        """The 'N transactions with this payee...' line under each suggestion."""
+        """Why each suggestion chip is suggested ('N transactions with this payee...'), from its title."""
         rows = self.page.locator("[data-testid='category-suggestion']")
-        return [rows.nth(i).inner_text().strip().splitlines()[1] for i in range(rows.count())]
+        return [rows.nth(i).get_attribute("title") for i in range(rows.count())]
 
     def remaining(self) -> int:
         """The queue length, from the "N remaining" line under the stack."""
@@ -63,8 +76,21 @@ class CategorizePage(BasePage):
     def scope_account(self):
         return self.page.locator("[data-testid='categorize-scope-account']")
 
-    def has_keyboard_hint(self) -> bool:
-        return self.page.locator("kbd.kbd-xs", has_text="esc").is_visible()
+    def has_search_hint(self) -> bool:
+        """The hints shown while searching (move/choose/clear) rather than the queue's keys."""
+        return self.page.locator("[data-testid='categorize-key-hints']", has_text="choose").is_visible()
+
+    def skip(self):
+        self.page.locator("[data-testid='categorize-skip']").click()
+        self.page.wait_for_timeout(400)
+
+    def undo(self):
+        self.page.locator("[data-testid='categorize-undo']").click()
+
+    def chip_names(self) -> list[str]:
+        """The shortcut chips (suggestions, then the most used categories), keys 1-9 in order."""
+        chips = self.page.locator("[data-chip-index]")
+        return [chips.nth(i).locator(".font-semibold").inner_text().strip() for i in range(chips.count())]
 
     # ------------------------------------------------------------------
     # Actions
@@ -79,6 +105,7 @@ class CategorizePage(BasePage):
         self.page.wait_for_timeout(150)
 
     def edit_payee(self, text: str):
+        self.open_details()
         self.payee_field.fill(text)
         # The payee combobox opens its suggestion list on focus and closes on a
         # pointer press outside it — clicking the next field is how a user
@@ -87,6 +114,7 @@ class CategorizePage(BasePage):
         self.description_field.click()
 
     def edit_description(self, text: str):
+        self.open_details()
         self.description_field.fill(text)
 
     def revert_details(self):

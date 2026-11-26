@@ -136,6 +136,39 @@ class SimilarCategorySuggestionSerializer(serializers.Serializer):
     )
 
 
+class QueueSuggestionSerializer(serializers.Serializer):
+    """A category suggested for one Categorize Mode group: a rule's, or one from similar transactions."""
+
+    category_id = serializers.IntegerField(help_text="Account ID of the suggested category")
+    category_name = serializers.CharField(help_text="Name of the suggested category")
+    count = serializers.IntegerField(
+        allow_null=True, help_text="How many similar transactions were categorized this way (null for a rule)"
+    )
+    match_type = serializers.ChoiceField(
+        choices=["rule", "payee", "description", "similar"],
+        help_text="A rule's suggestion, or what made the history similar: payee, description or wording",
+    )
+    payee = serializers.CharField(allow_blank=True, help_text="Payee the matched transactions share")
+    rule_name = serializers.CharField(allow_blank=True, help_text="The rule's name (blank unless match_type is rule)")
+
+
+class CategorizeQueueGroupSerializer(serializers.Serializer):
+    """Uncategorized rows of one account, direction and merchant: filed together with one pick."""
+
+    key = serializers.CharField(help_text="Stable id of the group (account, direction, rule, merchant signature)")
+    ids = serializers.ListField(child=serializers.IntegerField(), help_text="Bank transaction ids, newest first")
+    suggestions = QueueSuggestionSerializer(many=True, help_text="Strongest first (at most 3)")
+    confident = serializers.BooleanField(
+        help_text="The first suggestion is a rule's, or a payee/description match the history agrees on"
+    )
+
+
+class CategorizeQueueSerializer(serializers.Serializer):
+    groups = CategorizeQueueGroupSerializer(
+        many=True, help_text="Confident groups first, then the largest, then the most recent"
+    )
+
+
 class TransferProposalSerializer(serializers.Serializer):
     """What Match would do with a suggested pair (decided server-side)."""
 

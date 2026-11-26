@@ -1,80 +1,94 @@
-/* globals gettext, interpolate */
-import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
-import { createConfetti } from '../../common/confetti';
-import { directionOf, orderCategories, usageById, withUse } from '../categoryOrder';
-import { getBatchOperationsApi, getFeedPageApi, getTransactionApi, getUploadApiHelpers } from '../bank_feed';
-import CreateAccountModal from './CSVUploadWizard/CreateAccountModal';
-import TransactionModal from './TransactionModal';
-import { feedTransaction } from './feedTransaction';
-import Combobox from '../../common/Combobox';
+/* globals gettext, interpolate, ngettext */
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+
 import DateRangePicker from '../../common/DateRangePicker';
 import Icon from '../../common/Icon';
-import Modal from '../../common/Modal';
 import { Toast } from '../../common/Toast';
-import { accountKind, ACCOUNT_KIND_LABELS, goalLeftLabel, pickableAccounts } from '../../common/accountKind';
-import { queryFromUrl, scopeSearch } from '../feedQuery';
-import { rulesApiForBook } from '../../rules/api';
-import RuleBuilderDialog, { draftFromRow } from '../../rules/RuleBuilderDialog';
+import { accountKind, pickableAccounts } from '../../common/accountKind';
 import { formatMoney } from '../../common/amount';
+import RuleBuilderDialog, { draftFromRow } from '../../rules/RuleBuilderDialog';
+import { rulesApiForBook } from '../../rules/api';
+import { getBatchOperationsApi, getFeedPageApi, getTransactionApi, getUploadApiHelpers } from '../bank_feed';
+import { directionOf, usageById, withUse } from '../categoryOrder';
+import { queryFromUrl, scopeSearch } from '../feedQuery';
+import CreateAccountModal from './CSVUploadWizard/CreateAccountModal';
+import TransactionModal from './TransactionModal';
+import AfterPick from './categorize/AfterPick';
+import CategoryPicker from './categorize/CategoryPicker';
+import QueueCards from './categorize/QueueCards';
+import QuickWins from './categorize/QuickWins';
+import Summary from './categorize/Summary';
+import { mergeSuggestions } from './categorize/matching';
+import {
+  applyToFigures,
+  buildUnits,
+  countOf,
+  figuresFromBudgetMonth,
+  includedIds,
+  minutesLeft,
+  monthOf,
+  remainderOf,
+  rowId,
+  secondsPerUnit,
+  signedAmount,
+  totalOf,
+  withoutIds,
+} from './categorize/queue';
+import { feedTransaction } from './feedTransaction';
 
-// How many cards ahead of the current one to look up similar-transaction
-// suggestions for.
-const SUGGESTION_PREFETCH = 8;
+/**
+ * Categorize Mode: the Inbox's uncategorized rows, one merchant at a time.
+ *
+ * The queue (`feed/categorize_queue/`) is groups, not rows -- one pick files
+ * every row of an account, direction and merchant. It opens on the groups the
+ * server is sure about (Quick wins, one press for all of them), then shows the
+ * rest as a stack of cards. A pick is shown at once and saved behind it; a
+ * refusal brings the card back. Every pick can be undone (`feed/uncategorize/`).
+ *
+ * Runs as its own page (`categorize-app.jsx`) or over the Inbox (`onExit`).
+ */
 
-// At most this many suggested categories are shown above the account list.
+// At most this many suggestions are shown for a transaction.
 const MAX_SUGGESTIONS = 3;
+// Quick wins open the queue when at least this many groups are confident.
+const QUICK_WINS_MIN = 2;
+// Units ahead of the current one whose month's budget figures are fetched early.
+const FIGURES_PREFETCH = 4;
+// A first Escape arms the exit for this long; a second one leaves.
+const EXIT_ARM_MS = 2500;
 
-// A feed row's id is its BankTransaction id, which is what the suggestion
-// endpoint keys on.
-function transactionId(tx) {
-  return tx?.imported_transaction_id ?? tx?.id ?? null;
+const newSession = () => {
+  const now = Date.now();
+  return { filed: 0, amount: 0, rules: 0, startedAt: now, lastAt: now, pickTimes: [] };
+};
+
+// The feed row maps `merchant_name` onto `payee`; this is the pair the card edits.
+function detailsOf(row) {
+  return { payee: row?.payee ?? row?.merchant_name ?? '', description: row?.description ?? '' };
 }
 
-// The feed row maps `merchant_name` onto `payee`, and either can be null — this
-// is the pair the card lets you edit.
-function detailsOf(tx) {
-  return { payee: tx?.payee ?? tx?.merchant_name ?? '', description: tx?.description ?? '' };
-}
-
-// What a draft actually changes, shaped as a `batch_edit` payload. A field that
-// matches what the bank sent is left out, since the endpoint updates only the
-// fields it is given. `null` when nothing changed, so a plain categorization
-// never takes the edit path.
-function changedDetails(tx, draft) {
-  if (!tx || !draft) return null;
-  const original = detailsOf(tx);
+// What a draft changes, as a `batch_edit` payload; null when nothing changed.
+function changedDetails(row, draft) {
+  if (!row || !draft) return null;
+  const original = detailsOf(row);
   const changes = {};
   if (draft.payee.trim() !== original.payee.trim()) changes.payee = draft.payee.trim();
   if (draft.description.trim() !== original.description.trim()) changes.description = draft.description.trim();
   return Object.keys(changes).length > 0 ? changes : null;
 }
 
-// A rough "same merchant" key, used only to decide which cached suggestions a
-// fresh categorization invalidates. The real matching happens on the server.
-function lookalikeKey(tx) {
-  return (tx?.payee || tx?.merchant_name || tx?.description || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-// Which uncategorized transactions the queue holds: feed accounts (empty = all)
-// and a posted-date range. Read from and written to the page URL with the
-// Inbox's own parameter names (`account`, `start`, `end`), so the Inbox can
-// hand over its filters and Back returns to the same view.
 function scopeFromUrl() {
   const { accounts, startDate, endDate } = queryFromUrl();
   return { accounts, startDate, endDate };
 }
 
-function isScoped(scope) {
-  return scope.accounts.length > 0 || Boolean(scope.startDate || scope.endDate);
-}
+const isScoped = (scope) => scope.accounts.length > 0 || Boolean(scope.startDate || scope.endDate);
 
-/**
- * Narrow the queue to one feed account and/or a date range. Changing either
- * reloads the queue.
- */
+const isEditable = (el) => el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+
+const media = (query) => (typeof window !== 'undefined' && window.matchMedia?.(query).matches) || false;
+
+/** Narrow the queue to one feed account and/or a date range. Changing either reloads it. */
 function ScopeBar({ scope, feedAccounts, onChange }) {
   const multi = scope.accounts.length > 1;
   const accountValue = multi ? 'multi' : (scope.accounts[0] ?? '');
@@ -88,13 +102,13 @@ function ScopeBar({ scope, feedAccounts, onChange }) {
           if (v === 'multi') return;
           onChange({ ...scope, accounts: v ? [Number(v)] : [] });
         }}
-        aria-label="Account"
+        aria-label={gettext('Account')}
         data-testid="categorize-scope-account"
       >
-        <option value="">All accounts</option>
+        <option value="">{gettext('All accounts')}</option>
         {multi && (
           <option value="multi" disabled>
-            {`${scope.accounts.length} accounts`}
+            {interpolate(gettext('%s accounts'), [scope.accounts.length])}
           </option>
         )}
         {feedAccounts.map((a) => (
@@ -115,811 +129,32 @@ function ScopeBar({ scope, feedAccounts, onChange }) {
           onClick={() => onChange({ accounts: [], startDate: '', endDate: '' })}
           data-testid="categorize-scope-clear"
         >
-          ✕ Clear
+          ✕ {gettext('Clear')}
         </button>
       )}
     </div>
   );
 }
 
-const TOP_LEVEL_FILTERS = [
-  { key: 'income_expense', label: 'Income / Expense', icon: '💸', types: ['income', 'expense'] },
-  { key: 'transfer', label: 'Transfer', icon: '🔄', types: ['asset', 'liability'] },
-  { key: 'goal', label: 'Goals', icon: '🎯', types: ['goal'] },
-];
-
-function Confetti({ active }) {
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    if (!active || !canvasRef.current) return;
-    return createConfetti(canvasRef.current, { origin: 'sky' });
-  }, [active]);
-
-  if (!active) return null;
+/** "12 of 40 sorted · $1,240 of $1,890 · about 2 min left" with a bar by money. */
+function Progress({ done, total, amountDone, amountTotal, minutes }) {
+  const pct = amountTotal > 0 ? (amountDone / amountTotal) * 100 : total > 0 ? (done / total) * 100 : 0;
   return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 pointer-events-none"
-      style={{ zIndex: 9999 }}
-    />
-  );
-}
-
-function SimilarTransactionsTooltip({ transaction, allTransactions }) {
-  const [open, setOpen] = useState(false);
-  const similar = useMemo(() => {
-    if (!transaction.merchant_name && !transaction.description) return [];
-    const needle = (transaction.merchant_name || transaction.description || '').toLowerCase();
-    return allTransactions
-      .filter(t => t.id !== transaction.id && (
-        (t.merchant_name || t.description || '').toLowerCase().includes(needle) ||
-        needle.includes((t.merchant_name || t.description || '').toLowerCase())
-      ))
-      .slice(0, 5);
-  }, [transaction, allTransactions]);
-
-  if (similar.length === 0) return null;
-
-  return (
-    <div className="relative">
-      <button
-        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-        className="btn btn-ghost btn-xs btn-circle text-base-content/70 hover:text-primary"
-        title="Similar transactions"
-      >
-        🔍
-      </button>
-      {open && (
-        <div className="absolute right-0 top-8 z-50 bg-base-100 border border-base-300 rounded-xl shadow-2xl p-3 w-72 animate-in">
-          <p className="text-xs font-semibold text-base-content/70 mb-2">Similar transactions</p>
-          {similar.map(t => (
-            <div key={t.id} className="flex justify-between items-center py-1.5 border-b border-base-200 last:border-0 text-xs">
-              <div>
-                <div className="font-medium">{t.merchant_name || t.description}</div>
-                <div className="text-base-content/70">{t.posted_date}</div>
-              </div>
-              <div className={t.outflow > 0 ? 'text-error font-semibold' : 'text-success font-semibold'}>
-                {t.outflow > 0 ? `-${formatMoney(t.outflow)}` : `+${formatMoney(t.inflow)}`}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * The payee and description of the card on top of the stack, editable in place.
- *
- * Nothing is written while you type: the draft is held by the parent, keyed by
- * transaction id, and saved in the same request that files the transaction —
- * so a card is never left renamed but uncategorized, and a draft survives a
- * skip, since the card comes back around.
- */
-function TransactionDetailsEditor({ values, dirty, payeeOptions, onChange, onRevert }) {
-  const handleKeyDown = (e) => {
-    if (e.key === 'Escape') {
-      // Escape backs out of the edit, never out of categorize mode. The window
-      // handler that navigates back to the feed is stopped here whatever the
-      // field holds, because being thrown out of the queue mid-word costs far
-      // more than having to press Escape a second time. (The payee combobox
-      // stops it first when its list is open, closing just the list.)
-      e.stopPropagation();
-      if (dirty) onRevert();
-      else e.target.blur();
-      return;
-    }
-    if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
-      // There's no form to submit — Enter just finishes the field. Buttons in
-      // here (Revert) are left alone, or preventDefault would swallow the
-      // keyboard press that activates them.
-      e.preventDefault();
-      e.target.blur();
-    }
-  };
-
-  return (
-    <div className="space-y-2" onKeyDown={handleKeyDown} data-testid="categorize-details-editor">
-      <Combobox
-        label="Payee"
-        value={values.payee}
-        onChange={v => onChange('payee', v)}
-        options={payeeOptions}
-        freeText
-        placeholder="Who was this with?"
-        testId="categorize-payee"
-      />
-      <label className="form-control w-full">
-        <span className="label-text mb-1 block text-sm text-base-content/70">Description</span>
-        <input
-          type="text"
-          className="input input-bordered w-full"
-          value={values.description}
-          placeholder="What was it for?"
-          onChange={e => onChange('description', e.target.value)}
-          data-testid="categorize-description"
-        />
-      </label>
-      <div className="flex items-center justify-between gap-2 min-h-6">
-        {dirty && (
-          <>
-            <span className="text-xs text-warning font-medium" data-testid="categorize-details-dirty">
-              Saved when you pick a category
-            </span>
-            <button onClick={onRevert} className="btn btn-ghost btn-xs" data-testid="categorize-details-revert">
-              Revert
-            </button>
-          </>
-        )}
+    <div className="w-full" data-testid="categorize-progress">
+      <div className="flex justify-between gap-2 text-xs mb-1">
+        <span className="font-semibold text-primary">
+          {interpolate(gettext('%s of %s sorted'), [formatMoney(amountDone), formatMoney(amountTotal)])}
+        </span>
+        <span className="text-base-content/70">
+          {interpolate(gettext('%s of %s'), [done, total])}
+          {minutes > 0
+            ? ` · ${interpolate(ngettext('about %s min left', 'about %s min left', minutes), [minutes])}`
+            : ''}
+        </span>
       </div>
-    </div>
-  );
-}
-
-function TransactionCard({
-  transaction,
-  index,
-  total,
-  allTransactions,
-  isExiting,
-  isSkipping,
-  details,
-  detailsDirty,
-  payeeOptions,
-  onDetailChange,
-  onDetailsRevert,
-  cardRef,
-}) {
-  const isTop = index === 0;
-  const offset = Math.min(index, 4);
-  const scale = 1 - offset * 0.03;
-  const translateY = offset * 8;
-  const opacity = index > 4 ? 0 : 1 - offset * 0.15;
-  const isOutflow = parseFloat(transaction.outflow) > 0;
-
-  return (
-    <div
-      className={`absolute w-full transition-all duration-500 ease-out ${isExiting && isTop ? 'card-exit' : ''} ${isSkipping && isTop ? 'card-skip' : ''}`}
-      style={{
-        transform: `translateY(${translateY}px) scale(${scale})`,
-        opacity,
-        zIndex: total - index,
-      }}
-    >
-      <div
-        ref={isTop ? cardRef : null}
-        className={`card bg-base-100 shadow-xl border border-base-300 ${isTop ? 'ring-2 ring-primary/30' : ''}`}
-      >
-        <div className="card-body p-5">
-          {/* The lookalike button shares a row with the account name rather than
-              floating over the corner, or it would sit on top of the payee
-              field below it. */}
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-xs text-base-content/70 truncate">
-              {transaction.account?.name || 'Unknown Account'}
-            </p>
-            {isTop && (
-              <div className="-mt-1.5 -mr-1.5 shrink-0">
-                <SimilarTransactionsTooltip transaction={transaction} allTransactions={allTransactions} />
-              </div>
-            )}
-          </div>
-          <div className="mt-1">
-            {isTop ? (
-              <TransactionDetailsEditor
-                values={details}
-                dirty={detailsDirty}
-                payeeOptions={payeeOptions}
-                onChange={onDetailChange}
-                onRevert={onDetailsRevert}
-              />
-            ) : (
-              <>
-                <h3 className="font-bold text-lg truncate">
-                  {transaction.merchant_name || transaction.description || 'No description'}
-                </h3>
-                {transaction.merchant_name && transaction.description && (
-                  <p className="text-sm text-base-content/70 truncate">{transaction.description}</p>
-                )}
-              </>
-            )}
-          </div>
-          <div className="flex items-center justify-between mt-3">
-            <span className="text-sm text-base-content/70">{transaction.posted_date}</span>
-            <span className={`text-2xl font-black ${isOutflow ? 'text-error' : 'text-success'}`}>
-              {isOutflow ? `-${formatMoney(transaction.outflow)}` : `+${formatMoney(transaction.inflow)}`}
-            </span>
-          </div>
-          {isTop && (
-            <div className="mt-2 text-xs text-base-content/40 text-center">
-              Select a category on the right →
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function charSequenceMatch(text, query) {
-  // Letters of the query appear in order in text, not necessarily adjacent.
-  let ti = 0;
-  for (let qi = 0; qi < query.length; qi++) {
-    if (query[qi] === ' ') continue;
-    while (ti < text.length && text[ti] !== query[qi]) ti++;
-    if (ti >= text.length) return false;
-    ti++;
-  }
-  return true;
-}
-
-/**
- * Rank how well an account matches a search query, higher is better.
- * `null` means no match at all (the account is excluded from results).
- * Matches on the account's own name are weighted far above matches on its
- * group/institution/type — otherwise, e.g., every income account's
- * `account_type` literally contains "income", so searching "income" (or
- * any string containing it) would rank an unrelated income account the
- * same as an account actually named "Income".
- */
-function matchScore(account, query) {
-  const q = query.toLowerCase().trim();
-  if (!q) return 0;
-
-  const name = (account.name || '').toLowerCase();
-  const secondary = [account.account_group_name, account.institution_name, ACCOUNT_KIND_LABELS[accountKind(account)]]
-    .filter(Boolean).join(' ').toLowerCase();
-  const qWords = q.split(/\s+/).filter(Boolean);
-
-  if (name === q) return 100;
-  if (name.startsWith(q)) return 90;
-  if (name.split(/\s+/).includes(q)) return 85;
-  if (name.includes(q)) return 70;
-  if (qWords.length > 1 && qWords.every(w => name.includes(w))) return 60;
-  if (secondary.includes(q)) return 40;
-  if (qWords.length > 1 && qWords.every(w => secondary.includes(w))) return 30;
-  if (charSequenceMatch(name, q)) return 10;
-  return null;
-}
-
-function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// Whether `needle` appears in `haystack` as a whole token — not as part of a
-// longer word — so an account named "BC" doesn't match inside "ABC" and a
-// memo of "ATM WD" doesn't match an account named "AT".
-function containsWholeToken(haystack, needle) {
-  if (!needle) return false;
-  const re = new RegExp(`(?:^|[^a-z0-9])${escapeRegExp(needle.toLowerCase())}(?:$|[^a-z0-9])`, 'i');
-  return re.test(` ${haystack} `);
-}
-
-/**
- * Find the account whose name is most clearly named in a transaction's
- * memo/payee text — e.g. a transfer memo that literally says "WS Joint
- * Checking" or just "BBC" should suggest that account. `excludeAccountId`
- * keeps the transaction's own (feed) account from ever being suggested,
- * since categorizing a transaction to the account it's already in would
- * make it a transfer to itself.
- */
-function findAccountNamedInText(text, accounts, excludeAccountId) {
-  if (!text) return null;
-  const candidates = accounts.filter(a => a.name && a.id !== excludeAccountId);
-
-  // Prefer the longest full account name that appears verbatim in the text.
-  let fullMatch = null;
-  for (const account of candidates) {
-    const name = account.name.trim();
-    if (containsWholeToken(text, name) && (!fullMatch || name.length > fullMatch.name.trim().length)) {
-      fullMatch = account;
-    }
-  }
-  if (fullMatch) return fullMatch;
-
-  // Otherwise, the longest single word (3+ chars, to skip noise like "of")
-  // from any account name that appears as a whole word in the text.
-  let wordMatch = null;
-  let wordMatchLength = 0;
-  for (const account of candidates) {
-    for (const word of account.name.split(/\s+/)) {
-      if (word.length < 3) continue;
-      if (word.length > wordMatchLength && containsWholeToken(text, word)) {
-        wordMatch = account;
-        wordMatchLength = word.length;
-      }
-    }
-  }
-  return wordMatch;
-}
-
-// The note under a suggestion, explaining why it's suggested. A "named" match
-// (an account named verbatim in the memo/payee) needs no history to justify
-// itself, but still says so when history backs it up too.
-function suggestionNote({ count, match_type, rule_name }) {
-  if (match_type === 'rule') {
-    return interpolate(gettext('Suggested by your rule “%s”'), [rule_name]);
-  }
-  if (match_type === 'named') {
-    return count != null
-      ? `Named in the memo — also used ${count}× for this payee`
-      : 'Named in the transaction memo';
-  }
-  const n = `${count} transaction${count === 1 ? '' : 's'}`;
-  const verb = count === 1 ? 'was' : 'were';
-  if (match_type === 'payee') return `${n} with this payee ${verb} categorized as this`;
-  if (match_type === 'description') return `${n} with this description ${verb} categorized as this`;
-  return `${n} like this one ${verb} categorized as this`;
-}
-
-function SuggestedCategories({ suggestions, accountsById, loading, activeKey, onSelect }) {
-  if (loading) {
-    return (
-      <div className="mb-3 flex items-center gap-2 text-xs text-base-content/70">
-        <span className="loading loading-spinner loading-xs" />
-        Looking for similar transactions...
-      </div>
-    );
-  }
-  if (suggestions.length === 0) return null;
-
-  return (
-    <div className="mb-3" data-testid="category-suggestions">
-      <p className="text-xs font-semibold text-success mb-1.5">
-        ✨ Suggested from similar transactions
-      </p>
-      <div className="space-y-1">
-        {suggestions.map(s => (
-          <button
-            key={s.category_id}
-            onClick={() => onSelect(accountsById[s.category_id])}
-            data-nav-key={`s:${s.category_id}`}
-            data-active={activeKey === `s:${s.category_id}` ? 'true' : undefined}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-success bg-success/10 hover:bg-success/20 transition-all hover:shadow-md active:scale-[0.98] ${
-              activeKey === `s:${s.category_id}` ? 'ring-2 ring-primary ring-offset-2 ring-offset-base-100 bg-success/20' : ''
-            }`}
-            data-testid="category-suggestion"
-          >
-            <div className="flex-1 text-left min-w-0">
-              <div className="font-bold truncate">{s.category_name}</div>
-              <div className="text-xs text-base-content/70 truncate">{suggestionNote(s)}</div>
-              {accountsById[s.category_id] && goalLeftLabel(accountsById[s.category_id]) && (
-                <div className="text-xs text-base-content/70 truncate" data-testid="goal-left">
-                  {goalLeftLabel(accountsById[s.category_id])}
-                </div>
-              )}
-            </div>
-            {s.count != null && (
-              <span className="badge badge-success badge-sm shrink-0">{s.count}×</span>
-            )}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function AccountHierarchy({
-  allAccounts,
-  allAccountGroups,
-  usage,
-  suggestions,
-  suggestionsLoading,
-  currentTransaction,
-  onSelect,
-  onCreateNew,
-  onSplit,
-}) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTopFilter, setActiveTopFilter] = useState(null); // TOP_LEVEL_FILTERS key
-  const [filterGroupId, setFilterGroupId] = useState(null);
-  const [filterInstitution, setFilterInstitution] = useState(null);
-  const [activeIndex, setActiveIndex] = useState(-1); // keyboard highlight; -1 = nothing
-  const searchRef = useRef(null);
-  const panelRef = useRef(null);
-
-  const activeTopGroup = useMemo(
-    () => TOP_LEVEL_FILTERS.find(f => f.key === activeTopFilter) || null,
-    [activeTopFilter]
-  );
-  const activeTypes = activeTopGroup?.types || null;
-
-  const accountsById = useMemo(() => {
-    const byId = {};
-    allAccounts.forEach(a => { byId[a.id] = a; });
-    return byId;
-  }, [allAccounts]);
-
-  const trimmedSearch = searchQuery.trim();
-
-  // Two independent signals can each suggest a category: the server's
-  // history-based matches (payee/description/similar-wording), and an
-  // account named verbatim in this transaction's own memo/payee — often the
-  // strongest signal there is, since a transfer memo may literally name the
-  // other side. Merged into one ranked, deduped list (the same account is
-  // never shown twice), and the transaction's own feed account is never
-  // suggested, or categorizing it would make it a transfer to itself.
-  // Capped at MAX_SUGGESTIONS, and empty while searching: a search means none
-  // of them was it, and the search results then include those accounts.
-  const usableSuggestions = useMemo(() => {
-    if (trimmedSearch) return [];
-    const feedAccountId = currentTransaction?.account?.id ?? null;
-    const fromHistory = (suggestions || []).filter(
-      s => accountsById[s.category_id] && s.category_id !== feedAccountId
-    );
-
-    if (!currentTransaction) return fromHistory.slice(0, MAX_SUGGESTIONS);
-
-    const memoText = [currentTransaction.description, currentTransaction.merchant_name]
-      .filter(Boolean).join(' ');
-    const namedAccount = findAccountNamedInText(memoText, allAccounts, feedAccountId);
-    if (!namedAccount) return fromHistory.slice(0, MAX_SUGGESTIONS);
-
-    const already = fromHistory.find(s => s.category_id === namedAccount.id);
-    const named = {
-      category_id: namedAccount.id,
-      category_name: namedAccount.name,
-      count: already ? already.count : null,
-      match_type: 'named',
-      payee: already ? already.payee : '',
-    };
-    return [named, ...fromHistory.filter(s => s.category_id !== namedAccount.id)].slice(0, MAX_SUGGESTIONS);
-  }, [suggestions, accountsById, currentTransaction, allAccounts, trimmedSearch]);
-
-  const suggestedAccountIds = useMemo(
-    () => new Set(usableSuggestions.map(s => s.category_id)),
-    [usableSuggestions]
-  );
-
-  // Second-level filters: only shown when a top-level filter is active
-  const relevantGroups = useMemo(() => {
-    if (!activeTypes) return [];
-    return allAccountGroups
-      .filter(g => activeTypes.includes(g.account_type))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [allAccountGroups, activeTypes]);
-
-  const relevantInstitutions = useMemo(() => {
-    if (!activeTypes) return [];
-    const names = new Set(
-      allAccounts
-        .filter(a => activeTypes.includes(accountKind(a)) && a.institution_name)
-        .map(a => a.institution_name)
-    );
-    return [...names].sort();
-  }, [allAccounts, activeTypes]);
-
-  const filteredAccounts = useMemo(() => {
-    const results = [];
-    for (const a of allAccounts) {
-      if (activeTypes && !activeTypes.includes(accountKind(a))) continue;
-      if (filterGroupId && a.account_group !== filterGroupId) continue;
-      if (filterInstitution && a.institution_name !== filterInstitution) continue;
-      if (trimmedSearch) {
-        const score = matchScore(a, trimmedSearch);
-        if (score === null) continue;
-        results.push({ account: a, score });
-      } else {
-        results.push({ account: a, score: 0 });
-      }
-    }
-    return results;
-  }, [allAccounts, activeTypes, filterGroupId, filterInstitution, trimmedSearch]);
-
-  const groupedAccounts = useMemo(() => {
-    // While searching, relevance beats grouping — an exact-name match must
-    // land at the very top of the list rather than wherever its account
-    // group happens to sort alphabetically.
-    if (trimmedSearch) {
-      const sorted = [...filteredAccounts]
-        .sort((a, b) => b.score - a.score || a.account.name.localeCompare(b.account.name))
-        .map(r => r.account);
-      return sorted.length ? [{ name: 'Search results', accounts: sorted }] : [];
-    }
-
-    // Otherwise by what this transaction most likely is: expenses first for money
-    // out, income first for money in, transfers next, and the categories you use
-    // most for this direction at the top of each (`categoryOrder.js`).
-    const feedAccountId = currentTransaction?.account?.id ?? null;
-    const feedAccount = feedAccountId != null ? accountsById[feedAccountId] : null;
-    return orderCategories(
-      filteredAccounts.map(r => r.account),
-      {
-        direction: directionOf(currentTransaction),
-        feedAccountId,
-        feedKind: feedAccount ? accountKind(feedAccount) : 'asset',
-        usage,
-      }
-    );
-  }, [filteredAccounts, trimmedSearch, currentTransaction, accountsById, usage]);
-
-  // Accounts already offered in the Suggested section above are dropped
-  // here so nothing appears twice; a group left with nothing to show is
-  // dropped too, rather than rendering an empty header.
-  const visibleGroupedAccounts = useMemo(() => {
-    return groupedAccounts
-      .map(group => ({ ...group, accounts: group.accounts.filter(a => !suggestedAccountIds.has(a.id)) }))
-      .filter(group => group.accounts.length > 0);
-  }, [groupedAccounts, suggestedAccountIds]);
-
-  // Everything the arrow keys walk, in the order it is drawn: the suggestions
-  // first, then the account list. Suggested accounts are excluded from the
-  // list below, so every row has exactly one key.
-  const navRows = useMemo(() => {
-    const rows = usableSuggestions.map(s => ({ key: `s:${s.category_id}`, account: accountsById[s.category_id] }));
-    visibleGroupedAccounts.forEach(group => {
-      group.accounts.forEach(account => rows.push({ key: `a:${account.id}`, account }));
-    });
-    return rows;
-  }, [usableSuggestions, accountsById, visibleGroupedAccounts]);
-
-  // Typing narrows the list under a highlight that was pointing at a row which
-  // may no longer exist, so the index is clamped where it is read rather than
-  // chased with an effect.
-  const activeIdx = navRows.length === 0 ? -1 : Math.min(activeIndex, navRows.length - 1);
-  const activeKey = activeIdx >= 0 ? navRows[activeIdx].key : null;
-
-  const clearFilters = () => {
-    setActiveTopFilter(null);
-    setFilterGroupId(null);
-    setFilterInstitution(null);
-    setSearchQuery('');
-    setActiveIndex(-1);
-  };
-
-  const handleSearchKeyDown = (e) => {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (navRows.length === 0) return;
-      const step = e.key === 'ArrowDown' ? 1 : -1;
-      setActiveIndex(
-        activeIdx < 0
-          ? (step === 1 ? 0 : navRows.length - 1)
-          : (activeIdx + step + navRows.length) % navRows.length
-      );
-      return;
-    }
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (activeIdx >= 0) onSelect(navRows[activeIdx].account);
-      return;
-    }
-    if (e.key === 'Escape' && searchQuery) {
-      // Escape backs out of the search rather than out of categorize mode — the
-      // window handler that exits is stopped here, and only while there is a
-      // search to clear.
-      e.preventDefault();
-      e.stopPropagation();
-      setSearchQuery('');
-      setActiveIndex(-1);
-    }
-  };
-
-  // Keep the highlighted row on screen as it walks past the fold.
-  useEffect(() => {
-    if (!activeKey) return;
-    panelRef.current
-      ?.querySelector(`[data-nav-key="${activeKey}"]`)
-      ?.scrollIntoView({ block: 'nearest' });
-  }, [activeKey]);
-
-  // A filter change rebuilds the list under the highlight, so it starts over.
-  useEffect(() => {
-    setActiveIndex(-1);
-  }, [activeTopFilter, filterGroupId, filterInstitution]);
-
-  useEffect(() => { searchRef.current?.focus(); }, []);
-
-  useEffect(() => {
-    setActiveTopFilter(null);
-    setFilterGroupId(null);
-    setFilterInstitution(null);
-    setSearchQuery('');
-    setActiveIndex(-1);
-    searchRef.current?.focus();
-  }, [currentTransaction?.id]);
-
-  return (
-    <div className="flex flex-col h-full min-h-0" ref={panelRef}>
-      {/* Search bar */}
-      <div className="relative mb-1">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40">🔍</span>
-        <input
-          ref={searchRef}
-          type="text"
-          value={searchQuery}
-          onChange={e => {
-            // Typing points the highlight at the best match, so Enter takes it
-            // without a trip through the arrow keys; an empty box highlights
-            // nothing, so a stray Enter categorizes nothing.
-            setSearchQuery(e.target.value);
-            setActiveIndex(e.target.value ? 0 : -1);
-          }}
-          onKeyDown={handleSearchKeyDown}
-          placeholder={gettext('Search categories…')}
-          data-testid="categorize-search"
-          className="input input-bordered input-sm w-full pl-9 pr-8"
-        />
-        {searchQuery && (
-          <button
-            onClick={() => { setSearchQuery(''); setActiveIndex(-1); searchRef.current?.focus(); }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost btn-xs btn-circle"
-          >
-            ✕
-          </button>
-        )}
-      </div>
-      <div className="h-5 mb-2 text-xs text-base-content/70 flex items-center gap-1.5">
-        {searchQuery && (
-          <>
-            <kbd className="kbd kbd-xs">↑</kbd>
-            <kbd className="kbd kbd-xs">↓</kbd>
-            <span>to move</span>
-            <kbd className="kbd kbd-xs">↵</kbd>
-            <span>to choose</span>
-            <kbd className="kbd kbd-xs">esc</kbd>
-            <span>to clear</span>
-          </>
-        )}
-      </div>
-
-      {/* Filter tiles — progressive disclosure */}
-      <div className="flex flex-wrap gap-1.5 mb-3">
-        {/* Top level: Transfer / Income-Expense / Goals */}
-        {TOP_LEVEL_FILTERS.map(f => (
-          <button
-            key={f.key}
-            onClick={() => {
-              if (activeTopFilter === f.key) {
-                setActiveTopFilter(null);
-              } else {
-                setActiveTopFilter(f.key);
-              }
-              setFilterGroupId(null);
-              setFilterInstitution(null);
-            }}
-            className={`badge badge-lg cursor-pointer transition-all hover:shadow gap-1 ${
-              activeTopFilter === f.key ? 'badge-primary' : 'badge-outline'
-            }`}
-          >
-            {f.icon} {f.label}
-          </button>
-        ))}
-
-        {/* Second level: account groups + institutions (only when a top filter is active) */}
-        {activeTopGroup && relevantGroups.length > 0 && (
-          <>
-            <span className="w-px h-6 bg-base-300 self-center mx-0.5" />
-            {relevantGroups.map(g => (
-              <button
-                key={g.id}
-                onClick={() => setFilterGroupId(filterGroupId === g.id ? null : g.id)}
-                className={`badge badge-lg cursor-pointer transition-all hover:shadow ${
-                  filterGroupId === g.id ? 'badge-secondary' : 'badge-outline'
-                }`}
-              >
-                {g.name}
-              </button>
-            ))}
-          </>
-        )}
-        {activeTopGroup && relevantInstitutions.length > 0 && (
-          <>
-            <span className="w-px h-6 bg-base-300 self-center mx-0.5" />
-            {relevantInstitutions.map(inst => (
-              <button
-                key={inst}
-                onClick={() => setFilterInstitution(filterInstitution === inst ? null : inst)}
-                className={`badge badge-lg cursor-pointer transition-all hover:shadow ${
-                  filterInstitution === inst ? 'badge-accent' : 'badge-outline'
-                }`}
-              >
-                🏦 {inst}
-              </button>
-            ))}
-          </>
-        )}
-        {(activeTopFilter || filterGroupId || filterInstitution) && (
-          <button onClick={clearFilters} className="badge badge-lg badge-ghost cursor-pointer">
-            ✕ Clear
-          </button>
-        )}
-      </div>
-
-      {/* Categories suggested from history + memo/payee name matches — always at top */}
-      <SuggestedCategories
-        suggestions={usableSuggestions}
-        accountsById={accountsById}
-        loading={suggestionsLoading && usableSuggestions.length === 0 && !trimmedSearch}
-        activeKey={activeKey}
-        onSelect={onSelect}
-      />
-
-      {/* Account list grouped by account group */}
-      <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-1 custom-scrollbar space-y-3">
-        {visibleGroupedAccounts.length === 0 && usableSuggestions.length === 0 && (
-          <div className="text-center py-8 text-base-content/40">
-            <p className="text-lg mb-1">No matching accounts</p>
-            <p className="text-sm">Try a different search or clear filters</p>
-          </div>
-        )}
-        {visibleGroupedAccounts.map(group => (
-          <div key={group.name} data-testid="category-group">
-            <div className="text-xs font-semibold text-base-content/70 uppercase tracking-wider px-1 mb-1.5 sticky top-0 bg-base-100 py-1 z-10">
-              {group.name}
-            </div>
-            <div className="space-y-1">
-              {group.accounts.map(account => (
-                <button
-                  key={account.id}
-                  onClick={() => onSelect(account)}
-                  data-nav-key={`a:${account.id}`}
-                  data-kind={accountKind(account)}
-                  data-testid="category-row"
-                  data-active={activeKey === `a:${account.id}` ? 'true' : undefined}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border border-base-300 transition-all hover:border-primary hover:bg-primary/5 hover:shadow-md active:scale-[0.98] ${
-                    activeKey === `a:${account.id}` ? 'ring-2 ring-primary ring-offset-2 ring-offset-base-100 border-primary bg-primary/10' : ''
-                  }`}
-                >
-                  <div className="flex-1 text-left min-w-0">
-                    <div className="font-medium truncate">{account.name}</div>
-                    <div className="text-xs text-base-content/40 flex gap-2">
-                      <span>{ACCOUNT_KIND_LABELS[accountKind(account)] || account.account_type}</span>
-                      {goalLeftLabel(account) && (
-                        <>
-                          <span>·</span>
-                          <span data-testid="goal-left">{goalLeftLabel(account)}</span>
-                        </>
-                      )}
-                      {account.institution_name && (
-                        <>
-                          <span>·</span>
-                          <span>{account.institution_name}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-
-        {/* The two escapes from "none of these single categories is right":
-            the transaction belongs to several, or to one that doesn't exist yet. */}
-        <button
-          onClick={onSplit}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 mt-1 rounded-lg border border-dashed border-base-300 text-base-content/70 transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
-          data-testid="categorize-split-btn"
-        >
-          <Icon name="split" className="h-4 w-4" />
-          <span className="font-medium">Split across categories</span>
-        </button>
-        <button
-          onClick={onCreateNew}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 mt-1 rounded-lg border border-dashed border-base-300 text-base-content/70 transition-all hover:border-primary hover:bg-primary/5 hover:text-primary"
-        >
-          <span className="text-lg leading-none">+</span>
-          <span className="font-medium">Create new account</span>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ProgressBar({ done, total }) {
-  const pct = total > 0 ? (done / total) * 100 : 0;
-  return (
-    <div className="w-full">
-      <div className="flex justify-between text-sm mb-1">
-        <span className="font-semibold text-primary">{done} categorized</span>
-        <span className="text-base-content/70">{total - done} remaining</span>
-      </div>
-      <div className="w-full bg-base-300 rounded-full h-3 overflow-hidden">
+      <div className="w-full bg-base-300 rounded-full h-2.5 overflow-hidden">
         <div
-          className="bg-gradient-to-r from-primary to-secondary h-full rounded-full transition-all duration-700 ease-out"
+          className="bg-gradient-to-r from-primary to-secondary h-full rounded-full transition-all duration-500 ease-out"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -927,102 +162,53 @@ function ProgressBar({ done, total }) {
   );
 }
 
-// Same feed (home) account and the same description — the two signals that
-// most reliably mean "this is the same recurring charge/deposit" without
-// being so loose it pulls in unrelated transactions.
-function findSimilarTransactions(transactions, reference) {
-  const accountId = reference.account?.id;
-  const description = (reference.description || '').trim().toLowerCase();
-  if (!accountId || !description) return [];
-  return transactions.filter(t =>
-    t.id !== reference.id &&
-    t.account?.id === accountId &&
-    (t.description || '').trim().toLowerCase() === description
-  );
-}
-
-function SimilarTransactionRow({ transaction, checked, onToggle, locked }) {
-  const isOutflow = parseFloat(transaction.outflow) > 0;
+/**
+ * The card just filed, flying into the category it was filed under (or off to
+ * the right after a swipe). Drawn over everything and gone in a third of a second;
+ * the queue has already moved on underneath it.
+ */
+function Ghost({ ghost, onDone }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !el.animate) {
+      onDone();
+      return undefined;
+    }
+    const { from, to } = ghost;
+    const frames = to
+      ? [
+          { transform: 'translate(0, 0) scale(1)', opacity: 1 },
+          {
+            transform: `translate(${to.left + to.width / 2 - (from.left + from.width / 2)}px, ${
+              to.top + to.height / 2 - (from.top + from.height / 2)
+            }px) scale(0.12)`,
+            opacity: 0.2,
+          },
+        ]
+      : [
+          { transform: 'translate(0, 0) rotate(0deg)', opacity: 1 },
+          { transform: 'translate(120%, -10%) rotate(14deg)', opacity: 0 },
+        ];
+    const animation = el.animate(frames, { duration: 340, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' });
+    animation.onfinish = onDone;
+    return () => animation.cancel();
+  }, [ghost, onDone]);
+  const { from } = ghost;
   return (
-    <label
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors ${
-        locked ? 'border-success bg-success/5' : 'border-base-300 hover:bg-base-200 cursor-pointer'
-      }`}
+    <div
+      ref={ref}
+      className="fixed pointer-events-none card bg-base-100 border border-primary shadow-2xl"
+      style={{ left: from.left, top: from.top, width: from.width, height: from.height, zIndex: 9998 }}
+      aria-hidden="true"
     >
-      <input
-        type="checkbox"
-        className="checkbox checkbox-sm checkbox-success"
-        checked={checked}
-        disabled={locked}
-        onChange={onToggle}
-      />
-      <div className="flex-1 min-w-0">
-        <div className="font-medium truncate">{transaction.merchant_name || transaction.description}</div>
-        <div className="text-xs text-base-content/70">{transaction.posted_date}</div>
+      <div className="card-body p-5">
+        <p className="font-bold text-xl truncate">{ghost.title}</p>
+        <p className={`text-3xl font-black text-right ${ghost.amount > 0 ? 'text-error' : 'text-success'}`}>
+          {ghost.amount > 0 ? `-${formatMoney(ghost.amount)}` : `+${formatMoney(-ghost.amount)}`}
+        </p>
       </div>
-      <div className={`text-sm font-semibold shrink-0 ${isOutflow ? 'text-error' : 'text-success'}`}>
-        {isOutflow ? `-${formatMoney(transaction.outflow)}` : `+${formatMoney(transaction.inflow)}`}
-      </div>
-    </label>
-  );
-}
-
-function SimilarTransactionsModal({ pendingBatch, onConfirm, onSkip, onCancel }) {
-  const [checkedIds, setCheckedIds] = useState(new Set());
-
-  useEffect(() => {
-    if (pendingBatch) setCheckedIds(new Set(pendingBatch.matches.map(m => m.id)));
-  }, [pendingBatch]);
-
-  const matches = pendingBatch?.matches || [];
-  const selectedMatches = matches.filter(m => checkedIds.has(m.id));
-  const totalCount = selectedMatches.length + (pendingBatch ? 1 : 0);
-
-  const toggle = (id) => {
-    setCheckedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  return (
-    <Modal
-      open={!!pendingBatch}
-      onClose={onCancel}
-      title="Categorize similar transactions?"
-      size="md"
-      testId="similar-transactions-modal"
-      actions={
-        <>
-          <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-          <button className="btn btn-ghost" onClick={onSkip}>Just this one</button>
-          <button className="btn btn-primary" onClick={() => onConfirm(selectedMatches)}>
-            Categorize {totalCount}
-          </button>
-        </>
-      }
-    >
-      {pendingBatch && (
-        <>
-          <p className="text-sm text-base-content/70 mb-3">
-            These have the same account and description as the transaction you just categorized as{' '}
-            <span className="font-semibold text-base-content">{pendingBatch.account.name}</span>. Uncheck any you don't want.
-          </p>
-          <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
-            <SimilarTransactionRow transaction={pendingBatch.tx} checked locked />
-            {matches.map(m => (
-              <SimilarTransactionRow
-                key={m.id}
-                transaction={m}
-                checked={checkedIds.has(m.id)}
-                onToggle={() => toggle(m.id)}
-              />
-            ))}
-          </div>
-        </>
-      )}
-    </Modal>
+    </div>
   );
 }
 
@@ -1033,447 +219,683 @@ export default function CategorizeMode({
   allPayees = [],
   categoryUsage = [],
   backUrl,
+  onExit = null,
 }) {
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [scope, setScope] = useState(scopeFromUrl);
-  const [categorized, setCategorized] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
-  const [isExiting, setIsExiting] = useState(false);
-  const [undoStack, setUndoStack] = useState([]);
-  const [isSkipping, setIsSkipping] = useState(false);
-  const [skippedCount, setSkippedCount] = useState(0);
-  const [suggestionsByTransaction, setSuggestionsByTransaction] = useState({});
-  const suggestionsInFlight = useRef(new Set());
-  const [localAccounts, setLocalAccounts] = useState(() => pickableAccounts(allAccounts));
-  // How often each category has been chosen, by direction; grows as this queue is
-  // filed, so a category just used climbs the list for the next transaction.
-  const [usage, setUsage] = useState(() => usageById(categoryUsage));
-  const [showCreateAccountModal, setShowCreateAccountModal] = useState(false);
-  const [pendingBatch, setPendingBatch] = useState(null); // { account, tx, matches } awaiting the similar-transactions modal
-  const [splitModalOpen, setSplitModalOpen] = useState(false);
-  const [drafts, setDrafts] = useState({}); // transaction id -> { payee, description } edited but not yet filed
-  const [error, setError] = useState(null);
-  const [cardHeight, setCardHeight] = useState(220);
-  const topCardRef = useRef(null);
   const pageApi = useMemo(() => getFeedPageApi(book.base), [book]);
   const uploadApi = useMemo(() => getUploadApiHelpers(book.base), [book]);
   const batchApi = useMemo(() => getBatchOperationsApi(book.base), [book]);
   const transactionApi = useMemo(() => getTransactionApi(book.base), [book]);
+  const rulesApi = useMemo(() => rulesApiForBook(book.base), [book]);
+  const reducedMotion = useMemo(() => media('(prefers-reduced-motion: reduce)'), []);
+  const finePointer = useMemo(() => media('(pointer: fine)'), []);
 
-  // The rule builder over the stack (admins only): null, or `{ draft }`.
+  const [phase, setPhase] = useState('loading'); // loading | quickwins | cards
+  const [scope, setScope] = useState(scopeFromUrl);
+  const [rowsById, setRowsById] = useState(() => new Map());
+  const [units, setUnits] = useState([]);
+  const [pile, setPile] = useState([]); // skipped units, offered again at the end
+  const [excluded, setExcluded] = useState({}); // unit key -> Set of ids unticked in review
+  const [drafts, setDrafts] = useState({}); // lead row id -> {payee, description}
+  const [editing, setEditing] = useState(false);
+  const [history, setHistory] = useState([]); // filed picks, newest last: what Undo takes back
+  const [undoing, setUndoing] = useState(false);
+  const [session, setSession] = useState(newSession);
+  const [figures, setFigures] = useState({}); // 'YYYY-MM' -> {categoryId: figure}
+  const figuresAsked = useRef(new Set());
+  const [localAccounts, setLocalAccounts] = useState(() => pickableAccounts(allAccounts));
+  const [usage, setUsage] = useState(() => usageById(categoryUsage));
+  const [transferPairs, setTransferPairs] = useState([]);
+  const [last, setLast] = useState(null); // {count, label, accountId, month} of the latest pick
+  const [ruleOffer, setRuleOffer] = useState(null);
+  const [error, setError] = useState(null);
+  const [exitArmed, setExitArmed] = useState(false);
+  const [ghost, setGhost] = useState(null);
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [showCreateAccount, setShowCreateAccount] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
   const [ruleDialog, setRuleDialog] = useState(null);
   const [canEditRules, setCanEditRules] = useState(false);
   const [ruleNotice, setRuleNotice] = useState('');
   const clearRuleNotice = useCallback(() => setRuleNotice(''), []);
-  useEffect(() => {
-    rulesApiForBook(book.base)
-      .prompts()
-      .then(p => setCanEditRules(!!p.can_edit))
-      .catch(() => setCanEditRules(false));
-  }, [book]);
-  const payeeOptions = useMemo(() => allPayees.map(p => p.name).filter(Boolean), [allPayees]);
+  const searchRef = useRef(null);
+  const commandsRef = useRef(null);
+  const topCardRef = useRef(null);
+  const historySeq = useRef(0);
+
+  const accountsById = useMemo(() => Object.fromEntries(localAccounts.map((a) => [a.id, a])), [localAccounts]);
+  const payeeOptions = useMemo(() => allPayees.map((p) => p.name).filter(Boolean), [allPayees]);
   const feedAccounts = useMemo(
-    () => allAccounts.filter(a => a.has_feed && !a.is_archived).sort((a, b) => a.name.localeCompare(b.name)),
-    [allAccounts]
+    () => allAccounts.filter((a) => a.has_feed && !a.is_archived).sort((a, b) => a.name.localeCompare(b.name)),
+    [allAccounts],
   );
-  // Back to the Inbox, showing the same account and dates.
   const backHref = `${backUrl}${scopeSearch(scope)}`;
-
-  const fetchUncategorized = useCallback(async (forScope) => {
-    setLoading(true);
-    try {
-      // The server narrows to uncategorized rows (and to the scope); walking
-      // the whole feed to filter it here cost one request per 200 rows of history.
-      const allRows = await pageApi.uncategorized(forScope);
-      setTransactions(allRows);
-      setTotalCount(allRows.length);
-    } catch (err) {
-      console.error('Failed to fetch transactions:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [pageApi]);
-
-  // Ask the server which categories were used on transactions similar to these.
-  // An id that comes back with nothing is cached as an empty list, so a
-  // transaction with no lookalikes is asked about once rather than every render.
-  const fetchSuggestions = useCallback(async (ids) => {
-    const grouped = {};
-    ids.forEach(id => { grouped[id] = []; });
-    try {
-      (await pageApi.similarCategories(ids)).forEach(row => {
-        if (grouped[row.transaction_id]) grouped[row.transaction_id].push(row);
-        else grouped[row.transaction_id] = [row];
-      });
-    } catch (err) {
-      // Suggestions are a shortcut, not the feature — a failed lookup leaves the
-      // full category list, and the empty cache entries keep it from retrying in
-      // a loop.
-      console.error('Failed to load category suggestions:', err);
-    } finally {
-      setSuggestionsByTransaction(prev => ({ ...prev, ...grouped }));
-      ids.forEach(id => suggestionsInFlight.current.delete(id));
-    }
-  }, [pageApi]);
-
-  // Only the cards about to be seen are looked up, so a queue of a thousand
-  // transactions still costs one small request at a time.
-  // A row a rule already suggests for takes the rule's category as its one
-  // suggestion: it supersedes the history lookup, which is not made for it.
-  useEffect(() => {
-    const fromRules = {};
-    transactions.slice(0, SUGGESTION_PREFETCH).forEach(tx => {
-      const id = transactionId(tx);
-      const match = tx.rule_match;
-      if (id == null || id in suggestionsByTransaction || match?.status !== 'suggested' || match.category_id == null) return;
-      fromRules[id] = [
-        {
-          transaction_id: id,
-          category_id: match.category_id,
-          category_name: match.category_name,
-          count: null,
-          match_type: 'rule',
-          rule_name: match.rule_name,
-        },
-      ];
-    });
-    if (Object.keys(fromRules).length) setSuggestionsByTransaction(prev => ({ ...fromRules, ...prev }));
-  }, [transactions, suggestionsByTransaction]);
+  const exit = useCallback(() => {
+    if (onExit) onExit();
+    else window.location.href = backHref;
+  }, [onExit, backHref]);
 
   useEffect(() => {
-    const wanted = transactions
-      .slice(0, SUGGESTION_PREFETCH)
-      .filter(tx => !(tx.rule_match?.status === 'suggested' && tx.rule_match.category_id != null))
-      .map(transactionId)
-      .filter(id => id != null && !(id in suggestionsByTransaction) && !suggestionsInFlight.current.has(id));
-    if (wanted.length === 0) return;
-    wanted.forEach(id => suggestionsInFlight.current.add(id));
-    fetchSuggestions(wanted);
-  }, [transactions, suggestionsByTransaction, fetchSuggestions]);
+    rulesApi
+      .prompts()
+      .then((p) => setCanEditRules(!!p.can_edit))
+      .catch(() => setCanEditRules(false));
+  }, [rulesApi]);
+
+  // --- loading ---------------------------------------------------------
+
+  const load = useCallback(
+    async (forScope, { keepSession = false } = {}) => {
+      setPhase('loading');
+      setError(null);
+      try {
+        const [rows, queue, pairs] = await Promise.all([
+          pageApi.uncategorized(forScope),
+          pageApi.categorizeQueue(forScope),
+          batchApi.transferSuggestions().catch(() => []),
+        ]);
+        const byId = new Map(rows.map((r) => [rowId(r), r]));
+        const built = buildUnits(queue.groups, byId);
+        setRowsById((prev) => {
+          if (!keepSession) return byId;
+          // Rows already filed this session stay known, so Undo can bring them back.
+          const merged = new Map(prev);
+          byId.forEach((row, id) => merged.set(id, row));
+          return merged;
+        });
+        setUnits(built);
+        setPile([]);
+        setExcluded({});
+        setTransferPairs(pairs || []);
+        if (!keepSession) {
+          setSession(newSession());
+          setHistory([]);
+          setLast(null);
+          setRuleOffer(null);
+        }
+        setPhase(built.filter((u) => u.confident).length >= QUICK_WINS_MIN ? 'quickwins' : 'cards');
+      } catch (err) {
+        console.error('Failed to load the queue:', err);
+        setError(err.message || gettext('Could not load the transactions.'));
+        setPhase('cards');
+      }
+    },
+    [pageApi, batchApi],
+  );
 
   useEffect(() => {
-    fetchUncategorized(scope);
+    load(scope);
+    // The first load only: a scope change reloads through `changeScope`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // A new scope is a new queue: progress and skips start over, and the
-  // URL follows so a reload keeps it.
-  const changeScope = useCallback((next) => {
-    setScope(next);
-    setCategorized(0);
-    setSkippedCount(0);
-    setUndoStack([]);
-    setPendingBatch(null);
-    setError(null);
-    const url = `${window.location.pathname}${scopeSearch(next)}${window.location.hash}`;
-    window.history.replaceState(window.history.state, '', url);
-    fetchUncategorized(next);
-  }, [fetchUncategorized]);
+  // A new scope is a new queue; the URL follows so a reload keeps it.
+  const changeScope = useCallback(
+    (next) => {
+      setScope(next);
+      const url = `${window.location.pathname}${scopeSearch(next)}${window.location.hash}`;
+      window.history.replaceState(window.history.state, '', url);
+      load(next);
+    },
+    [load],
+  );
 
-  // Everything that happens once transactions are filed, whichever way they
-  // were filed: the card leaves, the counter moves, and the suggestions the
-  // decision invalidated are dropped. Shared by the single-category path and the split modal, so the
-  // two cannot drift in how the queue behaves.
-  const advanceQueue = useCallback((txList, { editedIds = new Set(), includesTop = true } = {}) => {
-    const committedIds = new Set(txList.map(t => t.id));
-    const newCategorized = categorized + txList.length;
+  // --- the current unit --------------------------------------------------
 
-    // The decision(s) just made are evidence about every queued transaction
-    // that looks like one of them, so those cached suggestions are now out
-    // of date and are dropped for the prefetch to pick up again.
-    const staleKeys = new Set(txList.map(lookalikeKey).filter(Boolean));
-    const staleIds = staleKeys.size
-      ? transactions
-          .filter(t => !committedIds.has(t.id) && staleKeys.has(lookalikeKey(t)))
-          .map(transactionId)
-      : [];
+  const unit = phase === 'cards' ? (units[0] ?? null) : null;
+  const lead = unit ? rowsById.get(unit.ids[0]) : null;
+  const leadId = rowId(lead);
+  const suggestions = useMemo(
+    () => (unit ? mergeSuggestions(unit.suggestions, lead, localAccounts, accountsById, MAX_SUGGESTIONS) : []),
+    [unit, lead, localAccounts, accountsById],
+  );
+  const details = lead ? (drafts[leadId] ?? detailsOf(lead)) : null;
+  const detailsDirty = lead ? changedDetails(lead, drafts[leadId]) !== null : false;
 
-    setTimeout(() => {
-      setTransactions(prev => prev.filter(t => !committedIds.has(t.id)));
-      // Dropped with the card rather than on the response, or the top card
-      // would visibly snap back to the bank's wording mid-flight.
-      if (editedIds.size > 0) {
-        setDrafts(prev => {
-          const next = { ...prev };
-          editedIds.forEach(id => delete next[id]);
-          return next;
-        });
-      }
-      if (staleIds.length > 0) {
-        setSuggestionsByTransaction(cached => {
-          const next = { ...cached };
-          staleIds.forEach(id => delete next[id]);
-          return next;
-        });
-      }
-      setCategorized(newCategorized);
-      setIsExiting(false);
-    }, includesTop ? 300 : 0);
-  }, [transactions, categorized]);
+  useEffect(() => setEditing(false), [unit?.key]);
 
-  // Categorizes one or more transactions to `account` in a single batched
-  // request. `txList` always includes the top-of-stack transaction when
-  // it's part of the batch, which drives the card-exit animation.
-  const commitCategorize = useCallback(async (txList, account) => {
-    if (!txList.length) return;
-    const includesTop = txList.some(t => t.id === transactions[0]?.id);
-    if (includesTop) setIsExiting(true);
-    setError(null);
-
-    // A card whose payee/description was edited goes through `batch_edit`,
-    // which applies the edits and the category in one atomic request, so the
-    // transaction is never left renamed but uncategorized. Anything untouched
-    // takes the plain categorize path in a single batched call. Drafts belong
-    // to individual cards, so a transaction swept into a batch still carries
-    // its own edits rather than the edited card's.
-    const edited = txList.map(t => ({ tx: t, changes: changedDetails(t, drafts[t.id]) })).filter(e => e.changes);
-    const editedIds = new Set(edited.map(e => e.tx.id));
-    const plain = txList.filter(t => !editedIds.has(t.id));
-
-    try {
-      await Promise.all([
-        ...edited.map(({ tx, changes }) =>
-          batchApi.batchEdit([transactionId(tx)], { category_id: account.id, ...changes })
-        ),
-        ...(plain.length
-          ? [
-              // A refusal throws, so the card does not slide away as though it
-              // had been filed.
-              pageApi.categorize(plain.map(transactionId), account.id),
-            ]
-          : []),
-      ]);
-
-      setUndoStack(prev => [...prev, { transactions: txList, account }]);
-      setUsage(prev => txList.reduce((u, t) => withUse(u, account.id, directionOf(t)), prev));
-      advanceQueue(txList, { editedIds, includesTop });
-    } catch (err) {
-      console.error('Failed to categorize:', err);
-      setError(err.message || 'Could not categorize that transaction.');
-      setIsExiting(false);
-    }
-  }, [transactions, pageApi, drafts, batchApi, advanceQueue]);
-
-  // Categorizing the top transaction: if other uncategorized transactions
-  // share its home account and description, offer to categorize them the
-  // same way instead of committing immediately.
-  const categorizeTransaction = useCallback((account) => {
-    const tx = transactions[0];
-    if (!tx) return;
-
-    const matches = findSimilarTransactions(transactions.slice(1), tx);
-    if (matches.length > 0) {
-      setPendingBatch({ account, tx, matches });
-      return;
-    }
-    commitCategorize([tx], account);
-  }, [transactions, commitCategorize]);
-
-  // The card's unsaved payee/description edits belong to the transaction the
-  // modal is about to show, so it opens on what the user typed rather than on
-  // what the bank sent. The modal's save posts both fields, so filing the split
-  // files the edit too -- the same guarantee the categorize path gets from
-  // `batch_edit`.
-  const splitTransaction = useMemo(() => {
-    const tx = transactions[0];
-    if (!tx) return null;
-    const draft = drafts[tx.id];
-    return draft ? { ...tx, payee: draft.payee, description: draft.description } : tx;
-  }, [transactions, drafts]);
-
-  // Saving a split is one `update` carrying the legs, the date and the details,
-  // so the transaction is never left half-filed. A refusal propagates to the
-  // modal, which shows it and stays open with the legs intact.
-  const handleSplitSave = useCallback(async (data) => {
-    const tx = transactions[0];
-    if (!tx) return;
-
-    await transactionApi.updateTransaction(transactionId(tx), {
-      date: data.date,
-      category: null,
-      splits: data.splits,
-      inflow: data.inflow,
-      outflow: data.outflow,
-      payee: data.payee,
-      description: data.description,
-      account: tx.account.id,
+  // Possible duplicate transfers, by the id of each leg.
+  const transferByRow = useMemo(() => {
+    const byRow = {};
+    transferPairs.forEach((pair) => {
+      const legs = [pair.outflow, pair.inflow];
+      legs.forEach((self, i) => {
+        byRow[self.imported_transaction_id] = { pair, self, other: legs[1 - i] };
+      });
     });
+    return byRow;
+  }, [transferPairs]);
 
-    setSplitModalOpen(false);
-    setIsExiting(true);
-    advanceQueue([tx], { editedIds: new Set([tx.id]) });
-  }, [transactions, transactionApi, advanceQueue]);
+  // The budget figures of the months about to be seen: what each category has
+  // left, on the chips, and how a pick moves it.
+  useEffect(() => {
+    const months = new Set(
+      units
+        .slice(0, FIGURES_PREFETCH)
+        .map((u) => monthOf(rowsById.get(u.ids[0])))
+        .filter(Boolean),
+    );
+    months.forEach((month) => {
+      if (figuresAsked.current.has(month)) return;
+      figuresAsked.current.add(month);
+      pageApi
+        .budgetMonth(month)
+        .then((body) => setFigures((prev) => ({ ...prev, [month]: figuresFromBudgetMonth(body) })))
+        .catch(() => setFigures((prev) => ({ ...prev, [month]: {} })));
+    });
+  }, [units, rowsById, pageApi]);
 
-  const handleBatchConfirm = useCallback((selectedMatches) => {
-    if (!pendingBatch) return;
-    commitCategorize([pendingBatch.tx, ...selectedMatches], pendingBatch.account);
-    setPendingBatch(null);
-  }, [pendingBatch, commitCategorize]);
+  // --- what a pick does, and undoes ---------------------------------------
 
-  const handleBatchSkip = useCallback(() => {
-    if (!pendingBatch) return;
-    commitCategorize([pendingBatch.tx], pendingBatch.account);
-    setPendingBatch(null);
-  }, [pendingBatch, commitCategorize]);
-
-  const handleBatchCancel = useCallback(() => setPendingBatch(null), []);
-
-  const handleCreateAccount = useCallback(async (name, accountGroupId) => {
-    const newAccount = await uploadApi.createAccount(name, accountGroupId);
-    setLocalAccounts(prev => [...prev, newAccount].sort((a, b) => a.name.localeCompare(b.name)));
-    setShowCreateAccountModal(false);
-    categorizeTransaction(newAccount);
-    return newAccount;
-  }, [uploadApi, categorizeTransaction]);
-
-  // --- Payee/description drafts for the card on top of the stack ---
-
-  const topTransaction = transactions[0] || null;
-
-  const topDetails = useMemo(
-    () => (topTransaction ? (drafts[topTransaction.id] ?? detailsOf(topTransaction)) : null),
-    [topTransaction, drafts]
-  );
-
-  const topDetailsDirty = useMemo(
-    () => (topTransaction ? changedDetails(topTransaction, drafts[topTransaction.id]) !== null : false),
-    [topTransaction, drafts]
-  );
-
-  const handleDetailChange = useCallback((field, value) => {
-    if (!topTransaction) return;
-    setDrafts(prev => ({
-      ...prev,
-      [topTransaction.id]: { ...(prev[topTransaction.id] ?? detailsOf(topTransaction)), [field]: value },
+  /**
+   * Apply (sign 1) or take back (sign -1) a pick's effect on what this page
+   * shows: the session's counts, how often the category is used, its budget
+   * figures and what a goal has left.
+   */
+  const applyEffects = useCallback((entry, sign) => {
+    const parts = entry.parts.filter((p) => p.account);
+    setSession((s) => ({
+      ...s,
+      filed: s.filed + sign * entry.parts.reduce((n, p) => n + p.ids.length, 0),
+      amount: s.amount + sign * entry.parts.reduce((n, p) => n + p.absAmount, 0),
+      lastAt: Date.now(),
+      pickTimes: sign > 0 ? [...s.pickTimes, Date.now()] : s.pickTimes,
     }));
-  }, [topTransaction]);
-
-  const handleDetailsRevert = useCallback(() => {
-    if (!topTransaction) return;
-    setDrafts(prev => {
+    setUsage((u) => parts.reduce((acc, p) => withUse(acc, p.account.id, p.direction, sign * p.ids.length), u));
+    setFigures((prev) => {
       const next = { ...prev };
-      delete next[topTransaction.id];
+      parts.forEach((p) => {
+        p.byMonth.forEach((amount, month) => {
+          const figure = next[month]?.[p.account.id];
+          const moved = applyToFigures(figure, p.account, sign * amount);
+          if (moved) next[month] = { ...next[month], [p.account.id]: moved };
+        });
+      });
       return next;
     });
-  }, [topTransaction]);
+    const goalSpend = {};
+    parts.forEach((p) => {
+      if (accountKind(p.account) === 'goal') goalSpend[p.account.id] = (goalSpend[p.account.id] || 0) + p.amount;
+    });
+    if (Object.keys(goalSpend).length) {
+      setLocalAccounts((prev) =>
+        prev.map((a) =>
+          goalSpend[a.id] == null || a.goal_left == null
+            ? a
+            : { ...a, goal_left: (parseFloat(a.goal_left) - sign * goalSpend[a.id]).toFixed(2) },
+        ),
+      );
+    }
+  }, []);
 
-  // The cards are absolutely positioned, so the stack has no height of its own
-  // and the container's minimum is the only thing holding the layout open. The
-  // top card is the tall one (it carries the editor), so it is measured rather
-  // than guessed at. The effect re-runs per card because React replaces the
-  // DOM node when the top of the queue changes. Measured before paint, or the
-  // stack visibly resettles on every card.
-  useLayoutEffect(() => {
-    const el = topCardRef.current;
-    if (!el) return undefined;
-    setCardHeight(el.offsetHeight);
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const observer = new ResizeObserver(() => setCardHeight(el.offsetHeight));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [topTransaction?.id]);
+  /** One part of a pick: these ids of `unit`, filed under `account` (null for a split). */
+  const partOf = useCallback(
+    (u, ids, account) => {
+      const byMonth = new Map();
+      ids.forEach((id) => {
+        const row = rowsById.get(id);
+        const month = monthOf(row);
+        byMonth.set(month, (byMonth.get(month) || 0) + signedAmount(row));
+      });
+      return {
+        unit: { ...u, ids },
+        ids,
+        account,
+        rows: ids.map((id) => rowsById.get(id)),
+        amount: ids.reduce((s, id) => s + signedAmount(rowsById.get(id)), 0),
+        absAmount: totalOf(ids, rowsById),
+        byMonth,
+        direction: directionOf(rowsById.get(ids[0])),
+      };
+    },
+    [rowsById],
+  );
 
-  const skipTransaction = useCallback(() => {
-    const tx = transactions[0];
-    if (!tx) return;
-    setIsSkipping(true);
-    setTimeout(() => {
-      setTransactions(prev => [...prev.slice(1), prev[0]]);
-      setSkippedCount(s => s + 1);
-      setIsSkipping(false);
-    }, 300);
-  }, [transactions]);
+  /** A pick's request failed: it never happened. The queue is re-read to be sure what did. */
+  const failed = useCallback(
+    (entry, err) => {
+      console.error('Failed to categorize:', err);
+      setHistory((h) => h.filter((e) => e.id !== entry.id));
+      applyEffects(entry, -1);
+      setLast(null);
+      setError(err?.message || gettext('Could not categorize that transaction.'));
+      load(scope, { keepSession: true });
+    },
+    [applyEffects, load, scope],
+  );
+
+  const launchGhost = useCallback(
+    (targetEl, row) => {
+      if (reducedMotion || !topCardRef.current) return;
+      setGhost({
+        key: Date.now(),
+        from: topCardRef.current.getBoundingClientRect(),
+        to: targetEl?.getBoundingClientRect?.() ?? null,
+        title: row?.payee || row?.merchant_name || row?.description || '',
+        amount: signedAmount(row),
+      });
+    },
+    [reducedMotion],
+  );
+
+  /** File the current unit (its ticked rows) under `account`. */
+  const file = useCallback(
+    (account, sourceEl) => {
+      if (!unit || !lead || !account) return;
+      const ids = includedIds(unit, excluded);
+      if (ids.length === 0) {
+        setError(gettext('Tick at least one transaction to file.'));
+        return;
+      }
+      setError(null);
+      setExitArmed(false);
+      const changes = changedDetails(lead, drafts[leadId]);
+      const rest = remainderOf(unit, excluded);
+      const part = partOf(unit, ids, account);
+      launchGhost(sourceEl, { ...lead, ...(changes?.payee != null ? { payee: changes.payee } : {}) });
+
+      // Shown at once: the next card is up before the server answers.
+      setUnits((prev) => (rest ? [rest, ...prev.slice(1)] : prev.slice(1)));
+      setExcluded((prev) => {
+        const next = { ...prev };
+        delete next[unit.key];
+        return next;
+      });
+      if (changes) {
+        // The rows carry the new names from now on, as the server will.
+        setRowsById((prev) => {
+          const next = new Map(prev);
+          ids.forEach((id) => {
+            const row = next.get(id);
+            next.set(id, {
+              ...row,
+              ...(changes.payee != null ? { payee: changes.payee, merchant_name: changes.payee } : {}),
+              ...(changes.description != null ? { description: changes.description } : {}),
+            });
+          });
+          return next;
+        });
+        setDrafts((prev) => {
+          const next = { ...prev };
+          delete next[leadId];
+          return next;
+        });
+      }
+
+      const request = changes
+        ? batchApi.batchEdit(ids, { category_id: account.id, ...changes })
+        : pageApi.categorize(ids, account.id);
+      historySeq.current += 1;
+      const entry = { id: historySeq.current, parts: [part], promise: request };
+      setHistory((h) => [...h, entry]);
+      applyEffects(entry, 1);
+      setLast({ count: ids.length, label: account.name, accountId: account.id, month: monthOf(lead) });
+      setRuleOffer(null);
+
+      const byRule = unit.suggestions[0]?.match_type === 'rule';
+      request
+        .then(() => {
+          if (!canEditRules || byRule || lead.rule_match) return;
+          rulesApi
+            .draftFromTransaction(ids[0])
+            .then((result) => {
+              if (result?.offer) setRuleOffer({ draft: result.rule, coverage: result.coverage, afterEntry: entry.id });
+            })
+            .catch(() => {});
+        })
+        .catch((err) => failed(entry, err));
+    },
+    [
+      unit,
+      lead,
+      leadId,
+      excluded,
+      drafts,
+      partOf,
+      launchGhost,
+      batchApi,
+      pageApi,
+      applyEffects,
+      canEditRules,
+      rulesApi,
+      failed,
+    ],
+  );
+
+  /** File every ticked Quick win under its first suggestion: one request per category. */
+  const fileQuickWins = useCallback(
+    async (chosen) => {
+      const parts = chosen
+        .map((u) => [u, accountsById[u.suggestions[0]?.category_id]])
+        .filter(([, account]) => account)
+        .map(([u, account]) => partOf(u, u.ids, account));
+      if (!parts.length) return;
+      const byCategory = new Map();
+      parts.forEach((p) => byCategory.set(p.account.id, [...(byCategory.get(p.account.id) || []), ...p.ids]));
+      setQuickBusy(true);
+      setError(null);
+      const request = Promise.all([...byCategory].map(([categoryId, ids]) => pageApi.categorize(ids, categoryId)));
+      historySeq.current += 1;
+      const entry = { id: historySeq.current, parts, promise: request };
+      try {
+        await request;
+        setHistory((h) => [...h, entry]);
+        applyEffects(entry, 1);
+        const filedIds = new Set(parts.flatMap((p) => p.ids));
+        setUnits((prev) => withoutIds(prev, filedIds));
+        const count = filedIds.size;
+        setLast({ count, label: gettext('their suggestions'), accountId: null, month: null });
+        setPhase('cards');
+      } catch (err) {
+        // Some categories may have gone through: the queue says which.
+        setError(err?.message || gettext('Could not file the quick wins.'));
+        load(scope, { keepSession: true });
+      } finally {
+        setQuickBusy(false);
+      }
+    },
+    [accountsById, partOf, pageApi, applyEffects, load, scope],
+  );
+
+  /** Take back the latest pick: its rows go back to uncategorized, on top of the queue. */
+  const undo = useCallback(async () => {
+    const entry = history[history.length - 1];
+    if (!entry || undoing) return;
+    setUndoing(true);
+    setError(null);
+    try {
+      await entry.promise;
+      const ids = entry.parts.flatMap((p) => p.ids);
+      await pageApi.uncategorize(ids);
+      setHistory((h) => h.filter((e) => e.id !== entry.id));
+      applyEffects(entry, -1);
+      setRowsById((prev) => {
+        const next = new Map(prev);
+        entry.parts.forEach((p) => p.rows.forEach((row) => next.set(rowId(row), next.get(rowId(row)) ?? row)));
+        return next;
+      });
+      // Under a key of their own: the rest of a split row's group may still be queued under the old one.
+      const restored = entry.parts.map((p) => ({ ...p.unit, key: `${p.unit.key}#${entry.id}` }));
+      setUnits((prev) => [...restored, ...withoutIds(prev, ids)]);
+      setPhase('cards');
+      setLast(null);
+      setRuleOffer(null);
+    } catch (err) {
+      // A failed pick took itself back already; anything else is the server's refusal.
+      setError(err?.message || gettext('Could not undo that.'));
+    } finally {
+      setUndoing(false);
+    }
+  }, [history, undoing, pageApi, applyEffects]);
+
+  const skip = useCallback(() => {
+    if (!unit) return;
+    setExitArmed(false);
+    setRuleOffer(null);
+    if (!reducedMotion && topCardRef.current) {
+      setGhost({
+        key: Date.now(),
+        from: topCardRef.current.getBoundingClientRect(),
+        to: null,
+        title: lead?.payee || lead?.merchant_name || lead?.description || '',
+        amount: signedAmount(lead),
+      });
+    }
+    setUnits((prev) => prev.slice(1));
+    setPile((prev) => [...prev, unit]);
+  }, [unit, lead, reducedMotion]);
+
+  const onEscape = useCallback(() => {
+    if (exitArmed) exit();
+    else setExitArmed(true);
+  }, [exitArmed, exit]);
 
   useEffect(() => {
+    if (!exitArmed) return undefined;
+    const t = setTimeout(() => setExitArmed(false), EXIT_ARM_MS);
+    return () => clearTimeout(t);
+  }, [exitArmed]);
+
+  // The keyboard when focus is not in the search box (a chip or button was
+  // clicked): letters go to the search, the queue's keys still work.
+  const modalOpen = splitOpen || showCreateAccount || Boolean(ruleDialog);
+  const hasUnit = Boolean(unit);
+  useEffect(() => {
     const handler = (e) => {
-      // A modal over the stack handles its own Escape (via the dialog's
-      // `cancel` event) — don't also navigate away or skip under it, which
-      // would throw the user out of the queue while they were editing.
-      if (pendingBatch || splitModalOpen || showCreateAccountModal || ruleDialog) return;
-      if (e.key === 'Escape') window.location.href = backHref;
-      if (e.key === 's' && !e.ctrlKey && !e.metaKey && !['INPUT', 'TEXTAREA'].includes(e.target.tagName)) skipTransaction();
-      if (e.key === 'z' && (e.ctrlKey || e.metaKey) && undoStack.length > 0) {
-        e.preventDefault();
-        // Undo not implemented on backend — just visual feedback
+      if (modalOpen || phase !== 'cards' || e.defaultPrevented) return;
+      if (isEditable(e.target) || e.target.closest?.('dialog, [role="region"]')) return;
+      // The end screen: Escape is the way out, nothing left to arm.
+      if (!hasUnit) {
+        if (e.key === 'Escape') exit();
+        return;
       }
+      // Enter and Space on a focused button press that button, and only that.
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.closest?.('button, a, label, [role="tab"]')) return;
+      if (e.key.length === 1 && /\S/.test(e.key) && !/^[1-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        searchRef.current?.focus();
+        return;
+      }
+      commandsRef.current?.(e);
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [backHref, undoStack, pendingBatch, splitModalOpen, showCreateAccountModal, ruleDialog]);
+  }, [modalOpen, phase, hasUnit, exit]);
 
-  const currentId = transactionId(transactions[0]);
-  const currentSuggestions = (currentId != null && suggestionsByTransaction[currentId]) || [];
-  const suggestionsLoading = currentId != null && !(currentId in suggestionsByTransaction);
+  // --- details, groups, splits, new categories, transfers -------------------
 
-  if (loading) {
+  const handleDetailChange = useCallback(
+    (field, value) => {
+      if (!lead) return;
+      setDrafts((prev) => ({ ...prev, [leadId]: { ...(prev[leadId] ?? detailsOf(lead)), [field]: value } }));
+    },
+    [lead, leadId],
+  );
+
+  const handleDetailsRevert = useCallback(() => {
+    setDrafts((prev) => {
+      const next = { ...prev };
+      delete next[leadId];
+      return next;
+    });
+  }, [leadId]);
+
+  const toggleExcluded = useCallback((key, id) => {
+    setExcluded((prev) => {
+      const out = new Set(prev[key] || []);
+      if (out.has(id)) out.delete(id);
+      else out.add(id);
+      return { ...prev, [key]: out };
+    });
+  }, []);
+
+  // The split editor opens on what the user typed, not on what the bank sent.
+  const splitTransaction = useMemo(() => {
+    if (!lead) return null;
+    const draft = drafts[leadId];
+    return draft ? { ...lead, payee: draft.payee, description: draft.description } : lead;
+  }, [lead, leadId, drafts]);
+
+  // A split files the lead row only: its group's other rows stay in the queue.
+  const handleSplitSave = useCallback(
+    async (data) => {
+      if (!lead || !unit) return;
+      await transactionApi.updateTransaction(leadId, {
+        date: data.date,
+        category: null,
+        splits: data.splits,
+        inflow: data.inflow,
+        outflow: data.outflow,
+        payee: data.payee,
+        description: data.description,
+        account: lead.account.id,
+      });
+      setSplitOpen(false);
+      historySeq.current += 1;
+      const entry = { id: historySeq.current, parts: [partOf(unit, [leadId], null)], promise: Promise.resolve() };
+      setHistory((h) => [...h, entry]);
+      applyEffects(entry, 1);
+      setRowsById((prev) => new Map(prev).set(leadId, { ...lead, payee: data.payee, description: data.description }));
+      setUnits((prev) => withoutIds(prev, [leadId]));
+      setLast({ count: 1, label: gettext('a split'), accountId: null, month: null });
+    },
+    [lead, leadId, unit, transactionApi, partOf, applyEffects],
+  );
+
+  const handleCreateAccount = useCallback(
+    async (name, accountGroupId) => {
+      const created = await uploadApi.createAccount(name, accountGroupId);
+      setLocalAccounts((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setShowCreateAccount(false);
+      file(created, null);
+      return created;
+    },
+    [uploadApi, file],
+  );
+
+  // Both banks reported one transfer: Match keeps one leg (now the transfer) and voids the other.
+  const handleMatch = useCallback(
+    async ({ pair, self, other }) => {
+      const proposal = pair.proposal || {};
+      try {
+        await batchApi.transferMatch(self.imported_transaction_id, other.imported_transaction_id, proposal.archive_id);
+      } catch (err) {
+        if (err.status === 409 && err.payload?.proposal) {
+          const fresh = err.payload.proposal;
+          setTransferPairs((prev) => prev.map((p) => (p === pair ? { ...p, proposal: fresh } : p)));
+        }
+        setError(err.message || gettext('Could not match these transactions.'));
+        return;
+      }
+      const legIds = [self.imported_transaction_id, other.imported_transaction_id];
+      const inQueue = legIds.filter((id) => units.some((u) => u.ids.includes(id)));
+      setTransferPairs((prev) => prev.filter((p) => p !== pair));
+      setUnits((prev) => withoutIds(prev, legIds));
+      setSession((s) => ({ ...s, filed: s.filed + inQueue.length, lastAt: Date.now() }));
+      setLast({ count: inQueue.length, label: gettext('a matched transfer'), accountId: null, month: null });
+    },
+    [batchApi, units],
+  );
+
+  const handleDismissMatch = useCallback(
+    async ({ pair, self, other }) => {
+      try {
+        await batchApi.transferDismiss(self.imported_transaction_id, other.imported_transaction_id);
+        setTransferPairs((prev) => prev.filter((p) => p !== pair));
+      } catch (err) {
+        setError(err.message || gettext('Could not dismiss this suggestion.'));
+      }
+    },
+    [batchApi],
+  );
+
+  // --- rules ---------------------------------------------------------------
+
+  const createRule = useCallback(async () => {
+    if (!ruleOffer) return;
+    const { draft } = ruleOffer;
+    setRuleOffer(null);
+    try {
+      await rulesApi.create(draft);
+      setSession((s) => ({ ...s, rules: s.rules + 1 }));
+      setRuleNotice(gettext('Rule created. Transactions it matches now show its suggestion.'));
+      load(scope, { keepSession: true });
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [ruleOffer, rulesApi, load, scope]);
+
+  const declineRule = useCallback(() => {
+    if (!ruleOffer) return;
+    rulesApi.declineDraft(ruleOffer.draft.signature, ruleOffer.draft.category).catch(() => {});
+    setRuleOffer(null);
+  }, [ruleOffer, rulesApi]);
+
+  // --- render --------------------------------------------------------------
+
+  const left = countOf(units);
+  const progress = {
+    done: session.filed,
+    total: session.filed + left + countOf(pile),
+    amountDone: session.amount,
+    amountTotal:
+      session.amount +
+      units.reduce((s, u) => s + totalOf(u.ids, rowsById), 0) +
+      pile.reduce((s, u) => s + totalOf(u.ids, rowsById), 0),
+    minutes: minutesLeft(units.length, secondsPerUnit(session.pickTimes)),
+  };
+  const quickUnits = units.filter((u) => u.confident && u.suggestions[0] && accountsById[u.suggestions[0].category_id]);
+  const exitLabel = onExit ? gettext('Back to the Inbox') : gettext('Back to Bank Feed');
+  const overlay = Boolean(onExit);
+  const shell = overlay
+    ? 'fixed inset-0 z-[60] overflow-y-auto bg-base-200 flex flex-col'
+    : 'min-h-screen bg-base-200 flex flex-col';
+
+  if (phase === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-base-200">
-        <div className="text-center">
-          <span className="loading loading-spinner loading-lg text-primary"></span>
-          <p className="mt-4 text-base-content/70">Loading transactions...</p>
+      <div className={`${shell} items-center justify-center`} data-testid="categorize-loading">
+        <div className="text-center m-auto">
+          <span className="loading loading-spinner loading-lg text-primary" />
+          <p className="mt-4 text-base-content/70">{gettext('Loading transactions…')}</p>
         </div>
       </div>
     );
   }
 
-  if (transactions.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-base-200">
-        <Confetti active={categorized > 0} />
-        <div className="card bg-base-100 shadow-xl p-8 text-center max-w-md">
-          <div className="text-6xl mb-4">{categorized > 0 ? '🎉' : '✅'}</div>
-          <h2 className="text-2xl font-black mb-2">
-            {categorized > 0 ? 'All Done!' : 'Nothing to categorize'}
-          </h2>
-          <p className="text-base-content/70 mb-2" data-testid="categorize-empty-message">
-            {categorized > 0
-              ? `You categorized ${categorized} transactions!`
-              : isScoped(scope)
-                ? 'No uncategorized transactions in this account and date range.'
-                : 'All your transactions are already categorized.'}
-          </p>
-          <div className="flex justify-center mb-4">
-            <ScopeBar scope={scope} feedAccounts={feedAccounts} onChange={changeScope} />
-          </div>
-          <a href={backHref} className="btn btn-primary">
-            ← Back to Bank Feed
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-base-200 flex flex-col">
-      {/* Header */}
-      <div className="bg-base-100 border-b border-base-300 px-6 py-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-4">
-          <a href={backHref} className="btn btn-ghost btn-sm gap-1">
-            ← Back
-          </a>
-          <h1 className="text-xl font-black tracking-tight">⚡ Categorize Mode</h1>
-          <ScopeBar scope={scope} feedAccounts={feedAccounts} onChange={changeScope} />
-        </div>
-        {canEditRules && (
+  const header = (
+    <div className="bg-base-100 border-b border-base-300 px-4 sm:px-6 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 sticky top-0 z-20">
+      <a
+        href={backHref}
+        onClick={(e) => {
+          if (!overlay) return;
+          e.preventDefault();
+          exit();
+        }}
+        className="btn btn-ghost btn-sm gap-1"
+        data-testid="categorize-back"
+      >
+        ← {gettext('Back')}
+      </a>
+      <h1 className="text-lg sm:text-xl font-black tracking-tight">⚡ {gettext('Categorize Mode')}</h1>
+      <ScopeBar scope={scope} feedAccounts={feedAccounts} onChange={changeScope} />
+      <div className="flex items-center gap-2 ml-auto">
+        {phase === 'cards' && quickUnits.length >= QUICK_WINS_MIN && (
           <button
             type="button"
-            className="btn btn-outline btn-sm gap-1"
+            className="btn btn-sm btn-soft btn-success gap-1"
+            onClick={() => setPhase('quickwins')}
+            data-testid="categorize-quick-wins-btn"
+          >
+            ⚡ {interpolate(gettext('%s quick wins'), [countOf(quickUnits)])}
+          </button>
+        )}
+        {canEditRules && lead && (
+          <button
+            type="button"
+            className="btn btn-outline btn-sm gap-1 hidden sm:inline-flex"
             title={gettext('New rule, starting from this transaction')}
-            onClick={() => setRuleDialog({ draft: draftFromRow(transactions[0]) })}
+            onClick={() => setRuleDialog({ draft: draftFromRow(lead) })}
             data-testid="categorize-new-rule"
           >
             <Icon name="wand-magic-sparkles" className="h-4 w-4" />
             {gettext('New rule')}
           </button>
         )}
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:block w-48">
-            <ProgressBar done={categorized} total={totalCount} />
-          </div>
-          <kbd className="kbd kbd-sm hidden lg:inline-flex">Esc to exit</kbd>
-        </div>
       </div>
+      {progress.total > 0 && (
+        <div className="basis-full">
+          <Progress {...progress} />
+        </div>
+      )}
+      {exitArmed && (
+        <div className="basis-full flex items-center gap-2 text-sm" role="status" data-testid="categorize-exit-hint">
+          <Icon name="exclamation-triangle" className="h-4 w-4 text-warning shrink-0" />
+          {gettext('Press Esc again to leave. Everything you filed is saved.')}
+        </div>
+      )}
+    </div>
+  );
 
+  const dialogs = (
+    <>
       <RuleBuilderDialog
         request={ruleDialog}
         bookBase={book.base}
@@ -1482,14 +904,15 @@ export default function CategorizeMode({
         onClose={() => setRuleDialog(null)}
         onSaved={(saved, info = {}) => {
           setRuleDialog(null);
+          setRuleOffer(null);
+          if (!info.deleted) setSession((s) => ({ ...s, rules: s.rules + 1 }));
           setRuleNotice(
             info.deleted
               ? gettext('Rule deleted')
-              : gettext('Rule saved. Transactions it matches now show its suggestion first.')
+              : gettext('Rule saved. Transactions it matches now show its suggestion first.'),
           );
-          // Re-read the queue: the rule's suggestions (or postings) change what is left.
-          setSuggestionsByTransaction({});
-          fetchUncategorized(scope);
+          // The rule's suggestions (or postings) change what is left.
+          load(scope, { keepSession: true });
         }}
       />
       <Toast
@@ -1499,94 +922,17 @@ export default function CategorizeMode({
         onClose={clearRuleNotice}
         testId="categorize-rule-toast"
       />
-
-      {/* Mobile progress */}
-      <div className="sm:hidden px-4 pt-3">
-        <ProgressBar done={categorized} total={totalCount} />
-      </div>
-
-      {/* Main content */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-6 p-6 max-w-7xl mx-auto w-full">
-        {/* Left: Card stack */}
-        <div className="lg:w-2/5 flex flex-col items-center">
-          {error && (
-            <div className="alert alert-error mb-3 w-full max-w-md py-2" data-testid="categorize-error">
-              <span className="text-sm">{error}</span>
-              <button className="btn btn-ghost btn-xs" onClick={() => setError(null)}>✕</button>
-            </div>
-          )}
-          {/* Cards behind the top one are pushed down by `offset * 8px` (see
-              TransactionCard), so the stack's real bottom edge sits below the
-              measured card — pad the container for the deepest card's offset
-              or its shadow pokes out past this box. */}
-          <div
-            className="relative w-full max-w-md"
-            style={{ minHeight: `${cardHeight + (Math.min(transactions.length, 5) - 1) * 8}px` }}
-          >
-            {transactions.slice(0, 5).map((tx, i) => (
-              <TransactionCard
-                key={tx.id}
-                transaction={tx}
-                index={i}
-                total={Math.min(transactions.length, 5)}
-                allTransactions={transactions}
-                isExiting={isExiting}
-                isSkipping={isSkipping}
-                cardRef={topCardRef}
-                details={topDetails}
-                detailsDirty={topDetailsDirty}
-                payeeOptions={payeeOptions}
-                onDetailChange={handleDetailChange}
-                onDetailsRevert={handleDetailsRevert}
-              />
-            ))}
-          </div>
-          <div className="mt-4 flex flex-col items-center gap-2">
-            <button
-              onClick={skipTransaction}
-              disabled={isExiting || isSkipping}
-              className="btn btn-ghost btn-sm gap-1 text-base-content/70 hover:text-base-content"
-            >
-              ⏭ Skip for now
-              <kbd className="kbd kbd-xs ml-1">S</kbd>
-            </button>
-            <p className="text-sm text-base-content/40" data-testid="categorize-remaining">
-              {transactions.length} remaining{skippedCount > 0 ? ` · ${skippedCount} skipped` : ''}
-            </p>
-          </div>
-        </div>
-
-        {/* Right: Account hierarchy */}
-        <div className="lg:w-3/5 bg-base-100 rounded-2xl border border-base-300 shadow-lg p-5 flex flex-col min-h-[400px] lg:min-h-0 lg:max-h-[calc(100vh-140px)]">
-          <h2 className="text-lg font-bold mb-3 shrink-0">Choose a Category</h2>
-          <AccountHierarchy
-            allAccounts={localAccounts}
-            allAccountGroups={allAccountGroups}
-            usage={usage}
-            suggestions={currentSuggestions}
-            suggestionsLoading={suggestionsLoading}
-            currentTransaction={transactions[0]}
-            onSelect={categorizeTransaction}
-            onCreateNew={() => setShowCreateAccountModal(true)}
-            onSplit={() => setSplitModalOpen(true)}
-          />
-        </div>
-      </div>
-
-      {showCreateAccountModal && (
+      {showCreateAccount && (
         <CreateAccountModal
           allAccountGroups={allAccountGroups}
           onSave={handleCreateAccount}
-          onCancel={() => setShowCreateAccountModal(false)}
+          onCancel={() => setShowCreateAccount(false)}
         />
       )}
-
-      {/* The same editor the feed uses, so a split is made one way in the app
-          rather than two. It opens straight into split mode via `startSplit`
-          below, since that is the only reason to reach it from here. */}
+      {/* The feed's own editor, opened straight into split mode. */}
       <TransactionModal
-        open={splitModalOpen}
-        onClose={() => setSplitModalOpen(false)}
+        open={splitOpen}
+        onClose={() => setSplitOpen(false)}
         transaction={splitTransaction}
         source={feedTransaction}
         allAccounts={localAccounts}
@@ -1594,55 +940,169 @@ export default function CategorizeMode({
         book={book}
         onSave={handleSplitSave}
         onAccountCreated={(account) =>
-          setLocalAccounts(prev =>
-            prev.some(a => a.id === account.id)
+          setLocalAccounts((prev) =>
+            prev.some((a) => a.id === account.id)
               ? prev
-              : [...prev, account].sort((a, b) => a.name.localeCompare(b.name))
+              : [...prev, account].sort((a, b) => a.name.localeCompare(b.name)),
           )
         }
         startSplit
       />
+      {ghost && <Ghost key={ghost.key} ghost={ghost} onDone={() => setGhost(null)} />}
+    </>
+  );
 
-      <SimilarTransactionsModal
-        pendingBatch={pendingBatch}
-        onConfirm={handleBatchConfirm}
-        onSkip={handleBatchSkip}
-        onCancel={handleBatchCancel}
-      />
+  const errorAlert = error && (
+    <div className="alert alert-error w-full py-2" data-testid="categorize-error">
+      <span className="text-sm">{error}</span>
+      <button
+        type="button"
+        className="btn btn-ghost btn-xs"
+        onClick={() => setError(null)}
+        aria-label={gettext('Dismiss')}
+      >
+        ✕
+      </button>
+    </div>
+  );
 
-      <style>{`
-        .card-exit {
-          animation: cardExit 0.3s ease-in forwards;
-        }
-        @keyframes cardExit {
-          0% { transform: translateX(0) rotate(0deg); opacity: 1; }
-          100% { transform: translateX(120%) rotate(15deg); opacity: 0; }
-        }
-        .card-skip {
-          animation: cardSkip 0.3s ease-in forwards;
-        }
-        @keyframes cardSkip {
-          0% { transform: translateY(0); opacity: 1; }
-          100% { transform: translateY(120%) scale(0.8); opacity: 0; }
-        }
-        .animate-in {
-          animation: fadeIn 0.2s ease-out;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-pulse-subtle {
-          animation: pulseSoft 2s ease-in-out infinite;
-        }
-        @keyframes pulseSoft {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: oklch(var(--bc) / 0.2); border-radius: 3px; }
-      `}</style>
+  if (phase === 'quickwins') {
+    return (
+      <div className={shell} data-testid="categorize-mode">
+        {header}
+        <div className="flex-1 p-4 sm:p-6 space-y-3">
+          {errorAlert}
+          <QuickWins
+            units={quickUnits}
+            rowsById={rowsById}
+            accountsById={accountsById}
+            busy={quickBusy}
+            onFile={fileQuickWins}
+            onSkip={() => setPhase('cards')}
+          />
+        </div>
+        {dialogs}
+      </div>
+    );
+  }
+
+  if (!unit) {
+    return (
+      <div className={shell} data-testid="categorize-mode">
+        {header}
+        <div className="px-4 pt-4">{errorAlert}</div>
+        {last && (
+          <div className="px-4 pt-4 max-w-md w-full mx-auto">
+            <AfterPick last={last} impact={null} undoing={undoing} onUndo={undo} />
+          </div>
+        )}
+        <Summary
+          session={session}
+          pileCount={pile.length}
+          scoped={isScoped(scope)}
+          onReviewPile={() => {
+            setUnits(pile);
+            setPile([]);
+          }}
+          onExit={exit}
+          exitLabel={exitLabel}
+        />
+        {dialogs}
+      </div>
+    );
+  }
+
+  const topSuggestion = suggestions[0] ? accountsById[suggestions[0].category_id] : null;
+  const impact =
+    last?.accountId && accountsById[last.accountId]
+      ? { account: accountsById[last.accountId], month: last.month, figure: figures[last.month]?.[last.accountId] }
+      : null;
+
+  return (
+    <div className={shell} data-testid="categorize-mode">
+      {header}
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 p-4 sm:p-6 max-w-7xl mx-auto w-full">
+        <div className="lg:w-2/5 flex flex-col items-center gap-3">
+          {errorAlert}
+          <div className="w-full max-w-md">
+            <QueueCards
+              units={units}
+              topCardRef={topCardRef}
+              reducedMotion={reducedMotion}
+              topSuggestionName={topSuggestion?.name ?? null}
+              onSwipeRight={() => topSuggestion && file(topSuggestion, null)}
+              onSwipeLeft={skip}
+              onSwipeUp={() => setEditing(true)}
+              swipeDisabled={editing}
+              unit={unit}
+              rowsById={rowsById}
+              excluded={excluded}
+              onToggleExcluded={toggleExcluded}
+              details={details}
+              detailsDirty={detailsDirty}
+              editing={editing}
+              setEditing={setEditing}
+              payeeOptions={payeeOptions}
+              onDetailChange={handleDetailChange}
+              onDetailsRevert={handleDetailsRevert}
+              transferMatch={transferByRow[leadId] ?? null}
+              onMatch={handleMatch}
+              onDismissMatch={handleDismissMatch}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={skip}
+              className="btn btn-ghost btn-sm gap-1 text-base-content/70 hover:text-base-content"
+              data-testid="categorize-skip"
+            >
+              {gettext('Skip for now')}
+              <kbd className="kbd kbd-xs hidden sm:inline-flex">→</kbd>
+            </button>
+          </div>
+          <p className="text-sm text-base-content/70" data-testid="categorize-remaining">
+            {interpolate(gettext('%s remaining'), [left])}
+            {pile.length > 0 ? ` · ${interpolate(gettext('%s skipped'), [countOf(pile)])}` : ''}
+          </p>
+          <div className="w-full max-w-md">
+            <AfterPick
+              last={last}
+              impact={impact}
+              ruleOffer={ruleOffer}
+              undoing={undoing}
+              onUndo={undo}
+              onCreateRule={createRule}
+              onCustomizeRule={() => {
+                setRuleDialog({ draft: ruleOffer.draft });
+                setRuleOffer(null);
+              }}
+              onDeclineRule={declineRule}
+            />
+          </div>
+        </div>
+
+        <div className="lg:w-3/5 bg-base-100 rounded-2xl border border-base-300 shadow-lg p-4 sm:p-5 flex flex-col min-h-[400px] lg:min-h-0 lg:max-h-[calc(100vh-160px)] lg:sticky lg:top-28">
+          <CategoryPicker
+            accounts={localAccounts}
+            usage={usage}
+            row={lead}
+            suggestions={suggestions}
+            loading={false}
+            figures={figures[monthOf(lead)]}
+            searchRef={searchRef}
+            commandsRef={commandsRef}
+            autoFocus={finePointer}
+            onSelect={file}
+            onSplit={() => setSplitOpen(true)}
+            onCreateNew={() => setShowCreateAccount(true)}
+            onSkip={skip}
+            onUndo={undo}
+            onEscape={onEscape}
+          />
+        </div>
+      </div>
+      {dialogs}
     </div>
   );
 }

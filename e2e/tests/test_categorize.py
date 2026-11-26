@@ -52,7 +52,7 @@ def test_empty_search_highlights_nothing(requires_vite, authenticated_page: Page
     categorize.goto(categorize_fixture["account"].book)
 
     assert categorize.active_row_name() is None
-    assert not categorize.has_keyboard_hint()
+    assert not categorize.has_search_hint()
 
     before = categorize.current_card_title()
     categorize.press("Enter")
@@ -68,7 +68,7 @@ def test_typing_highlights_the_first_match(requires_vite, authenticated_page: Pa
     categorize.search("zed dining")
 
     assert categorize.active_row_name() == "Zed Dining"
-    assert categorize.has_keyboard_hint()
+    assert categorize.has_search_hint()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -202,13 +202,18 @@ def test_searching_hides_the_suggestions(
 def test_payee_and_description_are_editable_on_the_card(
     requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
 ):
-    """The card at the top of the stack shows the bank's payee/description in editable fields."""
+    """The card shows the bank's payee/description; the pencil opens them as fields."""
     categorize = CategorizePage(authenticated_page, live_server.url)
     categorize.goto(team.default_book)
 
     assert categorize.current_card_title() == "Blue Bottle"
     assert categorize.current_card_description() == "UNCATEGORIZED ROW"
+    assert not categorize.details_open()
     assert not categorize.details_are_dirty()
+
+    categorize.open_details()
+    assert categorize.current_card_title() == "Blue Bottle"
+    assert categorize.current_card_description() == "UNCATEGORIZED ROW"
 
     categorize.edit_payee("Blue Bottle Coffee")
     assert categorize.details_are_dirty()
@@ -274,6 +279,7 @@ def test_escape_in_an_edited_field_stays_in_categorize_mode(
     categorize = CategorizePage(authenticated_page, live_server.url)
     categorize.goto(team.default_book)
 
+    categorize.open_details()
     categorize.description_field.fill("Half-typed")
     categorize.description_field.press("Escape")
 
@@ -283,7 +289,7 @@ def test_escape_in_an_edited_field_stays_in_categorize_mode(
 
 @pytest.mark.django_db(transaction=True)
 def test_a_draft_survives_a_skip(requires_vite, authenticated_page: Page, live_server, categorize_fixture, team):
-    """A skipped card comes back around, so the edit that was typed on it is still there."""
+    """A skipped card waits in the skipped pile, and comes back from it with the edit typed on it."""
     account = categorize_fixture["account"]
     feed_transaction(team, account, description="SECOND ROW", merchant_name="Other Merchant")
 
@@ -291,15 +297,16 @@ def test_a_draft_survives_a_skip(requires_vite, authenticated_page: Page, live_s
     categorize.goto(team.default_book)
 
     categorize.edit_payee("Renamed while passing through")
+    categorize.page.locator("[data-testid='categorize-details-done']").click()
 
-    # Skipping rotates the edited card to the back of the queue...
-    authenticated_page.get_by_role("button", name="Skip for now").click()
-    authenticated_page.wait_for_timeout(600)
+    # Skipping sets the edited card aside (the factory's dates decide which card is first)...
+    categorize.skip()
     assert categorize.current_card_title() != "Renamed while passing through"
 
-    # ...and skipping the other one brings it back with the draft intact.
-    authenticated_page.get_by_role("button", name="Skip for now").click()
-    authenticated_page.wait_for_timeout(600)
+    # ...and once the queue is through, the skipped pile brings it back with the draft intact.
+    categorize.skip()
+    authenticated_page.locator("[data-testid='categorize-review-pile']").click()
+    authenticated_page.wait_for_selector("[data-testid='categorize-card']")
     assert categorize.current_card_title() == "Renamed while passing through"
     assert categorize.details_are_dirty()
 
@@ -412,3 +419,185 @@ def test_categories_are_ordered_by_the_transactions_direction(
     assert categorize.listed_kinds() == expected_kinds
     # The row's own account is never offered: that would be a transfer to itself.
     assert "Order Chequing" not in categorize.listed_names()
+
+
+# ----------------------------------------------------------------------
+# The queue: merchant groups, quick wins, the keyboard, Undo, the skipped pile
+# ----------------------------------------------------------------------
+
+
+def _wait_until(page, check, timeout_ms=5_000):
+    """Poll `check()` (a database read) until it is true."""
+    for _ in range(timeout_ms // 100):
+        if check():
+            return True
+        page.wait_for_timeout(100)
+    return check()
+
+
+def _category_of(row):
+    row.refresh_from_db()
+    if row.journal_entry_id is None:
+        return None
+    names = {line.account.name for line in row.journal_entry.lines.all() if line.account_id != row.account_id}
+    return names.pop() if len(names) == 1 else names
+
+
+@pytest.mark.django_db(transaction=True)
+def test_one_pick_files_every_row_of_a_merchant(
+    requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
+):
+    """Rows of one account, direction and merchant are one card; a pick files them all."""
+    second = feed_transaction(team, categorize_fixture["account"], description="AGAIN", merchant_name="Blue Bottle")
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.default_book)
+    expect(authenticated_page.locator("[data-testid='categorize-group-badge']")).to_contain_text("2")
+    assert categorize.remaining() == 2
+
+    categorize.search("zed coffee")
+    categorize.press("Enter")
+
+    assert _wait_until(authenticated_page, lambda: _category_of(second) == "Zed Coffee")
+    assert _category_of(categorize_fixture["row"]) == "Zed Coffee"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_unticked_row_waits_for_a_pick_of_its_own(
+    requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
+):
+    second = feed_transaction(team, categorize_fixture["account"], description="AGAIN", merchant_name="Blue Bottle")
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.default_book)
+    authenticated_page.locator("[data-testid='categorize-group-toggle']").click()
+    authenticated_page.locator(f"[data-testid='categorize-group-row-{second.id}']").uncheck()
+
+    categorize.search("zed coffee")
+    categorize.press("Enter")
+
+    assert _wait_until(authenticated_page, lambda: _category_of(categorize_fixture["row"]) == "Zed Coffee")
+    assert _category_of(second) is None
+    # The held-back row is the next card.
+    expect(authenticated_page.locator("[data-testid='categorize-card-description']")).to_have_text("AGAIN")
+    assert categorize.remaining() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_enter_and_number_keys_take_the_suggestions(
+    requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
+):
+    """With the box empty, Enter files the first suggestion and a digit files that chip."""
+    account = categorize_fixture["account"]
+    coffee = categorize_fixture["categories"]["Zed Coffee"]
+    dining = categorize_fixture["categories"]["Zed Dining"]
+    feed_transaction(team, account, category=coffee, merchant_name="Blue Bottle", description="HISTORY")
+    feed_transaction(team, account, category=dining, merchant_name="Lyft", description="HISTORY")
+    lyft = feed_transaction(team, account, merchant_name="Lyft", description="RIDE")
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.default_book)
+    first_title = categorize.current_card_title()
+    categorize.wait_for_suggestions()
+    categorize.press("Enter")
+    expect(authenticated_page.locator("[data-testid='categorize-card-payee']")).not_to_have_text(first_title)
+
+    chips = categorize.chip_names()
+    assert chips[0] in ("Zed Coffee", "Zed Dining")  # the second card's own suggestion leads
+    categorize.press("1")
+
+    assert _wait_until(authenticated_page, lambda: _category_of(lyft) == "Zed Dining")
+    assert _wait_until(authenticated_page, lambda: _category_of(categorize_fixture["row"]) == "Zed Coffee")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_undo_puts_the_card_back(requires_vite, authenticated_page: Page, live_server, categorize_fixture, team):
+    row = categorize_fixture["row"]
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.default_book)
+
+    categorize.search("zed dining")
+    categorize.press("Enter")
+    assert _wait_until(authenticated_page, lambda: _category_of(row) == "Zed Dining")
+
+    categorize.undo()
+
+    assert _wait_until(authenticated_page, lambda: _category_of(row) is None)
+    expect(authenticated_page.locator("[data-testid='categorize-card-payee']")).to_have_text("Blue Bottle")
+    assert categorize.remaining() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_quick_wins_file_every_confident_group_at_once(
+    requires_vite, authenticated_page: Page, live_server, categorize_fixture, team
+):
+    account = categorize_fixture["account"]
+    coffee = categorize_fixture["categories"]["Zed Coffee"]
+    dining = categorize_fixture["categories"]["Zed Dining"]
+    for _ in range(2):
+        feed_transaction(team, account, category=coffee, merchant_name="Blue Bottle", description="HISTORY")
+        feed_transaction(team, account, category=dining, merchant_name="Lyft", description="HISTORY")
+    lyft = feed_transaction(team, account, merchant_name="Lyft", description="RIDE")
+    unknown = feed_transaction(team, account, merchant_name="Corner Store", description="UNKNOWN")
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    authenticated_page.goto(categorize.url(categorize.path(team.default_book)))
+    panel = authenticated_page.locator("[data-testid='categorize-quick-wins']")
+    expect(panel).to_be_visible(timeout=15_000)
+    expect(panel.locator("[data-testid='quick-win-check']")).to_have_count(2)
+
+    authenticated_page.keyboard.press("Enter")
+
+    # One request per category, in parallel: either may land first.
+    assert _wait_until(authenticated_page, lambda: _category_of(lyft) == "Zed Dining")
+    assert _wait_until(authenticated_page, lambda: _category_of(categorize_fixture["row"]) == "Zed Coffee")
+    # What is left is the hard part, one card at a time.
+    expect(authenticated_page.locator("[data-testid='categorize-card-payee']")).to_have_text("Corner Store")
+    assert _category_of(unknown) is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_arrow_right_skips_to_the_pile(requires_vite, authenticated_page: Page, live_server, categorize_fixture, team):
+    feed_transaction(team, categorize_fixture["account"], description="SECOND ROW", merchant_name="Other Merchant")
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.default_book)
+
+    first = categorize.current_card_title()
+    categorize.press("ArrowRight")
+    expect(authenticated_page.locator("[data-testid='categorize-card-payee']")).not_to_have_text(first)
+    expect(authenticated_page.locator("[data-testid='categorize-remaining']")).to_contain_text("1 skipped")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_escape_twice_leaves(requires_vite, authenticated_page: Page, live_server, categorize_fixture, team):
+    """An empty box's first Escape only warns; the second goes back to the Inbox."""
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    categorize.goto(team.default_book)
+
+    categorize.press("Escape")
+    expect(authenticated_page.locator("[data-testid='categorize-exit-hint']")).to_be_visible()
+    assert "/categorize/" in authenticated_page.url
+
+    categorize.press("Escape")
+    authenticated_page.wait_for_url("**/bankfeed/", timeout=15_000)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_c_opens_it_over_the_inbox(requires_vite, authenticated_page: Page, live_server, categorize_fixture, team):
+    """`C` on the Inbox opens Categorize Mode in place; leaving it shows the Inbox again, with what it filed."""
+    feed = BankFeedPage(authenticated_page, live_server.url)
+    feed.goto(team.default_book)
+    authenticated_page.locator("body").click(position={"x": 2, "y": 2})
+    authenticated_page.keyboard.press("c")
+
+    categorize = CategorizePage(authenticated_page, live_server.url)
+    authenticated_page.wait_for_selector("[data-testid='categorize-search']", timeout=15_000)
+    assert "/categorize/" in authenticated_page.url
+
+    categorize.search("zed dining")
+    categorize.press("Enter")
+    assert _wait_until(authenticated_page, lambda: _category_of(categorize_fixture["row"]) == "Zed Dining")
+
+    authenticated_page.locator("[data-testid='categorize-exit']").click()
+    authenticated_page.wait_for_url("**/bankfeed/*", timeout=15_000)
+    expect(authenticated_page.locator("[data-testid='categorize-mode']")).to_have_count(0)

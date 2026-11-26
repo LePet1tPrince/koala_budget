@@ -29,10 +29,17 @@
          class="side-link flex-1 {% if active_tab == 'bank-feed' %}side-link-active{% endif %}">
         {% icon "inbox" class="inline-block shrink-0 w-4 h-4" %}
         {% translate "Inbox" %}
-        {% if inbox_count %}
-          <span class="ml-auto badge badge-sm badge-soft badge-warning" data-testid="inbox-count">{{ inbox_count }}</span>
-        {% endif %}
       </a>
+      {% comment %}
+        The count is its own link, straight into Categorize Mode: what is waiting
+        is the reason to open it.
+      {% endcomment %}
+      {% if inbox_count %}
+        <a href="{% url 'bank_feed:categorize_mode' nav_team.slug nav_book.slug %}"
+           class="badge badge-sm badge-soft badge-warning mr-2 hover:badge-warning"
+           title="{% blocktranslate trimmed count counter=inbox_count %}Sort {{ counter }} transaction in Categorize Mode{% plural %}Sort {{ counter }} transactions in Categorize Mode{% endblocktranslate %}"
+           data-testid="inbox-count">{{ inbox_count }}</a>
+      {% endif %}
       {% if nav_feed_institutions %}
         <button type="button" x-bind="toggle" class="side-link-toggle" data-testid="nav-inbox-toggle" aria-label="{% translate 'Toggle Inbox accounts' %}">
           <span :class="open && !flyout ? 'rotate-90' : ''" class="inline-block transition-transform">

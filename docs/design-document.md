@@ -90,6 +90,13 @@ Koala Budget uses **DaisyUI 5** semantic color tokens on top of Tailwind CSS 4. 
 3. Categorized transaction disappears from inbox
 4. AI auto-suggest is available; user confirms or overrides
 
+### Categorize Mode
+1. Ways in: the Inbox button or `C` (opens over the Inbox), the Inbox count in the nav, "Sort them now" on Home, and the toast after an import or a bank refresh that brought new rows
+2. Quick wins first, when at least two merchant groups have a confident guess: one press files them all
+3. Then one card per merchant group: Enter takes the first suggestion, `1`–`9` a chip, → skips to a pile offered at the end, Ctrl/⌘+Z undoes, Escape twice leaves; on a phone, swipe right to file, left to skip
+4. Each pick shows what it did (the category's month against its budget, a goal's balance) with Undo, and — when a rule would have done it — offers the rule
+5. The end screen says how many, how much and how long, and offers the skipped pile
+
 ### Transaction Rules
 1. A rule's suggestion shows in the Category cell as an italic category with a ✓ and a wand badge; it supersedes the history-based suggestion
 2. An auto-posted row shows the wand badge marked AUTO; the badge opens a panel naming the rule with Undo (auto-post) or Not this time (suggestion) and Edit rule
@@ -179,3 +186,10 @@ Koala Budget uses **DaisyUI 5** semantic color tokens on top of Tailwind CSS 4. 
 | 2026-11-23 | Email notifications page under Settings → Me: two checkboxes (bank connection alerts, overspending alerts), Save, and an "Always sent" card naming billing and sign-in mail | One preference per alert family the user can act on; billing notices can't be turned off, so they are stated rather than shown as a disabled toggle |
 | 2026-11-23 | Unsubscribe link asks before acting (GET shows a confirm button; POST unsubscribes) and shows the address masked | Mail scanners follow links; the page is reachable without signing in, so it doesn't print the full address |
 | 2026-11-23 | Overspending email is one digest per book listing every overspent category, sent when a category is newly overspent this month | One email per category would flood a bad month; a digest that repeats only on news stays readable |
+| 2026-11-26 | Categorize Mode's unit is a merchant group (account, direction, merchant signature), filed with one pick; rows can be unticked and come back as the next card | The same merchant recurs; a modal asking "these too?" after every pick interrupted the flow it was meant to speed up |
+| 2026-11-26 | Quick wins open the queue only for confident guesses (a rule, or ≥ 2 filings that are ≥ 80% one category) and show each one ticked before filing | One press for the easy part is the speed-up; showing the list keeps it a decision, not an automation |
+| 2026-11-26 | Enter with an empty search files only a *suggestion*; the frequent-category chips need their digit | A stray Enter must never file to a category that is merely popular |
+| 2026-11-26 | Escape leaves only on a second press, with "Everything you filed is saved" | Leaving mid-queue on a reflex Escape cost more than one extra key |
+| 2026-11-26 | Picks are shown at once and saved behind them; every pick has Undo | Waiting on the server per card made the queue feel slow; undo makes speed safe |
+| 2026-11-26 | Fun from feel and meaning (the card flying into its category, the budget it lands in, a session summary), not counters | The streak counter and confetti every 10 were cut as noise in the UX audit; confetti stays on the end screen only |
+| 2026-11-26 | Categorize Mode opens over the Inbox with its own URL pushed | No page load to get in; reload and the browser's Back still behave like a page |

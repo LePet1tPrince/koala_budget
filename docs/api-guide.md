@@ -261,7 +261,7 @@ JWT, global because Plaid can't know team or book slugs).
 
 ## Endpoint index
 
-Every endpoint in the OpenAPI schema, by area: 227 operations. `…/` is `/a/{team_slug}/{book_slug}/`;
+Every endpoint in the OpenAPI schema, by area: 229 operations. `…/` is `/a/{team_slug}/{book_slug}/`;
 `/a/{team}/` is `/a/{team_slug}/`. The purpose is the operation's own description (or the CRUD verb,
 for plain model routes); the schema has the request and response types. Regenerate this table when
 endpoints change: `manage.py spectacular --file schema.yml`, then each path's URL name is
@@ -408,6 +408,7 @@ endpoints change: `manage.py spectacular --file schema.yml`, then each path's UR
 | POST | `…/bankfeed/api/feed/batch_restore/` | `bank_feed:bank-feed-batch-restore` | Restore voided bank transactions, with their entries and their transfers' other legs. |
 | POST | `…/bankfeed/api/feed/batch_void/` | `bank_feed:bank-feed-batch-void` | Void bank transactions: they and their journal entries count toward nothing. |
 | POST | `…/bankfeed/api/feed/categorize/` | `bank_feed:bank-feed-categorize` | Categorize one or more bank transactions. |
+| GET | `…/bankfeed/api/feed/categorize_queue/` | `bank_feed:bank-feed-categorize-queue` | Categorize Mode's queue: the uncategorized rows in scope (the set the Inbox badge counts) grouped by account, direction and… |
 | GET | `…/bankfeed/api/feed/category_suggestions/` | `bank_feed:bank-feed-category-suggestions` | Suggest a category per merchant based on the most recent categorization. |
 | POST | `…/bankfeed/api/feed/create_account/` | `bank_feed:bank-feed-create-account` | Create a new account for use in the CSV upload category mapping step. |
 | GET | `…/bankfeed/api/feed/feed_accounts/` | `bank_feed:bank-feed-feed-accounts` | Return feed accounts with up-to-date balances and review counts. |
@@ -419,6 +420,7 @@ endpoints change: `manage.py spectacular --file schema.yml`, then each path's UR
 | GET | `…/bankfeed/api/feed/transfers/` | `bank_feed:bank-feed-transfer-suggestions` | List likely-duplicate transfer pairs (a transfer reported by both banks). |
 | POST | `…/bankfeed/api/feed/transfers/dismiss/` | `bank_feed:bank-feed-transfer-dismiss` | Dismiss a suggested pair as 'not a duplicate' so it stops being suggested. |
 | POST | `…/bankfeed/api/feed/transfers/match/` | `bank_feed:bank-feed-transfer-match` | Match a duplicate transfer: keep one leg, archive the other. |
+| POST | `…/bankfeed/api/feed/uncategorize/` | `bank_feed:bank-feed-uncategorize` | Put feed rows back to uncategorized (Categorize Mode's Undo): each row's entry is removed (`edit.decategorize`) and a rule… |
 | POST | `…/bankfeed/api/feed/upload_confirm/` | `bank_feed:bank-feed-upload-confirm` | Create BankTransaction records from confirmed transactions. |
 | POST | `…/bankfeed/api/feed/upload_parse/` | `bank_feed:bank-feed-upload-parse` | Parse an uploaded CSV/Excel file and return headers + sample rows. |
 | POST | `…/bankfeed/api/feed/upload_preview/` | `bank_feed:bank-feed-upload-preview` | Apply column mapping to uploaded file and return parsed transactions. |
