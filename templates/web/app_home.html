@@ -22,9 +22,14 @@
           {{ counter }} transactions to review
         {% endblocktranslate %}
       </span>
-      <a href="{% url 'bank_feed:bank_feed_home' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm">
-        {% translate "Review" %}
-      </a>
+      <span class="flex flex-wrap gap-2">
+        <a href="{% url 'bank_feed:bank_feed_home' request.team.slug request.book.slug %}" class="btn btn-ghost btn-sm">
+          {% translate "Open the Inbox" %}
+        </a>
+        <a href="{% url 'bank_feed:categorize_mode' request.team.slug request.book.slug %}" class="btn btn-primary btn-sm" data-testid="review-banner-sort">
+          ⚡ {% translate "Sort them now" %}
+        </a>
+      </span>
     </div>
   {% endif %}
 

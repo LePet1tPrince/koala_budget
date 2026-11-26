@@ -58,6 +58,16 @@ decision, so none was changed.
 
 ## Resolved Issues
 
+### 2026-11-26 — Categorize Mode rebuild (`feed/categorize_queue/`, `feed/uncategorize/`)
+**Feature:** Merchant-grouped queue with suggestions and confidence; batch Undo of a categorization.
+**Verdict:** Approved — no Critical or High findings.
+
+- **Book scoping.** The queue reads `feed_query.filtered(request.book, …)`; an `account` id from another book selects nothing. Undo loads rows with `BankTransaction.objects.filter(id__in=ids, book=request.book)` and answers 404 when any id is not in the book, before any write. Both are in `apps/books/tests/test_isolation.py` (READS / WRITES).
+- **Permissions.** `BookModelAccessPermissions`, as `categorize`: any member who may categorize may undo. No new admin-only action.
+- **Write path.** Undo goes through `edit.decategorize` (the one way back to uncategorized) after `edit.uncategorize_refusal` checks every row — void, split mirror, transfer mirror, reconciled lines (`assert_entry_removable`) and the period lock — all or nothing, every refused row named. Rule counters are adjusted with `Greatest(F() - 1, 0)`, never below zero.
+- **Audit.** Undo logs `AuditEvent.BULK_EDIT` with `{"fields": ["category_id"], "uncategorized": true}`; the entry deletion is in `AuditLog` through the journal signals.
+- **Client.** The budget figures shown in Categorize Mode come from the existing `budget_month_retrieve` (book-scoped, member-readable); no new data is exposed.
+
 ### 2026-11-23 — Transactional email (`apps.emails`)
 **Feature:** Bank connection, overspending and billing emails; preferences page and API; one-click unsubscribe.
 **Verdict:** Approved — no Critical or High findings.

@@ -67,6 +67,8 @@ models/BudgetMonth.ts
 models/BudgetRow.ts
 models/BudgetSection.ts
 models/BudgetSectionEnum.ts
+models/CategorizeQueue.ts
+models/CategorizeQueueGroup.ts
 models/CategorizeTransactionRow.ts
 models/CategorizeTransactionsRequest.ts
 models/CategorySuggestion.ts
@@ -273,6 +275,8 @@ models/ProductMetadata.ts
 models/ProductWithMetadata.ts
 models/Profile.ts
 models/ProfileUpdate.ts
+models/QueueMatchTypeEnum.ts
+models/QueueSuggestion.ts
 models/ReconcileAccount.ts
 models/ReconcileAccountPage.ts
 models/ReconciliationFinish.ts

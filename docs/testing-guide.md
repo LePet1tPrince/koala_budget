@@ -269,6 +269,13 @@ make test-e2e-accounts  # Run specific test file
 - `test_learning.py`: 4-of-4 proposes, 3-of-4 and too-few don't, dismissed stays dismissed, covered merchants and stale proposals dropped
 - Isolation: `rules:*` URLs are in `apps/books/tests/test_isolation.py`; the factory gives each book a rule, a match and a proposal (`rule_match` objects are addressed by their feed row's id)
 
+### Categorize Mode (`apps/bank_feed/tests/test_categorize_queue.py`, `e2e/tests/test_categorize.py`)
+
+- `GroupingTest` checks `group_key`/`build_queue` directly: same merchant (any case), numbers-only differences, in vs out, account, generic wording (`CHECK 1042`) left single, a rule's suggestion splitting a group
+- `SuggestionAndConfidenceTest`: confident needs ≥ 2 payee/description filings at ≥ 80%; one filing, a divided history and a fuzzy (`similar`) match are not; a rule supersedes history; ordering is confident → largest → newest
+- `UncategorizeEndpointTest`: mirror leg removed with the primary, refusals (reconciled names the row, void, closed period) leave every row as it was, `reopen` restores a confirmed/overridden suggestion and the rule's counters
+- E2E: `CategorizePage.open_details()` opens the collapsed editor (`edit_payee`/`edit_description` call it); `current_card_title()` reads the field when open, the heading otherwise; `suggestion_notes()` reads each chip's `title`; `chip_names()` lists the 1–9 chips. A queue with two confident groups opens on Quick wins — tests about cards keep history to one filing per merchant. Assert DB writes by polling (`_wait_until`): picks are optimistic, the card moves before the request lands
+
 ### Transactional email (`apps/emails/tests/test_emails.py`)
 
 - Emails land in `django.core.mail.outbox` (`settings_test` uses the locmem backend); Celery is eager

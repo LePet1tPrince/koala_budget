@@ -18,6 +18,7 @@ import type {
   AccountGroup,
   BankFeedRow,
   BatchIds,
+  CategorizeQueue,
   CategorizeTransactionsRequest,
   CategorySuggestion,
   CreateFeedAccountRequest,
@@ -46,6 +47,8 @@ import {
     BankFeedRowToJSON,
     BatchIdsFromJSON,
     BatchIdsToJSON,
+    CategorizeQueueFromJSON,
+    CategorizeQueueToJSON,
     CategorizeTransactionsRequestFromJSON,
     CategorizeTransactionsRequestToJSON,
     CategorySuggestionFromJSON,
@@ -121,6 +124,14 @@ export interface BankFeedBatchVoidRequest {
     bookSlug: string;
     teamSlug: string;
     batchIds: BatchIds;
+}
+
+export interface BankFeedCategorizeQueueRequest {
+    bookSlug: string;
+    teamSlug: string;
+    account?: string;
+    endDate?: Date;
+    startDate?: Date;
 }
 
 export interface BankFeedCategorySuggestionsRequest {
@@ -264,6 +275,12 @@ export interface BankFeedTransferSuggestionsRequest {
     bookSlug: string;
     teamSlug: string;
     account?: number;
+}
+
+export interface BankFeedUncategorizeRequest {
+    bookSlug: string;
+    teamSlug: string;
+    batchIds: BatchIds;
 }
 
 export interface BankFeedUploadConfirmRequest {
@@ -630,6 +647,66 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
+     * Categorize Mode\'s queue: the uncategorized rows in scope (the set the Inbox badge counts) grouped by account, direction and merchant, each group with its suggested categories and whether the first is confident enough to file in one click (`services/categorize_queue.py`). Ids only: the rows themselves come from the feed list.
+     */
+    async bankFeedCategorizeQueueRaw(requestParameters: BankFeedCategorizeQueueRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<CategorizeQueue>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedCategorizeQueue().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedCategorizeQueue().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        if (requestParameters['account'] != null) {
+            queryParameters['account'] = requestParameters['account'];
+        }
+
+        if (requestParameters['endDate'] != null) {
+            queryParameters['end_date'] = (requestParameters['endDate'] as any).toISOString().substring(0,10);
+        }
+
+        if (requestParameters['startDate'] != null) {
+            queryParameters['start_date'] = (requestParameters['startDate'] as any).toISOString().substring(0,10);
+        }
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/categorize_queue/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'GET',
+            headers: headerParameters,
+            query: queryParameters,
+        }, initOverrides);
+
+        return new runtime.JSONApiResponse(response, (jsonValue) => CategorizeQueueFromJSON(jsonValue));
+    }
+
+    /**
+     * Categorize Mode\'s queue: the uncategorized rows in scope (the set the Inbox badge counts) grouped by account, direction and merchant, each group with its suggested categories and whether the first is confident enough to file in one click (`services/categorize_queue.py`). Ids only: the rows themselves come from the feed list.
+     */
+    async bankFeedCategorizeQueue(requestParameters: BankFeedCategorizeQueueRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<CategorizeQueue> {
+        const response = await this.bankFeedCategorizeQueueRaw(requestParameters, initOverrides);
+        return await response.value();
+    }
+
+    /**
      * Suggest a category per merchant based on the most recent categorization. Used to pre-fill the category when editing an uncategorized transaction.
      */
     async bankFeedCategorySuggestionsRaw(requestParameters: BankFeedCategorySuggestionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<Array<CategorySuggestion>>> {
@@ -950,7 +1027,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Update an existing bank transaction and its associated journal entry.  Request body: - date: Transaction date (YYYY-MM-DD) - category: Category account ID - inflow: Money coming in (default 0) - outflow: Money going out (default 0) - payee: Payee/merchant name (optional) - description: Transaction description (optional) - account: Bank account ID
+     * Replace a feed row\'s fields and categorization (`services.edit.update_row`).
      */
     async bankFeedFeedUpdateRaw(requestParameters: BankFeedFeedUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<BankFeedRow>> {
         if (requestParameters['bookSlug'] == null) {
@@ -1007,7 +1084,7 @@ export class BankFeedApi extends runtime.BaseAPI {
     }
 
     /**
-     * Update an existing bank transaction and its associated journal entry.  Request body: - date: Transaction date (YYYY-MM-DD) - category: Category account ID - inflow: Money coming in (default 0) - outflow: Money going out (default 0) - payee: Payee/merchant name (optional) - description: Transaction description (optional) - account: Bank account ID
+     * Replace a feed row\'s fields and categorization (`services.edit.update_row`).
      */
     async bankFeedFeedUpdate(requestParameters: BankFeedFeedUpdateRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<BankFeedRow> {
         const response = await this.bankFeedFeedUpdateRaw(requestParameters, initOverrides);
@@ -1725,6 +1802,63 @@ export class BankFeedApi extends runtime.BaseAPI {
     async bankFeedTransferSuggestions(requestParameters: BankFeedTransferSuggestionsRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<Array<TransferSuggestion>> {
         const response = await this.bankFeedTransferSuggestionsRaw(requestParameters, initOverrides);
         return await response.value();
+    }
+
+    /**
+     * Put feed rows back to uncategorized (Categorize Mode\'s Undo): each row\'s entry is removed (`edit.decategorize`) and a rule suggestion the filing settled stands again. Payee and description stay as they are. All or nothing: a void, reconciled, closed-period or mirror row refuses the batch, naming it. Rows already uncategorized are left alone.
+     */
+    async bankFeedUncategorizeRaw(requestParameters: BankFeedUncategorizeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<runtime.ApiResponse<void>> {
+        if (requestParameters['bookSlug'] == null) {
+            throw new runtime.RequiredError(
+                'bookSlug',
+                'Required parameter "bookSlug" was null or undefined when calling bankFeedUncategorize().'
+            );
+        }
+
+        if (requestParameters['teamSlug'] == null) {
+            throw new runtime.RequiredError(
+                'teamSlug',
+                'Required parameter "teamSlug" was null or undefined when calling bankFeedUncategorize().'
+            );
+        }
+
+        if (requestParameters['batchIds'] == null) {
+            throw new runtime.RequiredError(
+                'batchIds',
+                'Required parameter "batchIds" was null or undefined when calling bankFeedUncategorize().'
+            );
+        }
+
+        const queryParameters: any = {};
+
+        const headerParameters: runtime.HTTPHeaders = {};
+
+        headerParameters['Content-Type'] = 'application/json';
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["X-Session-Token"] = await this.configuration.apiKey("X-Session-Token"); // XSessionTokenAuth authentication
+        }
+
+        if (this.configuration && this.configuration.apiKey) {
+            headerParameters["Authorization"] = await this.configuration.apiKey("Authorization"); // ApiKeyAuth authentication
+        }
+
+        const response = await this.request({
+            path: `/a/{team_slug}/{book_slug}/bankfeed/api/feed/uncategorize/`.replace(`{${"book_slug"}}`, encodeURIComponent(String(requestParameters['bookSlug']))).replace(`{${"team_slug"}}`, encodeURIComponent(String(requestParameters['teamSlug']))),
+            method: 'POST',
+            headers: headerParameters,
+            query: queryParameters,
+            body: BatchIdsToJSON(requestParameters['batchIds']),
+        }, initOverrides);
+
+        return new runtime.VoidApiResponse(response);
+    }
+
+    /**
+     * Put feed rows back to uncategorized (Categorize Mode\'s Undo): each row\'s entry is removed (`edit.decategorize`) and a rule suggestion the filing settled stands again. Payee and description stay as they are. All or nothing: a void, reconciled, closed-period or mirror row refuses the batch, naming it. Rows already uncategorized are left alone.
+     */
+    async bankFeedUncategorize(requestParameters: BankFeedUncategorizeRequest, initOverrides?: RequestInit | runtime.InitOverrideFunction): Promise<void> {
+        await this.bankFeedUncategorizeRaw(requestParameters, initOverrides);
     }
 
     /**
