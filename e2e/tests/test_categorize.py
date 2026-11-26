@@ -299,9 +299,9 @@ def test_a_draft_survives_a_skip(requires_vite, authenticated_page: Page, live_s
     categorize.edit_payee("Renamed while passing through")
     categorize.page.locator("[data-testid='categorize-details-done']").click()
 
-    # Skipping sets the edited card aside...
+    # Skipping sets the edited card aside (the factory's dates decide which card is first)...
     categorize.skip()
-    assert categorize.current_card_title() == "Other Merchant"
+    assert categorize.current_card_title() != "Renamed while passing through"
 
     # ...and once the queue is through, the skipped pile brings it back with the draft intact.
     categorize.skip()
@@ -507,7 +507,7 @@ def test_enter_and_number_keys_take_the_suggestions(
     categorize.press("1")
 
     assert _wait_until(authenticated_page, lambda: _category_of(lyft) == "Zed Dining")
-    assert _category_of(categorize_fixture["row"]) == "Zed Coffee"
+    assert _wait_until(authenticated_page, lambda: _category_of(categorize_fixture["row"]) == "Zed Coffee")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -548,8 +548,9 @@ def test_quick_wins_file_every_confident_group_at_once(
 
     authenticated_page.keyboard.press("Enter")
 
+    # One request per category, in parallel: either may land first.
     assert _wait_until(authenticated_page, lambda: _category_of(lyft) == "Zed Dining")
-    assert _category_of(categorize_fixture["row"]) == "Zed Coffee"
+    assert _wait_until(authenticated_page, lambda: _category_of(categorize_fixture["row"]) == "Zed Coffee")
     # What is left is the hard part, one card at a time.
     expect(authenticated_page.locator("[data-testid='categorize-card-payee']")).to_have_text("Corner Store")
     assert _category_of(unknown) is None
